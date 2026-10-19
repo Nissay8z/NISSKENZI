@@ -3,6 +3,7 @@ import unittest
 from catalog_builder import (
     choose_mp4,
     interleave_docs,
+    is_suitable_title,
     license_label,
     normalize_subjects,
 )
@@ -35,6 +36,13 @@ class CatalogBuilderTests(unittest.TestCase):
         ]
         result = interleave_docs(groups)
         self.assertEqual([row["identifier"] for row in result], ["new-a", "popular-x", "shared"])
+
+    def test_excludes_adult_themed_titles_and_raw_video_batches(self):
+        self.assertFalse(is_suitable_title("Diary of a Nudist"))
+        self.assertFalse(is_suitable_title("The Naked Witch"))
+        self.assertFalse(is_suitable_title("Publicvideos batch 9"))
+        self.assertFalse(is_suitable_title("Double Feature Hell"))
+        self.assertTrue(is_suitable_title("Sita Sings the Blues"))
 
     def test_subjects_are_sanitized_and_deduplicated(self):
         values = ["Drama; Comedy", "drama", "<b>History</b>", ""]

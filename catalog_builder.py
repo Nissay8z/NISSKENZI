@@ -45,6 +45,10 @@ ALLOWED_LICENSE_RE = re.compile(
 )
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 SPACE_RE = re.compile(r"\s+")
+SKIP_TITLE_RE = re.compile(
+    r"\b(?:nudist|naked|grindhouse|publicvideos|batch|compilation|double feature)\b",
+    re.IGNORECASE,
+)
 
 
 def request_json(url: str) -> dict:
@@ -130,6 +134,11 @@ def normalize_subjects(value: object) -> list[str]:
             if len(result) >= 8:
                 return result
     return result
+
+
+def is_suitable_title(title: str) -> bool:
+    """Exclude obvious adult-themed titles and generic video batches."""
+    return not SKIP_TITLE_RE.search(title)
 
 
 def choose_mp4(files: object) -> dict | None:
@@ -236,7 +245,7 @@ def enrich_item(doc: dict) -> dict | None:
     # The archive.org download link addresses the original file directly.
     stream_url = f"{BASE_URL}/download/{quote(identifier, safe='')}/{quote(file_name, safe='/')}"
     title = as_text(metadata.get("title") or doc.get("title"))
-    if not title:
+    if not title or not is_suitable_title(title):
         return None
 
     description = as_text(metadata.get("description") or doc.get("description"))

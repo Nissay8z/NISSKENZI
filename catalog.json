@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T21:16:35.624168+00:00",
+  "generated_at": "2026-10-19T21:19:09.590761+00:00",
   "source": "Internet Archive public search and metadata APIs",
   "total": 72,
   "license_policy": [
@@ -31,56 +31,6 @@
       "poster_url": "https://archive.org/services/img/Sita_Sings_the_Blues",
       "stream_url": "https://archive.org/download/Sita_Sings_the_Blues/Sita_Sings_the_Blues_1080p.mp4",
       "file_size": 4428753160
-    },
-    {
-      "id": "DiaryofaNudist",
-      "title": "Diary of a Nudist",
-      "creator": "Doris Wishman",
-      "year": 1961,
-      "added_date": "2010-11-02 11:21:48",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "The Film follows a reporter (Davee Decker) as she infiltrates a nudist colony in the hopes of exposing its immoral ways. However, once there, she finds herself enjoying it a little bit more than she anticipated. This Film was extremely controversial in 1961 today, films like this are considered to be curiosity pieces.",
-      "subjects": [
-        "Romance"
-      ],
-      "downloads": 784143,
-      "license_label": "Marque du domaine public",
-      "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/DiaryofaNudist",
-      "poster_url": "https://archive.org/services/img/DiaryofaNudist",
-      "stream_url": "https://archive.org/download/DiaryofaNudist/DiaryofaNudist.mp4",
-      "file_size": 446745759
-    },
-    {
-      "id": "TheNakedWitch",
-      "title": "The Naked Witch",
-      "creator": "",
-      "year": null,
-      "added_date": "2013-04-10 04:15:18",
-      "collection": [
-        "SciFi_Horror",
-        "feature_films",
-        "moviesandfilms",
-        "no-preview",
-        "deemphasize"
-      ],
-      "description": "One of Larry Buchanan's first films, so don't expect the polish and complex character interactions of his later work, like \"Mars Needs Women\" or \"Zontar, the Thing from Venus.\"",
-      "subjects": [
-        "Horror",
-        "Larry Buchanan",
-        "schlock"
-      ],
-      "downloads": 667646,
-      "license_label": "Marque du domaine public",
-      "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/TheNakedWitch",
-      "poster_url": "https://archive.org/services/img/TheNakedWitch",
-      "stream_url": "https://archive.org/download/TheNakedWitch/TheNakedWitch1964FullMovieFilmHorror.mp4",
-      "file_size": 190418272
     },
     {
       "id": "SanFrancisco1955CinemascopeFilm",
@@ -155,36 +105,6 @@
       "poster_url": "https://archive.org/services/img/publicmovies212",
       "stream_url": "https://archive.org/download/publicmovies212/Till_The_Clouds_Roll_By.mp4",
       "file_size": 850418876
-    },
-    {
-      "id": "DoubleFeatureHell2theGrindhouseExperience",
-      "title": "DOUBLE FEATURE HELL 2 (the grindhouse experience).",
-      "creator": "The 2am Theater",
-      "year": null,
-      "added_date": "2014-12-15 18:19:35",
-      "collection": [
-        "feature_films_picfixer",
-        "feature_films",
-        "moviesandfilms",
-        "no-preview",
-        "deemphasize"
-      ],
-      "description": "ADULT CONTENT ADVISORY: this grindhouse double feature simulation contains nudity and other content some viewers might find objectionable. Your night in the sleazy side of town begins with three trailers and a Betty Page short, followed by the first feature, \"Diary of a Nudist.\" An intermission featurette is next, \"Naked Fury,\" followed by the second feature, \"Revenge of the Virgins.\" NOTE: All of the items in this simulation are available separately in the Movie Trailers Collection (Trailers). the Short Format Films Collection (Shorts) and…",
-      "subjects": [
-        "2am Theater",
-        "double feature",
-        "grindhouse",
-        "exploiatation",
-        "nudism",
-        "Betty Page"
-      ],
-      "downloads": 455545,
-      "license_label": "Marque du domaine public",
-      "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/DoubleFeatureHell2theGrindhouseExperience",
-      "poster_url": "https://archive.org/services/img/DoubleFeatureHell2theGrindhouseExperience",
-      "stream_url": "https://archive.org/download/DoubleFeatureHell2theGrindhouseExperience/DoubleFeatureHell2theGrindhouseExperience.mp4",
-      "file_size": 1445132684
     },
     {
       "id": "Quicksand_clear",
@@ -383,34 +303,6 @@
       "poster_url": "https://archive.org/services/img/Please_Murder_Me_movie",
       "stream_url": "https://archive.org/download/Please_Murder_Me_movie/Please_Murder_Me.mp4",
       "file_size": 467347375
-    },
-    {
-      "id": "DoubleFeatureHell6grindhouse2",
-      "title": "DOUBLE FEATURE HELL 6 (Grindhouse 2)",
-      "creator": "The 2am Theater",
-      "year": null,
-      "added_date": "2015-03-07 15:52:11",
-      "collection": [
-        "feature_films_picfixer",
-        "feature_films",
-        "moviesandfilms",
-        "no-preview"
-      ],
-      "description": "ADULT CONTENT ADVISORY: This grindhouse double feature simulation contains nudity and other content some viewers might find objectionable. The 2am Theater raises its ugly head to present an insomniac double feature dedicated to those who remember Manhattan's row of grindhouse palaces on 42nd Street between Times Square and 8th Avenue. (The whole damn block is now owned by Disney.) Our trip down the sleazy side of memory lane begins with coming attractions and a Betty Page bondage short, followed by the first feature, \"The Wild and Wicked.\"…",
-      "subjects": [
-        "2am Theater",
-        "double feature",
-        "grindhouse",
-        "exploitation",
-        "Betty Page"
-      ],
-      "downloads": 320220,
-      "license_label": "Marque du domaine public",
-      "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/DoubleFeatureHell6grindhouse2",
-      "poster_url": "https://archive.org/services/img/DoubleFeatureHell6grindhouse2",
-      "stream_url": "https://archive.org/download/DoubleFeatureHell6grindhouse2/DoubleFeatureHell6grindhouse2.mp4",
-      "file_size": 1499345163
     },
     {
       "id": "Saint_Louis_Bank_Robbery",
@@ -663,6 +555,33 @@
       "file_size": 116390502
     },
     {
+      "id": "TheWildWomenOfWongoVideoQualityUpgrade",
+      "title": "THE WILD WOMEN OF WONGO video quality upgrade.",
+      "creator": "George R Black",
+      "year": null,
+      "added_date": "2014-02-16 13:01:31",
+      "collection": [
+        "feature_films_picfixer",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "The women are still wild. The acting is still awful. The plot is still ridiculous. But now you can see it all more clearly and with a much smaller download file. Directed by James L Wolcott. Released in 1958. Filmed in Coral Gables and Silver Springs, FL. Complete print. TRIVIA: Believe it or not Tennessee Williams (uncredited) directed most of this film.",
+      "subjects": [
+        "adventures",
+        "comedies",
+        "jungle jills",
+        "exploitation",
+        "Florida"
+      ],
+      "downloads": 203504,
+      "license_label": "Marque du domaine public",
+      "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
+      "source_url": "https://archive.org/details/TheWildWomenOfWongoVideoQualityUpgrade",
+      "poster_url": "https://archive.org/services/img/TheWildWomenOfWongoVideoQualityUpgrade",
+      "stream_url": "https://archive.org/download/TheWildWomenOfWongoVideoQualityUpgrade/TheWildWomenOfWongoVideoQualityUpgrade.mp4",
+      "file_size": 836584831
+    },
+    {
       "id": "HomeMoviesCan11274MonnierSchoolDetroitMichiganCa.1947",
       "title": "Home Movies: Can 11274: Monnier School, Detroit, Michigan, ca. 1947",
       "creator": "",
@@ -891,6 +810,35 @@
       "poster_url": "https://archive.org/services/img/HomeMoviesCan11281Cross-countryRoadTripVisitToNewYorkCityAndNew",
       "stream_url": "https://archive.org/download/HomeMoviesCan11281Cross-countryRoadTripVisitToNewYorkCityAndNew/11281.m4v",
       "file_size": 555496923
+    },
+    {
+      "id": "HomeMoviesCan11255PellegriniCollectionSanFranciscoAndSantaCruz",
+      "title": "Home Movies: Can 11255: Pellegrini Collection: San Francisco and Santa Cruz, ca. 1938",
+      "creator": "",
+      "year": null,
+      "added_date": "2012-03-29 17:57:18",
+      "collection": [
+        "prelingerhomemovies",
+        "prelinger"
+      ],
+      "description": "Home movies probably shot by the Pellegrini family of San Francisco, California. Scenes include family activities in and around San Francisco; the city of San Francisco coastline and waterfront; workers (probably Works Progress Administration workers) constructing sidewalks near Great Highway and Sloat Boulevard, San Francisco; a long shot looking over the Sunset District, which at that time was still mostly undeveloped sand dunes with a few areas of completed housing; scenes around the Santa Cruz, California waterfront and fishing piers; a…",
+      "subjects": [
+        "Home movies",
+        "San Francisco",
+        "Santa Cruz",
+        "WPA",
+        "fishing",
+        "U.S. Works Progress Administration",
+        "Sunset District",
+        "ships"
+      ],
+      "downloads": 2513,
+      "license_label": "Creative Commons BY",
+      "license_url": "http://creativecommons.org/licenses/by/3.0/",
+      "source_url": "https://archive.org/details/HomeMoviesCan11255PellegriniCollectionSanFranciscoAndSantaCruz",
+      "poster_url": "https://archive.org/services/img/HomeMoviesCan11255PellegriniCollectionSanFranciscoAndSantaCruz",
+      "stream_url": "https://archive.org/download/HomeMoviesCan11255PellegriniCollectionSanFranciscoAndSantaCruz/11255.m4v",
+      "file_size": 296184600
     },
     {
       "id": "HomeMoviesCan11271DowntownDetroitMichiganScenesCa.1962And1951",
@@ -1368,73 +1316,52 @@
       "file_size": 969245411
     },
     {
-      "id": "death-triangle-fatal-termination",
-      "title": "Death Triangle & Fatal Termination",
+      "id": "high-risk-meltdown-dubbed-subtitled-with-analysis",
+      "title": "Jet Li & Wong Jing's High Risk Meltdown (Dubbed, Subtitled, with Analysis)",
       "creator": "KonCategoryIII",
       "year": 2026,
-      "added_date": "2026-09-11 02:06:25",
+      "added_date": "2026-06-22 18:52:46",
       "collection": [
         "feature_films_unsorted",
         "feature_films",
         "moviesandfilms"
       ],
-      "description": "Death Triangle & Fatal Termination",
+      "description": "High Risk Meltdown (1995) Starting Off with a Bang: High Risk opens on a school yard during recess… a school yard that is about to become one of the World’s Most Dangerous School Yards, as a bus full of terrorists pulls in. The terrorists get out, round up the kids and their teacher and escort them to the bus… a bus we soon find out has a bomb underneath it! The bomb squad is called in, led by Lt. Kit Li (Jet Li)… this is the latest terrorist act by a group led by a mysterious man known only as The Doctor. Even though the mayor has paid The…",
       "subjects": [
-        "Death Triangle & Fatal Termination"
+        "Jet Li & Wong Jing's High Risk Meltdown (Dubbed",
+        "Subtitled",
+        "with Analysis)"
       ],
-      "downloads": 415,
-      "license_label": "Marque du domaine public",
-      "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/death-triangle-fatal-termination",
-      "poster_url": "https://archive.org/services/img/death-triangle-fatal-termination",
-      "stream_url": "https://archive.org/download/death-triangle-fatal-termination/Fatal%20Termination.ia.mp4",
-      "file_size": 675652656
-    },
-    {
-      "id": "the-eugene-thomas-and-alexander-lou-show",
-      "title": "The Eugene Thomas & Alexander Lou Show",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-09 03:39:44",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "All The Eugene Thomas movie scenes I could find",
-      "subjects": [
-        "Eugene Thomas"
-      ],
-      "downloads": 403,
-      "license_label": "Marque du domaine public",
-      "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-      "source_url": "https://archive.org/details/the-eugene-thomas-and-alexander-lou-show",
-      "poster_url": "https://archive.org/services/img/the-eugene-thomas-and-alexander-lou-show",
-      "stream_url": "https://archive.org/download/the-eugene-thomas-and-alexander-lou-show/The%20Eugene%20Thomas%2C%20Alexander%20Lou%20Show%20%28Finished%29.ia.mp4",
-      "file_size": 1589417423
-    },
-    {
-      "id": "tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
-      "title": "Tsui Hark's Dangerous Encounters Of The First Kind aka Don't Play With Fire 第一类型危险",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-14 22:55:16",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Dangerous Encounters of the First Kind [ a ] ( Chinese : 第一類型危險 , also released as Don't Play with Fire [ 1 ] and Playing with Fire [ 2 ] ) is a 1980 Hong Kong crime thriller film directed and co-written by Tsui Hark . [ 3 ] It follows a group of teenagers who engage in a crime spree in Hong Kong, but stumble into a dangerous group of international arms traffickers. The initial cut of the film was banned for its violence (including unsimulated animal death) and allusions to the 1967 Hong Kong riots . Following the ban, the film was heavily…",
-      "subjects": [
-        "Tsui Hark"
-      ],
-      "downloads": 374,
+      "downloads": 731,
       "license_label": "Creative Commons BY",
       "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
-      "poster_url": "https://archive.org/services/img/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
-      "stream_url": "https://archive.org/download/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire/1.%20Tsui%20Hark%27s%20Dangerous%20Encounters%20of%20the%20First%20Kind%20aka%20Don%27t%20Play%20With%20Fire.ia.mp4",
-      "file_size": 812571768
+      "source_url": "https://archive.org/details/high-risk-meltdown-dubbed-subtitled-with-analysis",
+      "poster_url": "https://archive.org/services/img/high-risk-meltdown-dubbed-subtitled-with-analysis",
+      "stream_url": "https://archive.org/download/high-risk-meltdown-dubbed-subtitled-with-analysis/High%20Risk%20Meltdown%20%28Dubbed%2C%20Subtitled%2C%20%26%20Analysis%29.ia.mp4",
+      "file_size": 1520067567
+    },
+    {
+      "id": "enforcer-from-death-row-1976-leo-fong",
+      "title": "Enforcer From Death Row (1976) Leo Fong",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-06-21 19:16:26",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Enforcer from Death Row Enforcer from Death Row was a film that was directed by Marshall M. Borden and Efren C. Piñon . It starred Leo Fong , Booker T. Anderson, Ann Farber, Darnell Garcia, John Hammond , James Lew , Cameron Mitchell and Mariwin Roberts. The film has two different endings, depending on which release is watched. It is also known as Ninja Assassins , Ninja Nightmare and Death Row Killer . Background The film was directed by two directors, Marshall M. Borden and Efren C. Piñon. The story was by Leo Fong and Jerry O. Tirazona.…",
+      "subjects": [
+        "Enforcer From Death Row (1976) Leo Fong"
+      ],
+      "downloads": 474,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/enforcer-from-death-row-1976-leo-fong",
+      "poster_url": "https://archive.org/services/img/enforcer-from-death-row-1976-leo-fong",
+      "stream_url": "https://archive.org/download/enforcer-from-death-row-1976-leo-fong/Enforcer%20From%20Death%20Row%20%281976%29%20Leo%20Fong.ia.mp4",
+      "file_size": 448525696
     },
     {
       "id": "0.-tiger-cage-1988-trailer-english",
@@ -1460,75 +1387,6 @@
       "file_size": 808277549
     },
     {
-      "id": "tiger-cage-3-dubbed",
-      "title": "Tiger Cage III [Dubbed] 1991",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-14 22:32:01",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Tiger Cage 3 (Cantonese: 冷面狙擊手, literally \"Cold-Faced Shooter\") is a 1991 Hong Kong action film directed by Yuen Woo-ping . Its English title positions it as a sequel to the 1988 film Tiger Cage and its 1990 sequel Tiger Cage 2 , which were also directed by Yuen, though this film features a new storyline with none of the main cast members returning. Plot edit Suki Cheung is a rising financial advisor who often accompanies her boss Mr. Wong to dinner meetings. Her boyfriend James and his best friend John, a CCB officer, place a wire in her…",
-      "subjects": [
-        "Yuen Woo Ping"
-      ],
-      "downloads": 287,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/tiger-cage-3-dubbed",
-      "poster_url": "https://archive.org/services/img/tiger-cage-3-dubbed",
-      "stream_url": "https://archive.org/download/tiger-cage-3-dubbed/1.%20Tiger%20Cage%20III%20%5B1991%20DUBBED%5D.ia.mp4",
-      "file_size": 802415287
-    },
-    {
-      "id": "master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
-      "title": "Master With Crack Fingers Snake Fist Fighter & Cub Tiger From Kwang Tung (Two Different Cuts Of Jackie Chan's First Starring Role)",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-15 03:36:45",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Master with Cracked Fingers ( Chinese : 刁手怪招 ; pinyin : diāo shǒu guài zhāo ), also released as Snake Fist Fighter , is a 1979 Hong Kong martial arts film directed by Mu Chu and starring Jackie Chan . It is often cited as being produced in 1971, 1973, 1974 or 1981. The original footage was filmed in 1971 and released in 1973 as Little Tiger of Canton . The re-edited version entitled Master with Cracked Fingers was not actually released until 1979. [ 1 ] Synopsis edit The film has a similar theme to Drunken Master (1978). The dynamic and…",
-      "subjects": [
-        "Jackie Chan"
-      ],
-      "downloads": 273,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
-      "poster_url": "https://archive.org/services/img/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
-      "stream_url": "https://archive.org/download/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung/1.%20Master%20With%20Crack%20Fingers%20The%20Snake%20Fist%20Fighter%20%26%20Cub%20Tiger%20From%20Kwang%20Tung%20%282%20different%20cuts%20of%20Jackie%20Chan%27s%20first%20starring%20role%29.mp4",
-      "file_size": 1281048765
-    },
-    {
-      "id": "raiders-of-buddhist-kung-fu-Godfrey-ho",
-      "title": "Raiders Of Buddhist Kung Fu",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-16 03:26:25",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Raiders of Buddhist Kung Fu (1981) Review March 21, 2025 Ian Whittle “Raiders of Buddhist Kung Fu” Theatrical Poster Director: Godfrey Ho Cast: Gordon Liu, Wang Ryong, Kim Ki-Joo, Seol Ji-Yeon, Kwak Eun-Gyung, Baek Hwang-Gi, John Kelly, Choe Moo-Woong, Lung Ho-Yu, Park Hui-Jin, Lee Hwa-Jin Running Time: 90 min. By Ian Whittle So I picked up the DVD assuming from the cover still of Gordon Liu in his usual monk attire that this was going to be another “Gordon from Shaolin” by way of a Korea flick, but once again I have been fooled… here…",
-      "subjects": [
-        "Godfrey Ho"
-      ],
-      "downloads": 237,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/raiders-of-buddhist-kung-fu-Godfrey-ho",
-      "poster_url": "https://archive.org/services/img/raiders-of-buddhist-kung-fu-Godfrey-ho",
-      "stream_url": "https://archive.org/download/raiders-of-buddhist-kung-fu-Godfrey-ho/Raiders%20of%20Buddhist%20Kung%20Fu.ia.mp4",
-      "file_size": 650827658
-    },
-    {
       "id": "the-green-hornet-1996-Lam-Ching-Ying",
       "title": "The Green Hornet (1994) [widescreen Ratio English Dub]",
       "creator": "KonCategoryIII",
@@ -1550,53 +1408,6 @@
       "poster_url": "https://archive.org/services/img/the-green-hornet-1996-Lam-Ching-Ying",
       "stream_url": "https://archive.org/download/the-green-hornet-1996-Lam-Ching-Ying/2.%20The%20Green%20Hornet%20%EF%BC%881994%29%20%5B16_9%20widescreen%20ratio%20Cantonese%20no%20subtitles%20or%20dub%2C%20sorry%5D.ia.mp4",
       "file_size": 799164142
-    },
-    {
-      "id": "and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
-      "title": "... And Now You're Dead! (Enter The Eagles) Michael Wong, Shannon Lee",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-16 19:52:35",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Enter the Eagles (also known in the United States as And Now You're Dead ) is a 1998 Hong Kong action thriller film directed by Corey Yuen , with a screenplay was written by Jeffrey Lau , and produced by Leonard Ho . The film stars Michael Wong , with a supporting cast of Anita Yuen , Jordan Chan , Shannon Lee , Benny Urquidez and Jordan Andrew Perry . Like Shannon Lee's late brother Brandon Lee 's film Legacy of Rage (1986), this was Shannon Lee's first and only film produced in Hong Kong and co-stars Michael Wong, who played Michael Wan…",
-      "subjects": [
-        "Michael Wong",
-        "Shannon Lee"
-      ],
-      "downloads": 201,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
-      "poster_url": "https://archive.org/services/img/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
-      "stream_url": "https://archive.org/download/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee/...And%20Now%20You%27re%20Dead%20%28Enter%20The%20Eagles%29%20Michael%20Wong%2C%20Shannon%20Lee.ia.mp4",
-      "file_size": 1384389929
-    },
-    {
-      "id": "framed-english-subtitles-yukari-oshima",
-      "title": "Framed (English Subtitles) Yukari Oshima",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-16 23:28:50",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "Close Escape ( Chinese : 飛越危牆 ) is a 1989 Hong Kong action film directed by Chow Chun-wing, starring Aaron Kwok , Max Mok , and Michael Miu in his theatrical debut. Plot edit Lam Wai-tung ( Michael Miu ), dying from cancer, steals some diamonds from smuggler Chiu Ying-kau ( Dick Wei ) in order to raise money for his younger brother Wai-leung ( Max Mok ) to study medicine overseas. Wai-leung meanwhile, is oblivious to his brother's illicit dealings. After the robbery, Chiu is questioned at the police station by Kwat (Chan Chik-Wai) and…",
-      "subjects": [
-        "Yukari Oshima"
-      ],
-      "downloads": 197,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/framed-english-subtitles-yukari-oshima",
-      "poster_url": "https://archive.org/services/img/framed-english-subtitles-yukari-oshima",
-      "stream_url": "https://archive.org/download/framed-english-subtitles-yukari-oshima/01.%20Framed%20%28English%20Subtitles%29%20Yukari%20Oshima.mp4",
-      "file_size": 1391533694
     },
     {
       "id": "stoner-george-lazenby-angel-mao",
@@ -1643,29 +1454,6 @@
       "poster_url": "https://archive.org/services/img/the-man-from-hong-kong-1975-george-lazenby",
       "stream_url": "https://archive.org/download/the-man-from-hong-kong-1975-george-lazenby/2.%20The%20Man%20From%20Hong%20Kong%20%E7%9B%B4%E6%90%97%E9%BB%83%E9%BE%8D%20%28with%20Not%20Quite%20Hollywood%20extra%20scene%29%20%281%29.ia.mp4",
       "file_size": 922311330
-    },
-    {
-      "id": "a-queens-ransom-1976",
-      "title": "A Queen's Ransom 鱷潭群英會 [1976]",
-      "creator": "KonCategoryIII",
-      "year": 2026,
-      "added_date": "2026-09-18 03:24:33",
-      "collection": [
-        "feature_films_unsorted",
-        "feature_films",
-        "moviesandfilms"
-      ],
-      "description": "A Queen's Ransom ( Chinese : 鱷潭群英會 ), also known as The International Assassin , is a 1976 Hong Kong action film about a plot to assassinate Queen Elizabeth II . The film was written and directed by Ting Shan-hsi and starred Jimmy Wang Yu , Angela Mao , George Lazenby , Judith Brown, Ko Chun-hsiung , Charles Heung and Dean Shek , whom also serves as the film's assistant director. Plot edit During Queen Elizabeth II's visit to Hong Kong in 1975, a group of criminals plan her assassination. Cast edit Jimmy Wang Yu as Jimmy Viet Cong Guerilla…",
-      "subjects": [
-        "Golden Harvest George Lazenby"
-      ],
-      "downloads": 139,
-      "license_label": "Creative Commons BY",
-      "license_url": "https://creativecommons.org/licenses/by/4.0/",
-      "source_url": "https://archive.org/details/a-queens-ransom-1976",
-      "poster_url": "https://archive.org/services/img/a-queens-ransom-1976",
-      "stream_url": "https://archive.org/download/a-queens-ransom-1976/A%20Queen%27s%20Ransom%20%20%E9%B1%B7%E6%BD%AD%E7%BE%A4%E8%8B%B1%E6%9C%83%20%5B1976%5D.ia.mp4",
-      "file_size": 765957441
     },
     {
       "id": "aces-go-places-ii-1983",
@@ -1851,6 +1639,214 @@
       "poster_url": "https://archive.org/services/img/bullet-in-the-head-the-konplete-final-john-woo-cut-1990",
       "stream_url": "https://archive.org/download/bullet-in-the-head-the-konplete-final-john-woo-cut-1990/1.%20Bullet%20In%20The%20Head%20%28The%20Konplete%20Final%20John%20Woo%20cut%29%20%281989%29%20DVDrip_.ia.mp4",
       "file_size": 1009768604
+    },
+    {
+      "id": "a-queens-ransom-1976",
+      "title": "A Queen's Ransom 鱷潭群英會 [1976]",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-18 03:24:33",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "A Queen's Ransom ( Chinese : 鱷潭群英會 ), also known as The International Assassin , is a 1976 Hong Kong action film about a plot to assassinate Queen Elizabeth II . The film was written and directed by Ting Shan-hsi and starred Jimmy Wang Yu , Angela Mao , George Lazenby , Judith Brown, Ko Chun-hsiung , Charles Heung and Dean Shek , whom also serves as the film's assistant director. Plot edit During Queen Elizabeth II's visit to Hong Kong in 1975, a group of criminals plan her assassination. Cast edit Jimmy Wang Yu as Jimmy Viet Cong Guerilla…",
+      "subjects": [
+        "Golden Harvest George Lazenby"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/a-queens-ransom-1976",
+      "poster_url": "https://archive.org/services/img/a-queens-ransom-1976",
+      "stream_url": "https://archive.org/download/a-queens-ransom-1976/A%20Queen%27s%20Ransom%20%20%E9%B1%B7%E6%BD%AD%E7%BE%A4%E8%8B%B1%E6%9C%83%20%5B1976%5D.ia.mp4",
+      "file_size": 765957441
+    },
+    {
+      "id": "framed-english-subtitles-yukari-oshima",
+      "title": "Framed (English Subtitles) Yukari Oshima",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-16 23:28:50",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Close Escape ( Chinese : 飛越危牆 ) is a 1989 Hong Kong action film directed by Chow Chun-wing, starring Aaron Kwok , Max Mok , and Michael Miu in his theatrical debut. Plot edit Lam Wai-tung ( Michael Miu ), dying from cancer, steals some diamonds from smuggler Chiu Ying-kau ( Dick Wei ) in order to raise money for his younger brother Wai-leung ( Max Mok ) to study medicine overseas. Wai-leung meanwhile, is oblivious to his brother's illicit dealings. After the robbery, Chiu is questioned at the police station by Kwat (Chan Chik-Wai) and…",
+      "subjects": [
+        "Yukari Oshima"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/framed-english-subtitles-yukari-oshima",
+      "poster_url": "https://archive.org/services/img/framed-english-subtitles-yukari-oshima",
+      "stream_url": "https://archive.org/download/framed-english-subtitles-yukari-oshima/01.%20Framed%20%28English%20Subtitles%29%20Yukari%20Oshima.mp4",
+      "file_size": 1391533694
+    },
+    {
+      "id": "and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
+      "title": "... And Now You're Dead! (Enter The Eagles) Michael Wong, Shannon Lee",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-16 19:52:35",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Enter the Eagles (also known in the United States as And Now You're Dead ) is a 1998 Hong Kong action thriller film directed by Corey Yuen , with a screenplay was written by Jeffrey Lau , and produced by Leonard Ho . The film stars Michael Wong , with a supporting cast of Anita Yuen , Jordan Chan , Shannon Lee , Benny Urquidez and Jordan Andrew Perry . Like Shannon Lee's late brother Brandon Lee 's film Legacy of Rage (1986), this was Shannon Lee's first and only film produced in Hong Kong and co-stars Michael Wong, who played Michael Wan…",
+      "subjects": [
+        "Michael Wong",
+        "Shannon Lee"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
+      "poster_url": "https://archive.org/services/img/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee",
+      "stream_url": "https://archive.org/download/and-now-youre-dead-enter-the-eagles-michael-wong-shannon-lee/...And%20Now%20You%27re%20Dead%20%28Enter%20The%20Eagles%29%20Michael%20Wong%2C%20Shannon%20Lee.ia.mp4",
+      "file_size": 1384389929
+    },
+    {
+      "id": "raiders-of-buddhist-kung-fu-Godfrey-ho",
+      "title": "Raiders Of Buddhist Kung Fu",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-16 03:26:25",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Raiders of Buddhist Kung Fu (1981) Review March 21, 2025 Ian Whittle “Raiders of Buddhist Kung Fu” Theatrical Poster Director: Godfrey Ho Cast: Gordon Liu, Wang Ryong, Kim Ki-Joo, Seol Ji-Yeon, Kwak Eun-Gyung, Baek Hwang-Gi, John Kelly, Choe Moo-Woong, Lung Ho-Yu, Park Hui-Jin, Lee Hwa-Jin Running Time: 90 min. By Ian Whittle So I picked up the DVD assuming from the cover still of Gordon Liu in his usual monk attire that this was going to be another “Gordon from Shaolin” by way of a Korea flick, but once again I have been fooled… here…",
+      "subjects": [
+        "Godfrey Ho"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/raiders-of-buddhist-kung-fu-Godfrey-ho",
+      "poster_url": "https://archive.org/services/img/raiders-of-buddhist-kung-fu-Godfrey-ho",
+      "stream_url": "https://archive.org/download/raiders-of-buddhist-kung-fu-Godfrey-ho/Raiders%20of%20Buddhist%20Kung%20Fu.ia.mp4",
+      "file_size": 650827658
+    },
+    {
+      "id": "master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
+      "title": "Master With Crack Fingers Snake Fist Fighter & Cub Tiger From Kwang Tung (Two Different Cuts Of Jackie Chan's First Starring Role)",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-15 03:36:45",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Master with Cracked Fingers ( Chinese : 刁手怪招 ; pinyin : diāo shǒu guài zhāo ), also released as Snake Fist Fighter , is a 1979 Hong Kong martial arts film directed by Mu Chu and starring Jackie Chan . It is often cited as being produced in 1971, 1973, 1974 or 1981. The original footage was filmed in 1971 and released in 1973 as Little Tiger of Canton . The re-edited version entitled Master with Cracked Fingers was not actually released until 1979. [ 1 ] Synopsis edit The film has a similar theme to Drunken Master (1978). The dynamic and…",
+      "subjects": [
+        "Jackie Chan"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
+      "poster_url": "https://archive.org/services/img/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung",
+      "stream_url": "https://archive.org/download/master-with-crack-fingers-snake-fist-fighter-cub-tiger-from-kwang-tung/1.%20Master%20With%20Crack%20Fingers%20The%20Snake%20Fist%20Fighter%20%26%20Cub%20Tiger%20From%20Kwang%20Tung%20%282%20different%20cuts%20of%20Jackie%20Chan%27s%20first%20starring%20role%29.mp4",
+      "file_size": 1281048765
+    },
+    {
+      "id": "tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
+      "title": "Tsui Hark's Dangerous Encounters Of The First Kind aka Don't Play With Fire 第一类型危险",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-14 22:55:16",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Dangerous Encounters of the First Kind [ a ] ( Chinese : 第一類型危險 , also released as Don't Play with Fire [ 1 ] and Playing with Fire [ 2 ] ) is a 1980 Hong Kong crime thriller film directed and co-written by Tsui Hark . [ 3 ] It follows a group of teenagers who engage in a crime spree in Hong Kong, but stumble into a dangerous group of international arms traffickers. The initial cut of the film was banned for its violence (including unsimulated animal death) and allusions to the 1967 Hong Kong riots . Following the ban, the film was heavily…",
+      "subjects": [
+        "Tsui Hark"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
+      "poster_url": "https://archive.org/services/img/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire",
+      "stream_url": "https://archive.org/download/tsui-harks-dangerous-encounters-of-the-first-kind-aka-dont-play-with-fire/1.%20Tsui%20Hark%27s%20Dangerous%20Encounters%20of%20the%20First%20Kind%20aka%20Don%27t%20Play%20With%20Fire.ia.mp4",
+      "file_size": 812571768
+    },
+    {
+      "id": "tiger-cage-3-dubbed",
+      "title": "Tiger Cage III [Dubbed] 1991",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-14 22:32:01",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Tiger Cage 3 (Cantonese: 冷面狙擊手, literally \"Cold-Faced Shooter\") is a 1991 Hong Kong action film directed by Yuen Woo-ping . Its English title positions it as a sequel to the 1988 film Tiger Cage and its 1990 sequel Tiger Cage 2 , which were also directed by Yuen, though this film features a new storyline with none of the main cast members returning. Plot edit Suki Cheung is a rising financial advisor who often accompanies her boss Mr. Wong to dinner meetings. Her boyfriend James and his best friend John, a CCB officer, place a wire in her…",
+      "subjects": [
+        "Yuen Woo Ping"
+      ],
+      "downloads": 0,
+      "license_label": "Creative Commons BY",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://archive.org/details/tiger-cage-3-dubbed",
+      "poster_url": "https://archive.org/services/img/tiger-cage-3-dubbed",
+      "stream_url": "https://archive.org/download/tiger-cage-3-dubbed/1.%20Tiger%20Cage%20III%20%5B1991%20DUBBED%5D.ia.mp4",
+      "file_size": 802415287
+    },
+    {
+      "id": "death-triangle-fatal-termination",
+      "title": "Death Triangle & Fatal Termination",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-11 02:06:25",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "Death Triangle & Fatal Termination",
+      "subjects": [
+        "Death Triangle & Fatal Termination"
+      ],
+      "downloads": 0,
+      "license_label": "Marque du domaine public",
+      "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "source_url": "https://archive.org/details/death-triangle-fatal-termination",
+      "poster_url": "https://archive.org/services/img/death-triangle-fatal-termination",
+      "stream_url": "https://archive.org/download/death-triangle-fatal-termination/Fatal%20Termination.ia.mp4",
+      "file_size": 675652656
+    },
+    {
+      "id": "the-eugene-thomas-and-alexander-lou-show",
+      "title": "The Eugene Thomas & Alexander Lou Show",
+      "creator": "KonCategoryIII",
+      "year": 2026,
+      "added_date": "2026-09-09 03:39:44",
+      "collection": [
+        "feature_films_unsorted",
+        "feature_films",
+        "moviesandfilms"
+      ],
+      "description": "All The Eugene Thomas movie scenes I could find",
+      "subjects": [
+        "Eugene Thomas"
+      ],
+      "downloads": 0,
+      "license_label": "Marque du domaine public",
+      "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "source_url": "https://archive.org/details/the-eugene-thomas-and-alexander-lou-show",
+      "poster_url": "https://archive.org/services/img/the-eugene-thomas-and-alexander-lou-show",
+      "stream_url": "https://archive.org/download/the-eugene-thomas-and-alexander-lou-show/The%20Eugene%20Thomas%2C%20Alexander%20Lou%20Show%20%28Finished%29.ia.mp4",
+      "file_size": 1589417423
     },
     {
       "id": "fast-and-furious-1954-two-vintage-cartoons",

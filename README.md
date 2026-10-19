@@ -5,7 +5,8 @@ Personal project for automatically refreshing a media catalogue.
 ## What it does
 
 - Fetches the sources listed in `sources.txt`.
-- Combines M3U entries while removing duplicate stream URLs.
+- Starts with a worldwide catalogue grouped by country, plus a France fallback source.
+- Combines entries while removing duplicate stream URLs.
 - Preserves entry metadata and stream options.
 - Validates the generated output and runs tests.
 - Refreshes `playlist.m3u` on a schedule using GitHub Actions.
@@ -25,12 +26,12 @@ The schedule is approximately every six hours. GitHub can delay scheduled jobs, 
 
 Add one HTTP(S) playlist URL per line in `sources.txt`. Lines starting with `#` are comments. Use only sources and streams you are authorized to access. Do not put passwords, access tokens, or private URLs in this public repository.
 
-The starter source is a community catalogue; individual streams may be unavailable, geo-restricted, or subject to their own distribution conditions. This project does not bypass authentication or access controls.
+The included community catalogues cover channels from many countries. Individual streams may be unavailable, geo-restricted, or subject to distribution conditions. The generator does not bypass authentication or access controls.
 
 ## Details
 
 - GitHub Actions runs a job and exits; it is not a permanent streaming proxy.
-- If every source fails or returns no entries, the job fails rather than replacing a working playlist with an empty file.
+- If some sources fail but another produces valid entries, the job can continue with the available entries. If all sources fail or return no entries, it fails rather than replacing a working playlist with an empty file.
 - The workflow needs repository **contents: write** permission to commit updated output.
 
 ## Run locally (optional)

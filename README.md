@@ -1,47 +1,45 @@
-# NISSKENZI
+# NISSKENZI Ciné
 
-Outil personnel pour créer et consulter un catalogue de chaînes en direct.
+Un catalogue façon Netflix pour regarder des films hébergés par Internet Archive et dont les métadonnées indiquent une licence du domaine public ou Creative Commons compatible.
 
-## Ouvrir NISSKENZI Live
+## Ce projet fait quoi ?
 
-L'application du lecteur se trouve dans [nisskenzi-live.html](nisskenzi-live.html).
+- Recherche dans le catalogue par titre, créateur ou sujet.
+- Affiche les affiches, descriptions, années et indications de licence disponibles.
+- Lit directement les fichiers MP4 d'Internet Archive dans le lecteur intégré.
+- Offre des sections populaires et nouveautés.
+- Actualise le catalogue chaque jour et redéploie le site via GitHub Actions.
+- Ne réhéberge pas de vidéo : la lecture est servie par Internet Archive.
 
-Pour l'ouvrir comme une vraie page web dans VYPN, active GitHub Pages une seule fois :
+Il ne collecte pas les liens de lecture depuis Recherche-Stream ni depuis des sites tiers dont les autorisations ne sont pas établies. Il ne contourne pas de paywalls, protections d'accès ou restrictions techniques.
 
-1. Va dans **Settings → Pages** du dépôt.
-2. Dans **Build and deployment → Source**, choisis **GitHub Actions**.
-3. Va dans **Actions → Deploy NISSKENZI Live**, puis ouvre la dernière exécution.
-4. Une fois le déploiement réussi, ouvre **https://nissay8z.github.io/NISSKENZI/** dans VYPN.
+## Ouvrir le site
 
-Le workflow publie uniquement la page du lecteur sous le nom `index.html`. Quand `nisskenzi-live.html` change sur la branche `main`, il redéploie la page. Le lecteur contient une recherche, les catégories, les favoris, la sélection de playlists et un lecteur vidéo. Il utilise `https://mhub.mx/mhub.js` lorsque le navigateur hôte expose l'API mHub, sinon tente le mode navigateur classique.
+Adresse prévue : https://nissay8z.github.io/NISSKENZI/
 
-## Playlists disponibles actuellement
+Le workflow tente de publier le site avec GitHub Pages. Si le déploiement affiche que Pages n'est pas activé, ouvre **Settings → Pages** dans ce dépôt, sélectionne **GitHub Actions** comme source de publication, puis relance **Actions → Refresh NISSKENZI Cine and deploy**.
 
-- [Playlist mondiale](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
-- [Playlist France](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
-- [Rapport du catalogue mondial](catalogue-status.json)
-- [Rapport du catalogue France](catalogue-status-fr.json)
+## Catalogue et licences
 
-**État de l'intégration Vavoo : elle n'est pas encore intégrée.** Le lecteur utilise actuellement les playlists existantes; la présence du script mHub ne découvre pas à elle seule le catalogue Vavoo.
+Le constructeur utilise les API publiques de recherche et de métadonnées d'Internet Archive. Il ne conserve que les éléments avec une licence déclarée dans une de ces familles : Public Domain Mark, CC0, CC BY ou CC BY-SA, et pour lesquels l'API fournit un MP4 public. La page de chaque œuvre mène à sa fiche d'origine et à la licence.
 
-## Actualisation du catalogue
+Les métadonnées de licence sont fournies par les déposants ; ce n'est pas une garantie juridique indépendante. Vérifie la fiche et le statut des droits dans ton pays. Les œuvres peuvent être retirées, indisponibles, ou avoir des métadonnées incomplètes.
 
-Le workflow **NISSKENZI catalogue refresh** s'exécute environ toutes les six heures et peut être lancé manuellement. Les catalogues communautaires configurés dans `sources.txt` et `sources-fr.txt` restent les sources de secours.
+## Actualisation
 
-Une source M3U principale peut être fournie avec le secret GitHub Actions `NISSKENZI_PRIMARY_M3U_URL`. Ne place pas d'URL privée ou de jeton dans un fichier public du dépôt.
+- Automatique chaque jour à 04:17 UTC.
+- Déclenchable manuellement dans **Actions → Refresh NISSKENZI Cine and deploy → Run workflow**.
+- Si l'API échoue ou retourne trop peu de résultats validés, le script échoue sans écraser le dernier catalogue fonctionnel.
 
-## Vérification des flux
+## Développement local
 
-Le workflow manuel **NISSKENZI stream health sample** effectue un diagnostic limité sur un échantillon de chaînes. Une réponse HTTP réussie ne garantit pas que la vidéo fonctionne dans tous les lecteurs.
+Python 3.12+, aucune dépendance tierce :
 
-## Confidentialité
-
-Le dépôt est public. Les playlists générées et les URL directes qu'elles contiennent sont donc lisibles publiquement. N'y ajoute aucune URL privée ni aucun jeton.
-
-## Tests locaux
-
-Python 3.12+ :
-
-```bash
+\`\`\`bash
 python -m unittest discover -s tests -v
-```
+python catalog_builder.py
+\`\`\`
+
+## Données
+
+Le fichier \`catalog.json\` est généré automatiquement à partir des API publiques d'Internet Archive. Les liens vers vidéos et images pointent vers archive.org et ne sont pas copiés sur GitHub.

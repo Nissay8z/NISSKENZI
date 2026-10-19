@@ -1,46 +1,57 @@
 # NISSKENZI
 
-Personal project for automatically refreshing a live-TV catalogue.
+Personal live-TV catalogue builder and diagnostics toolkit.
 
-## Outputs
+## Current outputs
 
-- Worldwide catalogue: [playlist.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
-- France catalogue: [playlist-fr.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
-- Latest source report: [catalogue-status.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status.json)
+- Worldwide M3U: [playlist.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
+- France M3U: [playlist-fr.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
+- Worldwide source report: [catalogue-status.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status.json)
+- France source report: [catalogue-status-fr.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status-fr.json)
 
-The generated lists keep M3U channel metadata, remove exact URL duplicates, and filter entries whose category explicitly identifies a VOD/replay service. Linear channels whose names mention cinema or films remain included.
+## Architecture
 
-## Preferred source and fallback
+The generator loads a primary HTTP(S) M3U URL from the `NISSKENZI_PRIMARY_M3U_URL` GitHub Actions secret, if configured, then adds the fallback sources in `sources.txt`. The primary entries come first, and exact URL duplicates are removed. Obvious VOD/replay categories are filtered, and EPG metadata is added to playlist headers.
 
-NISSKENZI supports a primary, authorized M3U export URL and then supplements its entries with the public fallback catalogues listed in `sources.txt`. The primary source is read first, so its entries appear before fallback entries in the merged output.
+A matching France-only playlist is generated separately.
 
-To configure a primary feed, use a playlist URL that you are authorized to access and that is intended for M3U export:
+## Primary source configuration
 
-1. Open the repository's **Settings → Secrets and variables → Actions**.
-2. Select **New repository secret**.
+To add an authorized M3U export URL:
+
+1. Open **Settings → Secrets and variables → Actions**.
+2. Choose **New repository secret**.
 3. Name it `NISSKENZI_PRIMARY_M3U_URL`.
-4. Set its value to the authorized M3U export URL and save it.
+4. Enter the authorized export URL as its value, then save it.
 5. Run **Actions → NISSKENZI catalogue refresh → Run workflow**.
 
-The URL is read from a GitHub Actions secret and is not written into the source files or health report. If no primary URL is configured or the primary fails, the job continues using the configured fallback lists. Do not put passwords or private access tokens directly into committed files.
+The secret is not written to source files or health reports. The browser page at vavoo.net is an interactive web UI, not by itself an export playlist URL. The project does not implement hidden endpoint scraping, token/signature recreation, stream URL extraction, or bypasses for access controls. When no authorized primary export is configured, community catalogues remain the fallback.
 
-**Important:** NISSKENZI does not extract hidden stream URLs, refresh private Vavoo tokens, or bypass access controls. The provided Vavoo web page is a browser interface, not a documented M3U export URL. Until an authorized export URL is available and configured, the primary feed is unconfigured and the community catalogues supply the output. A community list is not proof that each stream is authorized or available.
+## Stream health sample
+
+A separate manual workflow checks a small sample of HTTP(S) URLs using bounded byte-range requests. It is deliberately not scheduled, to limit requests to upstream providers.
+
+1. Open **Actions → NISSKENZI stream health sample**.
+2. Click **Run workflow**.
+3. Select the worldwide or France playlist and the sample size.
+4. Download the `nisskenzi-stream-health` artifact after the workflow completes.
+
+The JSON report records channel name, category, host, HTTP status, latency and whether the response resembles an M3U manifest. It does not contain full stream URLs or query tokens. A successful HTTP response is not a guarantee that video playback works.
 
 ## Scheduled updates
 
-GitHub Actions refreshes the lists approximately every six hours and may also be launched manually. The computer does not need to stay on. Scheduled jobs can be delayed by GitHub.
-
-Each run executes the unit tests, generates the worldwide and French lists, writes JSON source reports and commits only changes. If all sources fail or return no usable live-TV entries, the job fails rather than replacing an existing playlist with an empty file.
+The catalogue workflow runs roughly every six hours and can be triggered manually. The computer does not need to stay on. GitHub can delay scheduled runs. Generation tests run before writing output, and a failed/empty source set does not overwrite a good playlist with an empty file.
 
 ## Public repository warning
 
-This repository is currently public. Generated playlists and their stream URLs are public too. Keep private URLs out of committed files; use a private repository if any generated output must remain private.
+This repository is public; generated playlist entries and direct stream URLs in the M3U files can be read by other people. Keep private URLs and tokens in repository secrets, and use a private repository if you need the generated output to remain private.
 
 ## Local tests
 
-Requires Python 3.12 or newer:
+Requires Python 3.12+:
 
 ```bash
 python -m unittest discover -s tests -v
 python refresh_catalogue.py --sources sources.txt --output playlist.m3u
+python check_streams.py playlist.m3u --limit 80 --output stream-health.json
 ```

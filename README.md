@@ -1,6 +1,6 @@
 # NISSKENZI
 
-Personal live-TV catalogue builder and diagnostics toolkit.
+Personal live-channel catalogue builder and diagnostics toolkit.
 
 ## Current outputs
 
@@ -8,14 +8,19 @@ Personal live-TV catalogue builder and diagnostics toolkit.
 - France M3U: [playlist-fr.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
 - Worldwide source report: [catalogue-status.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status.json)
 - France source report: [catalogue-status-fr.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status-fr.json)
+- Browser/TV app: [nisskenzi-live.html](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/nisskenzi-live.html)
 
-## Architecture
+## NISSKENZI Live app
 
-The generator loads a primary HTTP(S) M3U URL from the `NISSKENZI_PRIMARY_M3U_URL` GitHub Actions secret, if configured, then adds the fallback sources in `sources.txt`. The primary entries come first, and exact URL duplicates are removed. Obvious VOD/replay categories are filtered, and EPG metadata is added to playlist headers.
+Open [NISSKENZI Live](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/nisskenzi-live.html) in VYPN to browse the generated playlist, search channels, filter categories, save favorites, and play streams. It uses the mHub Browser API when available, including `mhub.fetch()` and `mhub.openStream()`; outside a compatible host it falls back to ordinary browser requests and playback. The app accepts another HTTP(S) M3U URL in its source field. A playlist may include channels that are offline or region-limited.
 
-A matching France-only playlist is generated separately.
+The script `https://mhub.mx/mhub.js` is **mHub's browser API**, not a Vavoo API. It gives a page running in a compatible host additional request and stream capabilities; it does not, by itself, discover Vavoo's catalogue or grant access to streams. This app currently uses NISSKENZI's configured M3U output, not a direct Vavoo connection.
 
-## Primary source configuration
+## Catalogue architecture
+
+The generator loads a primary HTTP(S) M3U URL from the `NISSKENZI_PRIMARY_M3U_URL` GitHub Actions secret, if configured, then adds the fallback sources in `sources.txt`. The primary entries come first, and exact URL duplicates are removed. Obvious VOD/replay categories are filtered, and EPG metadata is added to playlist headers. A matching France-only playlist is generated separately.
+
+### Primary source configuration
 
 To add an authorized M3U export URL:
 
@@ -25,7 +30,7 @@ To add an authorized M3U export URL:
 4. Enter the authorized export URL as its value, then save it.
 5. Run **Actions → NISSKENZI catalogue refresh → Run workflow**.
 
-The secret is not written to source files or health reports. The browser page at vavoo.net is an interactive web UI, not by itself an export playlist URL. The project does not implement hidden endpoint scraping, token/signature recreation, stream URL extraction, or bypasses for access controls. When no authorized primary export is configured, community catalogues remain the fallback.
+The secret is not written to source files or health reports. The Vavoo browser page is an interactive web UI, not by itself an export playlist URL. The project does not implement token/signature recreation or mechanisms to bypass access controls. When no authorized primary export is configured, community catalogues remain the fallback.
 
 ## Stream health sample
 
@@ -44,7 +49,7 @@ The catalogue workflow runs roughly every six hours and can be triggered manuall
 
 ## Public repository warning
 
-This repository is public; generated playlist entries and direct stream URLs in the M3U files can be read by other people. Keep private URLs and tokens in repository secrets, and use a private repository if you need the generated output to remain private.
+This repository is public; generated playlist entries and direct stream URLs in the M3U files can be read by other people. Keep private URLs and tokens in repository secrets, and use a private repository if you need generated output to remain private.
 
 ## Local tests
 

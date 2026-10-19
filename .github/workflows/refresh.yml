@@ -1,0 +1,54 @@
+name: NISSKENZI catalogue refresh
+
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC: approximately every six hours. GitHub may delay scheduled runs.
+    - cron: "23 */6 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/refresh.yml"
+      - "refresh_catalogue.py"
+      - "sources.txt"
+      - "tests/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nisskenzi-catalogue-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Generate catalogue
+        run: python refresh_catalogue.py --sources sources.txt --output playlist.m3u
+
+      - name: Commit changed output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playlist.m3u
+          if git diff --cached --quiet; then
+            echo "Generated playlist is unchanged."
+          else
+            git commit -m "chore: refresh generated catalogue"
+            git push
+          fi

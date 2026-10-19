@@ -1,0 +1,3 @@
+# One HTTP(S) playlist URL per line.
+# Only use sources you are authorized to access.
+https://iptv-org.github.io/iptv/countries/fr.m3u

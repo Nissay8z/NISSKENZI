@@ -31,7 +31,7 @@ REQUEST_TIMEOUT = 25
 MAX_ATTEMPTS_PER_REQUEST = 3
 SEARCH_FIELDS = [
     "identifier", "title", "creator", "date", "year", "description",
-    "subject", "licenseurl", "downloads", "language", "mediatype",
+    "subject", "licenseurl", "downloads", "language", "mediatype", "collection", "publicdate", "addeddate",
 ]
 # Restrict the public site to these explicit license families. The uploader's
 # license metadata is not a legal guarantee; the UI links to the item record.
@@ -163,12 +163,11 @@ def choose_mp4(files: object) -> dict | None:
     return max(candidates, key=lambda entry: entry[0])[2]
 
 
-def get_search_docs(sort_field: str) -> list[dict]:
-    # Search broadly for CC metadata, then enforce our exact license allowlist
-    # locally. Some Archive.org Solr indexes tokenize license URLs differently,
-    # so querying each full license path separately can return false zeroes.
+def get_search_docs(collection_query: str, sort_field: str) -> list[dict]:
+    # Search only actual feature-film/curated film collections, not generic video
+    # batches. License is checked both here and against the item metadata later.
     params: list[tuple[str, str]] = [
-        ("q", f"mediatype:movies AND {LICENSE_QUERY}"),
+        ("q", f"{collection_query} AND mediatype:movies AND {LICENSE_QUERY}"),
         ("rows", str(MAX_RESULTS_PER_SEARCH)),
         ("page", "1"),
         ("output", "json"),
@@ -185,7 +184,10 @@ def get_search_docs(sort_field: str) -> list[dict]:
         doc for doc in docs
         if isinstance(doc, dict) and license_label(as_text(doc.get("licenseurl"))) is not None
     ]
-    print(f"Archive.org search ({sort_field}): {len(docs)} results, {len(filtered)} with an accepted license.")
+    print(
+        f"Archive.org search ({collection_query}, {sort_field}): "
+        f"{len(docs)} results, {len(filtered)} with an accepted license."
+    )
     return filtered
 
 
@@ -246,12 +248,22 @@ def enrich_item(doc: dict) -> dict | None:
     creator = as_text(metadata.get("creator") or doc.get("creator"))
     subjects = normalize_subjects(metadata.get("subject") or doc.get("subject"))
     downloads = as_int(metadata.get("downloads") or doc.get("downloads"))
+    added_date = as_text(metadata.get("publicdate") or metadata.get("addeddate") or doc.get("publicdate") or doc.get("addeddate"))
+    collections = metadata.get("collection") or doc.get("collection") or []
+    if isinstance(collections, str):
+        collections = [collections]
+    collections = [as_text(value) for value in collections if as_text(value)]
+    # Guard against broad/incorrect index matches.
+    if not any(value in {"feature_films", "prelinger"} for value in collections):
+        return None
 
     return {
         "id": identifier,
         "title": title,
         "creator": creator,
         "year": year,
+        "added_date": added_date,
+        "collection": collections,
         "description": description,
         "subjects": subjects,
         "downloads": downloads,
@@ -265,11 +277,13 @@ def enrich_item(doc: dict) -> dict | None:
 
 
 def build_catalog() -> dict:
-    # Newest uploads help the catalogue evolve; popular items make it useful from day one.
-    result_sets = [
-        get_search_docs("publicdate desc"),
-        get_search_docs("downloads desc"),
-    ]
+    # The user-facing library should feel like a film catalogue, not a random
+    # video archive. Prefer the dedicated feature-film collection; use Prelinger
+    # as a second curated source for licensed historical films.
+    result_sets = []
+    for collection_query in ("collection:feature_films", "collection:prelinger"):
+        result_sets.append(get_search_docs(collection_query, "publicdate desc"))
+        result_sets.append(get_search_docs(collection_query, "downloads desc"))
     candidates = interleave_docs(result_sets)
     items: list[dict] = []
     processed = 0

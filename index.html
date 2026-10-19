@@ -177,7 +177,7 @@ video{display:block;width:100%;max-height:60vh;background:black} .player-info{pa
  function render() {
   const items = visibleItems();
   const popular = [...items].sort((a,b) => (b.downloads||0)-(a.downloads||0)).slice(0,12);
-  const latest = [...items].sort((a,b) => String(b.id||"").localeCompare(String(a.id||""))).slice(0,12);
+  const latest = [...items].sort((a,b) => String(b.added_date||"").localeCompare(String(a.added_date||""))).slice(0,12);
   const gridItems = items.slice(0,72);
   fillGrid($("popularGrid"),popular);
   fillGrid($("newGrid"),latest);

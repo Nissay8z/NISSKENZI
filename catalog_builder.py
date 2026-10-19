@@ -23,8 +23,8 @@ BASE_URL = "https://archive.org"
 SEARCH_URL = f"{BASE_URL}/advancedsearch.php"
 METADATA_URL = f"{BASE_URL}/metadata/"
 USER_AGENT = "NISSKENZI-Cine-Library/1.0 (+https://github.com/Nissay8z/NISSKENZI)"
-MAX_RESULTS_PER_SEARCH = 45
-MAX_METADATA_LOOKUPS = 140
+MAX_RESULTS_PER_SEARCH = 250
+MAX_METADATA_LOOKUPS = 220
 TARGET_ITEMS = 72
 MIN_ITEMS_TO_PUBLISH = 8
 REQUEST_TIMEOUT = 25
@@ -35,12 +35,7 @@ SEARCH_FIELDS = [
 ]
 # Restrict the public site to these explicit license families. The uploader's
 # license metadata is not a legal guarantee; the UI links to the item record.
-LICENSE_QUERIES = [
-    ("Public Domain Mark", "licenseurl:http*creativecommons.org/publicdomain/mark/1.0*"),
-    ("CC0", "licenseurl:http*creativecommons.org/publicdomain/zero/1.0*"),
-    ("CC BY", "licenseurl:http*creativecommons.org/licenses/by/*"),
-    ("CC BY-SA", "licenseurl:http*creativecommons.org/licenses/by-sa/*"),
-]
+LICENSE_QUERY = "licenseurl:http*creativecommons.org*"
 ALLOWED_LICENSE_RE = re.compile(
     r"^https?://creativecommons\.org/(?:"
     r"publicdomain/(?:mark|zero)/1\.0|"
@@ -168,9 +163,12 @@ def choose_mp4(files: object) -> dict | None:
     return max(candidates, key=lambda entry: entry[0])[2]
 
 
-def get_search_docs(license_query: str, sort_field: str) -> list[dict]:
+def get_search_docs(sort_field: str) -> list[dict]:
+    # Search broadly for CC metadata, then enforce our exact license allowlist
+    # locally. Some Archive.org Solr indexes tokenize license URLs differently,
+    # so querying each full license path separately can return false zeroes.
     params: list[tuple[str, str]] = [
-        ("q", f"mediatype:movies AND {license_query}"),
+        ("q", f"mediatype:movies AND {LICENSE_QUERY}"),
         ("rows", str(MAX_RESULTS_PER_SEARCH)),
         ("page", "1"),
         ("output", "json"),
@@ -183,7 +181,12 @@ def get_search_docs(license_query: str, sort_field: str) -> list[dict]:
     docs = response.get("docs") or []
     if not isinstance(docs, list):
         return []
-    return [doc for doc in docs if isinstance(doc, dict)]
+    filtered = [
+        doc for doc in docs
+        if isinstance(doc, dict) and license_label(as_text(doc.get("licenseurl"))) is not None
+    ]
+    print(f"Archive.org search ({sort_field}): {len(docs)} results, {len(filtered)} with an accepted license.")
+    return filtered
 
 
 def interleave_docs(groups: list[list[dict]]) -> list[dict]:
@@ -262,12 +265,11 @@ def enrich_item(doc: dict) -> dict | None:
 
 
 def build_catalog() -> dict:
-    result_sets: list[list[dict]] = []
-    for _, query in LICENSE_QUERIES:
-        # The newest uploads help the catalogue evolve; popularity makes it useful from day one.
-        result_sets.append(get_search_docs(query, "publicdate desc"))
-        result_sets.append(get_search_docs(query, "downloads desc"))
-
+    # Newest uploads help the catalogue evolve; popular items make it useful from day one.
+    result_sets = [
+        get_search_docs("publicdate desc"),
+        get_search_docs("downloads desc"),
+    ]
     candidates = interleave_docs(result_sets)
     items: list[dict] = []
     processed = 0

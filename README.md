@@ -1,62 +1,47 @@
 # NISSKENZI
 
-Personal live-channel catalogue builder and diagnostics toolkit.
+Outil personnel pour créer et consulter un catalogue de chaînes en direct.
 
-## Current outputs
+## Ouvrir NISSKENZI Live
 
-- Worldwide M3U: [playlist.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
-- France M3U: [playlist-fr.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
-- Worldwide source report: [catalogue-status.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status.json)
-- France source report: [catalogue-status-fr.json](https://github.com/Nissay8z/NISSKENZI/blob/main/catalogue-status-fr.json)
-- Browser/TV app: [nisskenzi-live.html](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/nisskenzi-live.html)
+L'application du lecteur se trouve dans [nisskenzi-live.html](nisskenzi-live.html).
 
-## NISSKENZI Live app
+Pour l'ouvrir comme une vraie page web dans VYPN, active GitHub Pages une seule fois :
 
-Open [NISSKENZI Live](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/nisskenzi-live.html) in VYPN to browse the generated playlist, search channels, filter categories, save favorites, and play streams. It uses the mHub Browser API when available, including `mhub.fetch()` and `mhub.openStream()`; outside a compatible host it falls back to ordinary browser requests and playback. The app accepts another HTTP(S) M3U URL in its source field. A playlist may include channels that are offline or region-limited.
+1. Va dans **Settings → Pages** du dépôt.
+2. Dans **Build and deployment → Source**, choisis **GitHub Actions**.
+3. Va dans **Actions → Deploy NISSKENZI Live**, puis ouvre la dernière exécution.
+4. Une fois le déploiement réussi, ouvre **https://nissay8z.github.io/NISSKENZI/** dans VYPN.
 
-The script `https://mhub.mx/mhub.js` is **mHub's browser API**, not a Vavoo API. It gives a page running in a compatible host additional request and stream capabilities; it does not, by itself, discover Vavoo's catalogue or grant access to streams. This app currently uses NISSKENZI's configured M3U output, not a direct Vavoo connection.
+Le workflow publie uniquement la page du lecteur sous le nom `index.html`. Quand `nisskenzi-live.html` change sur la branche `main`, il redéploie la page. Le lecteur contient une recherche, les catégories, les favoris, la sélection de playlists et un lecteur vidéo. Il utilise `https://mhub.mx/mhub.js` lorsque le navigateur hôte expose l'API mHub, sinon tente le mode navigateur classique.
 
-## Catalogue architecture
+## Playlists disponibles actuellement
 
-The generator loads a primary HTTP(S) M3U URL from the `NISSKENZI_PRIMARY_M3U_URL` GitHub Actions secret, if configured, then adds the fallback sources in `sources.txt`. The primary entries come first, and exact URL duplicates are removed. Obvious VOD/replay categories are filtered, and EPG metadata is added to playlist headers. A matching France-only playlist is generated separately.
+- [Playlist mondiale](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
+- [Playlist France](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
+- [Rapport du catalogue mondial](catalogue-status.json)
+- [Rapport du catalogue France](catalogue-status-fr.json)
 
-### Primary source configuration
+**État de l'intégration Vavoo : elle n'est pas encore intégrée.** Le lecteur utilise actuellement les playlists existantes; la présence du script mHub ne découvre pas à elle seule le catalogue Vavoo.
 
-To add an authorized M3U export URL:
+## Actualisation du catalogue
 
-1. Open **Settings → Secrets and variables → Actions**.
-2. Choose **New repository secret**.
-3. Name it `NISSKENZI_PRIMARY_M3U_URL`.
-4. Enter the authorized export URL as its value, then save it.
-5. Run **Actions → NISSKENZI catalogue refresh → Run workflow**.
+Le workflow **NISSKENZI catalogue refresh** s'exécute environ toutes les six heures et peut être lancé manuellement. Les catalogues communautaires configurés dans `sources.txt` et `sources-fr.txt` restent les sources de secours.
 
-The secret is not written to source files or health reports. The Vavoo browser page is an interactive web UI, not by itself an export playlist URL. The project does not implement token/signature recreation or mechanisms to bypass access controls. When no authorized primary export is configured, community catalogues remain the fallback.
+Une source M3U principale peut être fournie avec le secret GitHub Actions `NISSKENZI_PRIMARY_M3U_URL`. Ne place pas d'URL privée ou de jeton dans un fichier public du dépôt.
 
-## Stream health sample
+## Vérification des flux
 
-A separate manual workflow checks a small sample of HTTP(S) URLs using bounded byte-range requests. It is deliberately not scheduled, to limit requests to upstream providers.
+Le workflow manuel **NISSKENZI stream health sample** effectue un diagnostic limité sur un échantillon de chaînes. Une réponse HTTP réussie ne garantit pas que la vidéo fonctionne dans tous les lecteurs.
 
-1. Open **Actions → NISSKENZI stream health sample**.
-2. Click **Run workflow**.
-3. Select the worldwide or France playlist and the sample size.
-4. Download the `nisskenzi-stream-health` artifact after the workflow completes.
+## Confidentialité
 
-The JSON report records channel name, category, host, HTTP status, latency and whether the response resembles an M3U manifest. It does not contain full stream URLs or query tokens. A successful HTTP response is not a guarantee that video playback works.
+Le dépôt est public. Les playlists générées et les URL directes qu'elles contiennent sont donc lisibles publiquement. N'y ajoute aucune URL privée ni aucun jeton.
 
-## Scheduled updates
+## Tests locaux
 
-The catalogue workflow runs roughly every six hours and can be triggered manually. The computer does not need to stay on. GitHub can delay scheduled runs. Generation tests run before writing output, and a failed/empty source set does not overwrite a good playlist with an empty file.
-
-## Public repository warning
-
-This repository is public; generated playlist entries and direct stream URLs in the M3U files can be read by other people. Keep private URLs and tokens in repository secrets, and use a private repository if you need generated output to remain private.
-
-## Local tests
-
-Requires Python 3.12+:
+Python 3.12+ :
 
 ```bash
 python -m unittest discover -s tests -v
-python refresh_catalogue.py --sources sources.txt --output playlist.m3u
-python check_streams.py playlist.m3u --limit 80 --output stream-health.json
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge configured M3U sources into a deduplicated playlist."""
+"""Merge configured M3U sources into a deduplicated media catalogue."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 
 STREAM_SCHEMES = {"http", "https", "rtsp", "rtmp", "rtp", "udp"}
-USER_AGENT = "NISSKENZI-catalogue-refresh/1.0"
+USER_AGENT = "NISSKENZI-catalogue-refresh/1.1"
 
 
 @dataclass(frozen=True)
@@ -52,10 +52,14 @@ def download_source(url: str, timeout: int = 30) -> str:
 
 
 def parse_m3u(text: str) -> list[Entry]:
-    """Parse an M3U playlist, preserving metadata/directives for each URL."""
+    """Parse an M3U playlist, allowing metadata attributes on its header."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines or lines[0].upper() != "#EXTM3U":
-        raise ValueError("Source does not start with the #EXTM3U header")
+    if not lines:
+        raise ValueError("Source playlist is empty")
+
+    header = lines[0].upper()
+    if not (header == "#EXTM3U" or header.startswith("#EXTM3U ")):
+        raise ValueError("Source does not start with a valid #EXTM3U header")
 
     entries: list[Entry] = []
     pending: list[str] = []
@@ -63,7 +67,6 @@ def parse_m3u(text: str) -> list[Entry]:
     for line in lines[1:]:
         if line.startswith("#"):
             if line.upper().startswith("#EXTINF:"):
-                # Discard an incomplete previous entry if a new one starts.
                 pending = [line]
             elif pending:
                 # Preserve entry-specific directives such as EXTVLCOPT/KODIPROP.
@@ -101,8 +104,20 @@ def deduplicate_entries(entries: list[Entry]) -> list[Entry]:
     return result
 
 
-def render_playlist(entries: list[Entry]) -> str:
-    lines = ["#EXTM3U"]
+def render_playlist(entries: list[Entry], epg_urls: list[str] | None = None) -> str:
+    """Render entries and optionally include XMLTV/EPG guide URLs in the header."""
+    valid_epg_urls: list[str] = []
+    for url in epg_urls or []:
+        clean_url = url.strip()
+        parsed = urlsplit(clean_url)
+        if parsed.scheme == "https" and parsed.netloc and clean_url not in valid_epg_urls:
+            valid_epg_urls.append(clean_url)
+
+    header = "#EXTM3U"
+    if valid_epg_urls:
+        header += ' x-tvg-url="' + ",".join(valid_epg_urls) + '"'
+
+    lines = [header]
     for entry in entries:
         lines.extend(entry.metadata)
         lines.append(entry.url)
@@ -113,6 +128,7 @@ def build_playlist(
     sources: list[str],
     timeout: int = 30,
     fetcher=download_source,
+    epg_urls: list[str] | None = None,
 ) -> tuple[str, int, list[str]]:
     """Fetch, parse, combine and deduplicate sources."""
     all_entries: list[Entry] = []
@@ -130,7 +146,7 @@ def build_playlist(
         detail = "; ".join(errors) if errors else "all sources were empty"
         raise RuntimeError(f"No playlist entries could be generated ({detail})")
 
-    return render_playlist(unique_entries), len(unique_entries), errors
+    return render_playlist(unique_entries, epg_urls), len(unique_entries), errors
 
 
 def main() -> int:
@@ -138,11 +154,19 @@ def main() -> int:
     parser.add_argument("--sources", type=Path, default=Path("sources.txt"))
     parser.add_argument("--output", type=Path, default=Path("playlist.m3u"))
     parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument(
+        "--epg-url",
+        action="append",
+        default=[],
+        help="HTTPS XMLTV/EPG guide URL; may be specified more than once",
+    )
     args = parser.parse_args()
 
     try:
         sources = read_sources(args.sources)
-        content, count, errors = build_playlist(sources, timeout=args.timeout)
+        content, count, errors = build_playlist(
+            sources, timeout=args.timeout, epg_urls=args.epg_url
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = args.output.with_suffix(args.output.suffix + ".tmp")
         temporary_path.write_text(content, encoding="utf-8", newline="\n")

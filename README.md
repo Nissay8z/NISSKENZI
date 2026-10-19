@@ -1,44 +1,48 @@
 # NISSKENZI
 
-Personal project for automatically refreshing a media catalogue.
+Catalogue multimédia personnel actualisé automatiquement.
 
-## What it does
+## Playlists
 
-- Fetches the sources listed in `sources.txt`.
-- Starts with a worldwide catalogue grouped by country, plus a France fallback source.
-- Combines entries while removing duplicate stream URLs.
-- Preserves entry metadata and stream options.
-- Validates the generated output and runs tests.
-- Refreshes `playlist.m3u` on a schedule using GitHub Actions.
-- Updates the generated file only when its contents have changed.
+Après une exécution réussie du workflow, les listes sont accessibles ici :
 
-## First run
+- Catalogue mondial : [playlist.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist.m3u)
+- Catalogue France : [playlist-fr.m3u](https://raw.githubusercontent.com/Nissay8z/NISSKENZI/main/playlist-fr.m3u)
 
-1. Open the **Actions** tab.
-2. Select **NISSKENZI catalogue refresh**.
-3. Choose **Run workflow** if you want to start a run immediately.
-4. Open the run and check that the test and generation steps pass.
-5. After a successful run, the generated `playlist.m3u` will appear in the repository.
+Le catalogue mondial est combiné depuis des listes communautaires; le catalogue français est généré séparément. Les doublons d'URL exacts sont retirés et les métadonnées de chaîne sont conservées.
 
-The schedule is approximately every six hours. GitHub can delay scheduled jobs, and a scheduled job may be disabled after extended inactivity. The computer does not need to stay on.
+## Guide des programmes (EPG)
 
-## Sources
+Le fichier mondial intègre plusieurs guides XMLTV de la communauté. Pour le catalogue français, l'en-tête M3U référence le guide :
 
-Add one HTTP(S) playlist URL per line in `sources.txt`. Lines starting with `#` are comments. Use only sources and streams you are authorized to access. Do not put passwords, access tokens, or private URLs in this public repository.
+`https://iptv-org.github.io/epg/guides/fr.xml`
 
-The included community catalogues cover channels from many countries. Individual streams may be unavailable, geo-restricted, or subject to distribution conditions. The generator does not bypass authentication or access controls.
+La disponibilité des données de guide dépend de la chaîne et de la source.
 
-## Details
+## Actualisation automatique
 
-- GitHub Actions runs a job and exits; it is not a permanent streaming proxy.
-- If some sources fail but another produces valid entries, the job can continue with the available entries. If all sources fail or return no entries, it fails rather than replacing a working playlist with an empty file.
-- The workflow needs repository **contents: write** permission to commit updated output.
+Le workflow GitHub Actions :
 
-## Run locally (optional)
+- se lance manuellement depuis **Actions** ;
+- se lance environ toutes les six heures ;
+- teste le programme avant de générer les fichiers ;
+- n'enregistre les playlists dans Git que si leur contenu a changé ;
+- utilise une tentative de rebase avant l'envoi pour limiter les conflits si le dépôt a changé pendant l'exécution.
 
-Requires Python 3.12 or newer:
+Le PC n'a pas besoin de rester allumé. GitHub peut retarder des exécutions planifiées.
+
+## Sources et limites
+
+Les URLs sources sont configurées dans `sources.txt` et `sources-fr.txt`. N'ajoute que des sources et des flux que tu es autorisé à utiliser. Une chaîne listée peut être hors service ou géobloquée; une présence dans un catalogue public ne garantit pas le bon fonctionnement du flux ni un droit de rediffusion.
+
+NISSKENZI génère des fichiers à partir des listes configurées. Il ne maintient pas un proxy vidéo permanent et ne contourne pas les contrôles d'accès.
+
+## Exécution locale (facultative)
+
+Python 3.12 ou plus récent :
 
 ```bash
-python refresh_catalogue.py --sources sources.txt --output playlist.m3u
 python -m unittest discover -s tests -v
+python refresh_catalogue.py --sources sources.txt --output playlist.m3u
+python refresh_catalogue.py --sources sources-fr.txt --output playlist-fr.m3u --epg-url https://iptv-org.github.io/epg/guides/fr.xml
 ```

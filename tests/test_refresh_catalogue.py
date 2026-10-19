@@ -1,6 +1,12 @@
 import unittest
 
-from refresh_catalogue import Entry, build_playlist, deduplicate_entries, parse_m3u
+from refresh_catalogue import (
+    Entry,
+    build_playlist,
+    deduplicate_entries,
+    parse_m3u,
+    render_playlist,
+)
 
 
 SAMPLE = """#EXTM3U
@@ -19,6 +25,30 @@ class PlaylistParserTests(unittest.TestCase):
         self.assertEqual(entries[0].metadata[0], '#EXTINF:-1 tvg-id="example" group-title="News",Example News')
         self.assertIn("#EXTVLCOPT:http-user-agent=ExampleAgent", entries[0].metadata)
         self.assertEqual(entries[0].url, "https://example.org/live.m3u8")
+
+    def test_accepts_header_attributes(self):
+        entries = parse_m3u(
+            '#EXTM3U x-tvg-url="https://guide.example/fr.xml"\n'
+            "#EXTINF:-1,Example\nhttps://example.org/live.m3u8\n"
+        )
+        self.assertEqual(len(entries), 1)
+
+    def test_render_adds_epg_urls_without_duplicates(self):
+        entries = [Entry(("#EXTINF:-1,Example",), "https://example.org/live.m3u8")]
+        output = render_playlist(
+            entries,
+            [
+                "https://guide.example/fr.xml",
+                "https://guide.example/us.xml",
+                "https://guide.example/fr.xml",
+                "http://invalid.example/guide.xml",
+            ],
+        )
+        self.assertTrue(
+            output.startswith(
+                '#EXTM3U x-tvg-url="https://guide.example/fr.xml,https://guide.example/us.xml"\n'
+            )
+        )
 
     def test_bare_stream_url_gets_fallback_metadata(self):
         entries = parse_m3u("#EXTM3U\nhttps://example.org/channel.m3u8\n")

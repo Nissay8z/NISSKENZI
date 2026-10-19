@@ -1,0 +1,3 @@
+# France-only source for the separate French playlist.
+# Use only streams you are authorized to access.
+https://iptv-org.github.io/iptv/countries/fr.m3u

@@ -12,6 +12,7 @@ on:
       - ".github/workflows/refresh.yml"
       - "refresh_catalogue.py"
       - "sources.txt"
+      - "sources-fr.txt"
       - "tests/**"
 
 permissions:
@@ -23,32 +24,55 @@ concurrency:
 
 jobs:
   refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
 
-      - name: Generate catalogue
-        run: python refresh_catalogue.py --sources sources.txt --output playlist.m3u
+      - name: Generate worldwide catalogue
+        run: |
+          python refresh_catalogue.py --sources sources.txt --output playlist.m3u \
+            --epg-url https://iptv-org.github.io/epg/guides/fr.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/be.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/ch.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/de.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/es.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/it.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/pt.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/gb.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/us.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/ca.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/au.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/nl.xml \
+            --epg-url https://iptv-org.github.io/epg/guides/pl.xml
+
+      - name: Generate France catalogue
+        run: |
+          python refresh_catalogue.py --sources sources-fr.txt --output playlist-fr.m3u \
+            --epg-url https://iptv-org.github.io/epg/guides/fr.xml
 
       - name: Commit changed output
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add playlist.m3u
+          git add playlist.m3u playlist-fr.m3u
           if git diff --cached --quiet; then
-            echo "Generated playlist is unchanged."
+            echo "Generated catalogues are unchanged."
           else
-            git commit -m "chore: refresh generated catalogue"
-            git push
+            git commit -m "chore: refresh generated catalogues"
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
           fi

@@ -13,7 +13,7 @@
 <header class="top"><nav><div class="logo">Niss<span>X</span></div><div class="navlabel">Catalogue vidéo · 18+</div></nav></header>
 <main class="wrap">
 <section class="hero"><div class="eyebrow">Films historiques · Sources ouvertes</div><h1>Le catalogue<br>NissX.</h1><p>Une petite sélection de films adultes historiques dont les fiches de source indiquent le domaine public ou une cession au domaine public. Recherche un titre, puis lance la vidéo ou ouvre sa fiche de droits.</p><button class="btn" id="browse">Explorer le catalogue ↓</button></section>
-<section class="section" id="catalogSection"><h2>Catalogue de vidéos</h2><p class="muted">NissX recherche les fichiers vidéo présents dans les catégories ouvertes de Wikimedia Commons. Commons n’héberge que des médias libres ou dans le domaine public, mais vérifie la fiche de chaque fichier avant toute réutilisation : les règles peuvent varier selon le pays.</p><div class="toolbar"><input id="search" type="search" placeholder="Rechercher un film…" aria-label="Rechercher dans le catalogue"><button class="btn secondary" id="reloadCatalog">Actualiser</button></div><p class="notice" id="catalogStatus" role="status">Chargement du catalogue depuis Wikimedia Commons…</p><div class="catalog" id="catalog"><div class="empty">Connexion au catalogue…</div></div><p class="notice">Catalogue externe : le nombre de résultats dépend des fichiers disponibles et classés sur Commons. Les vidéos peuvent être indisponibles ou non prises en charge par le navigateur.</p><p class="notice">Autres pistes pour chercher des médias avec licence de réutilisation : <a href="https://search.creativecommons.org/" target="_blank" rel="noopener noreferrer">Creative Commons Search</a> et <a href="https://commons.wikimedia.org/wiki/Category:Videos_of_human_sexual_activity" target="_blank" rel="noopener noreferrer">catégorie vidéo Commons</a>. Les résultats externes ne sont pas automatiquement intégrés à NissX.</p></section>
+<section class="section" id="catalogSection"><h2>Catalogue de vidéos</h2><p class="muted">NissX recherche les fichiers vidéo présents dans les catégories ouvertes de Wikimedia Commons. Commons n’héberge que des médias libres ou dans le domaine public, mais vérifie la fiche de chaque fichier avant toute réutilisation : les règles peuvent varier selon le pays.</p><div class="toolbar"><input id="search" type="search" placeholder="Rechercher un film…" aria-label="Rechercher dans le catalogue"><button class="btn secondary" id="reloadCatalog">Actualiser</button></div><p class="notice" id="catalogStatus" role="status">Chargement du catalogue depuis Wikimedia Commons…</p><div class="catalog" id="catalog"><div class="empty">Connexion au catalogue…</div></div><p class="notice">Catalogue externe : le nombre de résultats dépend des fichiers disponibles et classés sur Commons. Les vidéos peuvent être indisponibles ou non prises en charge par le navigateur.</p><p class="notice">Autres sources à explorer : <a href="https://commons.wikimedia.org/wiki/Category:Videos_of_human_sexual_activity" target="_blank" rel="noopener noreferrer">vidéos Commons</a>, <a href="https://commons.wikimedia.org/wiki/Category:Pornographic_videos" target="_blank" rel="noopener noreferrer">catégorie pornographique Commons</a> et <a href="https://search.creativecommons.org/" target="_blank" rel="noopener noreferrer">Creative Commons Search</a>. Les résultats externes ne sont pas automatiquement intégrés à NissX.</p></section>
 <section class="section" id="reader"><h2>Lecteur</h2><div class="panel"><strong id="playingTitle">Choisis un film dans le catalogue</strong><video id="player" class="player hidden" controls playsinline preload="metadata"></video><p id="status" class="notice" role="status">Si la vidéo ne démarre pas, ouvre sa fiche source pour utiliser le lecteur Wikimedia ou télécharger le fichier proposé par la source.</p><p class="notice">Les liens vidéo proviennent de Wikimedia Commons. La lecture directe dépend de la disponibilité du fichier et de la compatibilité du navigateur.</p></div></section>
 <section class="section"><div class="panel"><strong>À propos des droits</strong><p class="muted">« Gratuit à regarder » ne veut pas toujours dire « libre à republier ». Les statuts de droits peuvent varier selon le pays, et une restauration ou une bande-son peut avoir des droits distincts. Vérifie toujours la licence affichée sur la fiche source avant de télécharger, modifier ou redistribuer un fichier.</p><p class="notice">Catalogue de films historiques uniquement pour cette première version. NissX n’héberge pas ces vidéos : elles sont servies par Wikimedia Commons. Accès réservé aux adultes ; le bouton 18+ ci-dessous est une simple confirmation locale, pas une vérification d’âge fiable.</p></div></section>
 <footer class="footer">NissX · Projet personnel · 18+ · Respecte les lois locales, les droits d’auteur et la vie privée.</footer>
@@ -34,21 +34,43 @@ function renderCatalog(){
  catalog.querySelectorAll('.play').forEach(btn=>btn.addEventListener('click',()=>{const f=list[Number(btn.dataset.index)];if(!f)return;document.getElementById('playingTitle').textContent=f.title.replace(/^File:/,'');player.src='https://commons.wikimedia.org/wiki/Special:Redirect/file/'+encodeURIComponent(f.title.replace(/^File:/,''));player.classList.remove('hidden');player.load();document.getElementById('reader').scrollIntoView({behavior:'smooth'});status.textContent='Tentative de lecture depuis Wikimedia Commons… Si cela échoue, ouvre la fiche du fichier.';player.play().catch(()=>{status.textContent='Appuie sur Lecture. Si le format n’est pas compatible, utilise la fiche source.'})}));
 }
 async function loadCatalog(){
- catalogStatus.textContent='Recherche des vidéos dont la fiche indique CC0 / domaine public…';
- catalog.innerHTML='<div class="empty">Chargement…</div>';
- const cats=['Category:Pornographic_videos','Category:Videos_of_human_sexual_activity'];
+ catalogStatus.textContent='Recherche dans les catégories et les fichiers vidéo Wikimedia Commons…';
+ catalog.innerHTML='<div class="empty">Chargement des résultats et vérification des licences…</div>';
+ const queries=[
+  'incategory:"Pornographic videos" filemime:video',
+  'incategory:"Videos of human sexual activity" filemime:video',
+  '("erotic film" OR "erotic video") filemime:video',
+  '("adult film" OR "stag film") filemime:video'
+ ];
  try{
-  const results=await Promise.all(cats.map(async cat=>{
-   const url='https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=categorymembers&gcmtitle='+encodeURIComponent(cat)+'&gcmtype=file&gcmlimit=100&prop=imageinfo&iiprop=url|extmetadata';
-   const res=await fetch(url);if(!res.ok)throw new Error('API indisponible');const data=await res.json();
-   return Object.values(data.query?.pages||{}).filter(p=>/\.(ogv|ogg|webm|mp4|mov|mkv)$/i.test(p.title)).map(p=>{const info=p.imageinfo?.[0]||{};const meta=info.extmetadata||{};const license=(meta.LicenseShortName?.value||'').replace(/<[^>]*>/g,'').trim();const licenseUrl=(meta.LicenseUrl?.value||'').trim();return {title:p.title,url:info.url||'',license,licenseUrl,description:(meta.ImageDescription?.value||'').replace(/<[^>]*>/g,' ').trim(),author:(meta.Artist?.value||'').replace(/<[^>]*>/g,' ').trim()};});
+  const batches=await Promise.all(queries.map(async q=>{
+   const searchUrl='https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&list=search&srnamespace=6&srsearch='+encodeURIComponent(q)+'&srlimit=50';
+   const sr=await fetch(searchUrl);if(!sr.ok)throw new Error('Recherche indisponible');const sd=await sr.json();
+   return (sd.query?.search||[]).map(x=>x.title);
   }));
+  const titles=[...new Set(batches.flat())];
+  if(!titles.length){files=[];catalogStatus.textContent='Aucun fichier vidéo trouvé par ces recherches. Essaie les liens de sources ci-dessous.';catalog.innerHTML='<div class="empty">Aucun résultat trouvé pour le moment.</div>';return;}
+  const results=[];
+  for(let i=0;i<titles.length;i+=25){
+   const group=titles.slice(i,i+25);
+   const params=new URLSearchParams({action:'query',format:'json',origin:'*',titles:group.join('|'),prop:'imageinfo',iiprop:'url|mime|extmetadata'});
+   const res=await fetch('https://commons.wikimedia.org/w/api.php?'+params.toString());if(!res.ok)continue;
+   const data=await res.json();
+   for(const p of Object.values(data.query?.pages||{})){
+    if(!/\.(ogv|ogg|webm|mp4|mov|mkv)$/i.test(p.title))continue;
+    const info=p.imageinfo?.[0]||{};const meta=info.extmetadata||{};
+    const license=(meta.LicenseShortName?.value||'').replace(/<[^>]*>/g,'').trim();
+    const licenseUrl=(meta.LicenseUrl?.value||'').trim();
+    if(!/CC0|Public domain|Public Domain/i.test(license+' '+licenseUrl))continue;
+    results.push({title:p.title,url:info.url||'',license,licenseUrl,description:(meta.ImageDescription?.value||'').replace(/<[^>]*>/g,' ').trim(),author:(meta.Artist?.value||'').replace(/<[^>]*>/g,' ').trim()});
+   }
+  }
   const seen=new Set();
-  files=results.flat().filter(f=>{if(seen.has(f.title)||!f.url)return false;seen.add(f.title);return /CC0|Public domain|Public Domain/i.test(f.license+' '+f.licenseUrl);});
-  if(!files.length){catalogStatus.textContent='Aucun fichier vidéo avec licence CC0 ou domaine public confirmé par les métadonnées n’a été trouvé dans les catégories consultées.';catalog.innerHTML='<div class="empty">Pas de résultat vérifié pour le moment. Consulte directement les catégories sources, mais vérifie la licence de chaque fichier.</div>';return;}
-  catalogStatus.textContent=files.length+' vidéo(s) dont la fiche indique CC0 ou domaine public. Vérifie aussi les droits à l’image et les obligations légales avant republication.';
+  files=results.filter(f=>f.url&&!seen.has(f.title)&&seen.add(f.title));
+  if(!files.length){catalogStatus.textContent='Les recherches n’ont renvoyé aucun fichier vidéo dont les métadonnées indiquent CC0 ou domaine public. Cela ne signifie pas qu’il n’existe aucune vidéo libre ailleurs.';catalog.innerHTML='<div class="empty">Aucun résultat vérifié pour le moment. Essaie les sources externes ci-dessous.</div>';return;}
+  catalogStatus.textContent=files.length+' fichier(s) trouvé(s) dont les métadonnées indiquent CC0 ou domaine public. Vérifie la fiche source avant toute réutilisation.';
   renderCatalog();
- }catch(e){catalogStatus.textContent='Le catalogue automatique n’a pas pu vérifier les licences sur Wikimedia Commons. Réessaie plus tard ou consulte les catégories sources.';catalog.innerHTML='<div class="empty">Impossible de charger les résultats vérifiés.</div>';}
+ }catch(e){catalogStatus.textContent='La recherche automatique est indisponible pour le moment. Consulte les sources externes ci-dessous et vérifie les licences.';catalog.innerHTML='<div class="empty">Impossible de charger les résultats depuis Wikimedia Commons.</div>';}
 }
 document.getElementById('search').addEventListener('input',renderCatalog);
 document.getElementById('reloadCatalog').addEventListener('click',loadCatalog);

@@ -35,9 +35,35 @@ function scoreOf(a){return a.score?Number(a.score).toFixed(1):'—'}
 function isSaved(id){return state.saved.some(a=>a.mal_id===id)}
 function card(a){const img=imageOf(a);return '<article class="anime" data-id="'+a.mal_id+'"><div class="poster"><img loading="lazy" decoding="async" src="'+esc(img)+'" alt="'+esc(titleOf(a))+'" onerror="this.style.opacity=.2"><span class="score">★ '+scoreOf(a)+'</span><button class="fav '+(isSaved(a.mal_id)?'on':'')+'" data-fav="'+a.mal_id+'" aria-label="Ajouter à ma liste">'+(isSaved(a.mal_id)?'♥':'＋')+'</button></div><h3>'+esc(titleOf(a))+'</h3><div class="sub">'+esc(yearOf(a))+' · '+esc(a.type||'Anime')+'</div></article>'}
 function renderCards(target,items){$(target).innerHTML=items.length?items.map(card).join(''):'<div class="status">Aucun résultat pour le moment.</div>'}
-async function api(path){const r=await fetch(API+path);if(!r.ok)throw Error('API indisponible ('+r.status+')');const d=await r.json();return d.data||[]}
+let apiQueue=Promise.resolve(),lastApiCall=0;
+async function api(path){
+  const cacheKey='nisskenzi-api:'+path,now=Date.now();
+  try{const cached=sessionStorage.getItem(cacheKey);if(cached){const parsed=JSON.parse(cached);if(now-parsed.time<10*60*1000)return parsed.data}}catch(e){}
+  const request=async()=>{
+    const wait=Math.max(0,950-(Date.now()-lastApiCall));if(wait)await new Promise(r=>setTimeout(r,wait));
+    lastApiCall=Date.now();
+    let lastError;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+        let response;
+        try{response=await fetch(API+path,{signal:controller.signal,headers:{'Accept':'application/json'}})}finally{clearTimeout(timer)}
+        if(response.status===429||response.status>=500){
+          const delay=Math.min(7000,1200*Math.pow(2,attempt));await new Promise(r=>setTimeout(r,delay));
+          lastError=Error(response.status===429?'Jikan limite temporairement les requêtes (429).':'Serveur anime momentanément indisponible ('+response.status+').');continue;
+        }
+        if(!response.ok)throw Error('Erreur API ('+response.status+').');
+        const body=await response.json(),data=body.data||[];
+        try{sessionStorage.setItem(cacheKey,JSON.stringify({time:Date.now(),data}))}catch(e){}
+        return data;
+      }catch(err){lastError=err.name==='AbortError'?Error('Le serveur met trop de temps à répondre.'):err;if(attempt<2)await new Promise(r=>setTimeout(r,900*Math.pow(2,attempt)))}
+    }
+    throw lastError||Error('API anime indisponible.');
+  };
+  const result=apiQueue.then(request,request);apiQueue=result.then(()=>undefined,()=>undefined);return result;
+}
 function setStatus(target,msg){$(target).innerHTML='<div class="status">'+esc(msg)+'</div>'}
-async function init(){saveSaved();try{const [popular,upcoming]=await Promise.all([api('/top/anime?filter=bypopularity&limit=12'),api('/seasons/now?limit=12')]);renderCards('featured',popular);renderCards('latest',upcoming);fillGenres();}catch(e){setStatus('featured','Impossible de joindre Jikan pour le moment. Vérifie ta connexion puis réessaie.');setStatus('latest','Le catalogue se chargera dès que l’API sera disponible.')}} 
+async function init(){saveSaved();try{const popular=await api('/top/anime?filter=bypopularity&limit=12');renderCards('featured',popular);const upcoming=await api('/seasons/now?limit=12');renderCards('latest',upcoming);fillGenres();}catch(e){setStatus('featured','Le catalogue ne répond pas pour le moment. Vérifie ta connexion puis appuie sur Accueil pour réessayer.');setStatus('latest','Le catalogue se chargera dès que le service sera disponible.');toast(e.message||'API temporairement indisponible')} } 
 async function fillGenres(){try{const genres=await api('/genres/anime');$('genre').innerHTML='<option value="">Tous les genres</option>'+genres.map(g=>'<option value="'+g.mal_id+'">'+esc(g.name)+'</option>').join('')}catch(e){}}
 function showResults(title){$('hero').classList.add('hidden');$('featuredSection').classList.add('hidden');$('latestSection').classList.add('hidden');$('resultsSection').classList.remove('hidden');$('filters').classList.toggle('hidden',!['genres','popular','season','search'].includes(state.page));$('resultsTitle').textContent=title}
 async function loadPage(reset){if(state.busy)return;if(reset){state.pageNum=1;state.items=[]}state.busy=true;const target='results';showResults(state.query?'Résultats pour « '+state.query+' »':({popular:'Animes populaires',season:'Cette saison',genres:'Explorer par genre',saved:'Ma liste'})[state.page]||'Catalogue');if(reset)setStatus(target,'Chargement du catalogue…');let path='';

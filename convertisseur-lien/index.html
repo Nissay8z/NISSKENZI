@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NISS Convert — Convertisseur par lien</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151d31;--line:#293650;--accent:#8b5cf6;--muted:#a8b3c9}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#20264a,var(--bg) 60%);color:#f7f8ff;font:16px system-ui,sans-serif;min-height:100vh;padding:24px}
+main{max-width:760px;margin:30px auto}.brand{color:#c4b5fd;font-weight:800;letter-spacing:.12em;font-size:.8rem}h1{font-size:clamp(2rem,7vw,3.2rem);margin:.35rem 0}p{color:var(--muted);line-height:1.6}.panel{background:#151d31dd;border:1px solid var(--line);border-radius:22px;padding:22px;margin:20px 0;box-shadow:0 20px 70px #0003}label{display:block;font-weight:650;margin:15px 0 8px}input,select,button{font:inherit;width:100%;border-radius:12px;padding:14px;background:#0c1324;color:white;border:1px solid #34415e}button{background:var(--accent);border:0;font-weight:750;cursor:pointer;margin-top:16px}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hint{font-size:.88rem}.status{white-space:pre-wrap;margin-top:14px;color:#ddd6fe}.bar{height:8px;background:#293650;border-radius:20px;overflow:hidden;margin-top:12px}.bar span{display:block;height:100%;width:0;background:#a78bfa}a{color:#c4b5fd}@media(max-width:540px){body{padding:14px}.grid{grid-template-columns:1fr}.panel{padding:16px}}
+</style>
+</head>
+<body><main>
+<div class="brand">NISSKENZI • UTILITAIRES</div><h1>NISS Convert</h1><p>Convertis un média à partir d’un lien direct vers un fichier audio ou vidéo. Le fichier est traité dans ton navigateur quand la source l’autorise.</p>
+<section class="panel">
+<label for="url">Lien direct du fichier média</label><input id="url" type="url" placeholder="https://exemple.com/video.mp4" autocomplete="url">
+<p class="hint">Il faut une URL qui pointe directement vers un fichier (par ex. .mp4, .webm, .mp3). Les pages YouTube, TikTok et les sites de streaming ne sont pas des liens directs et peuvent bloquer l’accès.</p>
+<div class="grid"><div><label for="kind">Résultat</label><select id="kind"><option value="video">Vidéo</option><option value="audio">Audio uniquement</option></select></div><div><label for="format">Format de sortie</label><select id="format"><option>mp4</option><option>webm</option><option>mp3</option><option>wav</option><option>ogg</option></select></div></div>
+<button id="start">Charger et convertir</button><div class="bar"><span id="progress"></span></div><div class="status" id="status" role="status"></div><a id="download" hidden download> Télécharger le résultat</a>
+</section>
+<section class="panel"><h2>Ça ne marche pas avec tous les liens ?</h2><p>Les sites peuvent empêcher l’accès depuis un autre domaine (CORS), exiger une connexion ou utiliser un lecteur protégé. Cette version ne contourne pas ces protections. Pour ces cas, utilise un export/téléchargement officiel du site, puis convertis le fichier avec un convertisseur local.</p><p class="hint">Les conversions peuvent consommer beaucoup de mémoire sur mobile. Ne ferme pas cette page pendant le traitement.</p></section>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+let ffmpeg=null, loaded=false;
+const setStatus=s=>$('status').textContent=s;
+const extMime={mp4:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg'};
+$('kind').addEventListener('change',()=>{const audio=$('kind').value==='audio';$('format').value=audio?'mp3':'mp4';[...$('format').options].forEach(o=>{o.hidden=audio?!['mp3','wav','ogg'].includes(o.value):!['mp4','webm'].includes(o.value)})});
+$('start').addEventListener('click',async()=>{
+ const raw=$('url').value.trim();let u;
+ try{u=new URL(raw);if(!['http:','https:'].includes(u.protocol))throw Error()}catch{setStatus('Entre une URL HTTP ou HTTPS valide.');return}
+ const fmt=$('format').value,button=$('start');button.disabled=true;$('download').hidden=true;$('progress').style.width='0%';
+ try{
+  setStatus('Chargement du moteur de conversion…');
+  if(!ffmpeg){const {FFmpeg}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');const {toBlobURL}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');ffmpeg=new FFmpeg();ffmpeg.on('progress',({progress})=>{$('progress').style.width=Math.round(progress*100)+'%'});await ffmpeg.load({coreURL:await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm','application/wasm')});}
+  setStatus('Récupération du fichier source…');
+  const res=await fetch(u.href);if(!res.ok)throw Error('Le serveur a répondu HTTP '+res.status+'.');const blob=await res.blob();if(!blob.size)throw Error('Le fichier reçu est vide.');
+  const input='source.'+((u.pathname.split('.').pop()||'mp4').match(/^[a-z0-9]{1,5}$/i)?.[0]||'mp4');
+  const output='converti.'+fmt;await ffmpeg.writeFile(input,new Uint8Array(await blob.arrayBuffer()));
+  setStatus('Conversion en cours…');
+  const args=fmt==='mp3'?['-i',input,'-vn','-codec:a','libmp3lame','-q:a','2',output]:fmt==='wav'?['-i',input,'-vn',output]:fmt==='ogg'?['-i',input,'-vn','-codec:a','libvorbis',output]:fmt==='webm'?['-i',input,'-c:v','libvpx','-c:a','libvorbis',output]:['-i',input,...($('kind').value==='audio'?['-vn']:[]),'-c:v','libx264','-c:a','aac','-movflags','+faststart',output];
+  await ffmpeg.exec(args);const data=await ffmpeg.readFile(output);const out=new Blob([data.buffer],{type:extMime[fmt]||'application/octet-stream'});const a=$('download');a.href=URL.createObjectURL(out);a.download=output;a.hidden=false;a.textContent='Télécharger '+output;setStatus('Conversion terminée. Clique sur le lien de téléchargement.');$('progress').style.width='100%';
+ }catch(e){setStatus('Impossible de convertir ce lien : '+(e?.message||e)+'\n\nLe serveur peut bloquer les requêtes externes (CORS), ou le lien peut être une page web plutôt qu’un fichier direct. Essaie une URL directe accessible ou télécharge d’abord le fichier depuis la source officielle.')}
+ finally{button.disabled=false}
+});
+</script></body></html>

@@ -1,45 +1,26 @@
-# NISSKENZI Ciné
+# NISSKENZI — Anime
 
-Un catalogue façon Netflix pour regarder des films hébergés par Internet Archive et dont les métadonnées indiquent une licence du domaine public ou Creative Commons compatible.
+Catalogue anime personnel, gratuit et léger, conçu pour **GitHub Pages** et les téléphones.
 
-## Ce projet fait quoi ?
+## Fonctionnalités
+- Catalogue populaire et animes de la saison.
+- Recherche avec suggestions de résultats via l'API Jikan.
+- Fiches détaillées : synopsis, genres, score, nombre d'épisodes et année.
+- Liste personnelle enregistrée dans le navigateur (localStorage).
+- Affichage adaptatif mobile/ordinateur, images chargées à la demande.
+- Aucun compte, aucune clé API, aucun serveur à maintenir.
 
-- Recherche dans le catalogue par titre, créateur ou sujet.
-- Affiche les affiches, descriptions, années et indications de licence disponibles.
-- Lit directement les fichiers MP4 d'Internet Archive dans le lecteur intégré.
-- Offre des sections populaires et nouveautés.
-- Actualise le catalogue chaque jour et redéploie le site via GitHub Actions.
-- Ne réhéberge pas de vidéo : la lecture est servie par Internet Archive.
+## Déploiement GitHub Pages
+Le workflow GitHub Actions publie automatiquement le site depuis la branche `main` à chaque mise à jour. Dans **Settings → Pages**, choisis **GitHub Actions** comme source si ce n'est pas déjà fait.
 
-Il ne collecte pas les liens de lecture depuis Recherche-Stream ni depuis des sites tiers dont les autorisations ne sont pas établies. Il ne contourne pas de paywalls, protections d'accès ou restrictions techniques.
+Quand le déploiement est terminé, l'adresse du projet sera normalement :
+https://nissay8z.github.io/NISSKENZI/
 
-## Ouvrir le site
+## API anime
+Le site utilise [Jikan](https://jikan.moe/), une API REST gratuite et open source pour les données publiques de MyAnimeList. Elle ne demande pas de clé API, mais applique des limites de requêtes : si elle est temporairement indisponible, réessaie un peu plus tard. Consulte sa documentation et ses conditions avant tout usage important.
 
-Adresse prévue : https://nissay8z.github.io/NISSKENZI/
+## À propos du visionnage
+Le site est un catalogue : il ne télécharge, ne stocke et n'héberge aucune vidéo. Les liens de visionnage doivent pointer vers des services officiels ou des sources dont tu as l'autorisation d'utiliser le contenu. Un scraper conçu pour un environnement React Native ne fonctionne pas forcément dans un site statique : les navigateurs bloquent souvent les requêtes cross-origin (CORS), et les en-têtes personnalisés comme User-Agent/Referer ne peuvent généralement pas être imposés par JavaScript côté client. Pour une intégration fiable, utilise une API documentée et autorisée ou un backend que tu contrôles et qui respecte les droits des sources.
 
-Le workflow tente de publier le site avec GitHub Pages. Si le déploiement affiche que Pages n'est pas activé, ouvre **Settings → Pages** dans ce dépôt, sélectionne **GitHub Actions** comme source de publication, puis relance **Actions → Refresh NISSKENZI Cine and deploy**.
-
-## Catalogue et licences
-
-Le constructeur utilise les API publiques de recherche et de métadonnées d'Internet Archive. Il ne conserve que les éléments avec une licence déclarée dans une de ces familles : Public Domain Mark, CC0, CC BY ou CC BY-SA, et pour lesquels l'API fournit un MP4 public. La page de chaque œuvre mène à sa fiche d'origine et à la licence.
-
-Les métadonnées de licence sont fournies par les déposants ; ce n'est pas une garantie juridique indépendante. Vérifie la fiche et le statut des droits dans ton pays. Les œuvres peuvent être retirées, indisponibles, ou avoir des métadonnées incomplètes.
-
-## Actualisation
-
-- Automatique chaque jour à 04:17 UTC.
-- Déclenchable manuellement dans **Actions → Refresh NISSKENZI Cine and deploy → Run workflow**.
-- Si l'API échoue ou retourne trop peu de résultats validés, le script échoue sans écraser le dernier catalogue fonctionnel.
-
-## Développement local
-
-Python 3.12+, aucune dépendance tierce :
-
-\`\`\`bash
-python -m unittest discover -s tests -v
-python catalog_builder.py
-\`\`\`
-
-## Données
-
-Le fichier \`catalog.json\` est généré automatiquement à partir des API publiques d'Internet Archive. Les liens vers vidéos et images pointent vers archive.org et ne sont pas copiés sur GitHub.
+## Développement
+Le site est volontairement sans framework et sans étape de compilation : modifie `index.html`, puis pousse sur `main`.

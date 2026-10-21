@@ -2,44 +2,57 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NISS Convert — Convertisseur par lien</title>
+<meta name="theme-color" content="#0b1020"><title>NISS Convert — Audio & vidéo</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#151d31;--line:#293650;--accent:#8b5cf6;--muted:#a8b3c9}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#20264a,var(--bg) 60%);color:#f7f8ff;font:16px system-ui,sans-serif;min-height:100vh;padding:24px}
-main{max-width:760px;margin:30px auto}.brand{color:#c4b5fd;font-weight:800;letter-spacing:.12em;font-size:.8rem}h1{font-size:clamp(2rem,7vw,3.2rem);margin:.35rem 0}p{color:var(--muted);line-height:1.6}.panel{background:#151d31dd;border:1px solid var(--line);border-radius:22px;padding:22px;margin:20px 0;box-shadow:0 20px 70px #0003}label{display:block;font-weight:650;margin:15px 0 8px}input,select,button{font:inherit;width:100%;border-radius:12px;padding:14px;background:#0c1324;color:white;border:1px solid #34415e}button{background:var(--accent);border:0;font-weight:750;cursor:pointer;margin-top:16px}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hint{font-size:.88rem}.status{white-space:pre-wrap;margin-top:14px;color:#ddd6fe}.bar{height:8px;background:#293650;border-radius:20px;overflow:hidden;margin-top:12px}.bar span{display:block;height:100%;width:0;background:#a78bfa}a{color:#c4b5fd}@media(max-width:540px){body{padding:14px}.grid{grid-template-columns:1fr}.panel{padding:16px}}
-</style>
-</head>
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#24254a,var(--bg) 65%);color:#f7f8ff;font:16px system-ui,sans-serif;min-height:100vh;padding:20px}main{max-width:820px;margin:25px auto}.brand{color:#c4b5fd;font-weight:850;letter-spacing:.12em;font-size:.8rem}h1{font-size:clamp(2.4rem,8vw,4rem);line-height:1.05;margin:.45rem 0}.sub{color:var(--muted);line-height:1.6;max-width:650px}.panel{background:#151d31eF;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,4vw,26px);margin:20px 0;box-shadow:0 20px 70px #0003}label{display:block;font-weight:700;margin:15px 0 8px}input,select,button{font:inherit;width:100%;border-radius:12px;padding:14px;background:#0c1324;color:white;border:1px solid #34415e}input[type=file]{padding:11px}button{background:var(--accent);border:0;font-weight:800;cursor:pointer;margin-top:16px}button:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hint{font-size:.88rem;color:var(--muted);line-height:1.55}.status{white-space:pre-wrap;margin-top:14px;color:#ddd6fe;line-height:1.5}.bar{height:8px;background:#293650;border-radius:20px;overflow:hidden;margin-top:14px}.bar span{display:block;height:100%;width:0;background:#a78bfa;transition:width .2s}a{color:#c4b5fd;font-weight:750;display:inline-block;margin-top:16px}.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{width:auto;margin:0;padding:10px 14px;background:#202b43;border:1px solid #34415e}.tabs button.active{background:var(--accent);border-color:transparent}.pill{display:inline-block;border:1px solid #394765;border-radius:99px;padding:6px 10px;font-size:.8rem;color:#d6d9e8;margin:3px 3px 0 0}footer{font-size:.8rem;color:#8f9bb3;padding:10px 2px}@media(max-width:560px){body{padding:12px}.grid{grid-template-columns:1fr}.panel{border-radius:18px}}
+</style></head>
 <body><main>
-<div class="brand">NISSKENZI • UTILITAIRES</div><h1>NISS Convert</h1><p>Convertis un média à partir d’un lien direct vers un fichier audio ou vidéo. Le fichier est traité dans ton navigateur quand la source l’autorise.</p>
+<div class="brand">NISSKENZI • MEDIA TOOLS</div><h1>NISS <span style="color:#a78bfa">Convert</span></h1>
+<p class="sub">Un outil audio et vidéo : colle un lien direct ou sélectionne un fichier, choisis le format, puis convertis. Les médias sont traités dans ton navigateur quand la source et ton appareil le permettent.</p>
 <section class="panel">
-<label for="url">Lien direct du fichier média</label><input id="url" type="url" placeholder="https://exemple.com/video.mp4" autocomplete="url">
-<p class="hint">Il faut une URL qui pointe directement vers un fichier (par ex. .mp4, .webm, .mp3). Les pages YouTube, TikTok et les sites de streaming ne sont pas des liens directs et peuvent bloquer l’accès.</p>
-<div class="grid"><div><label for="kind">Résultat</label><select id="kind"><option value="video">Vidéo</option><option value="audio">Audio uniquement</option></select></div><div><label for="format">Format de sortie</label><select id="format"><option>mp4</option><option>webm</option><option>mp3</option><option>wav</option><option>ogg</option></select></div></div>
-<button id="start">Charger et convertir</button><div class="bar"><span id="progress"></span></div><div class="status" id="status" role="status"></div><a id="download" hidden download> Télécharger le résultat</a>
+<div class="tabs"><button id="linkTab" class="active" type="button">🌐 Depuis un lien</button><button id="fileTab" type="button">📁 Depuis un fichier</button></div>
+<div id="linkMode"><label for="url">Lien direct vers un média</label><input id="url" type="url" placeholder="https://site.exemple/video.mp4" autocomplete="url"><p class="hint">Fonctionne avec les URL qui donnent directement accès au fichier. Une page de plateforme (YouTube, TikTok, réseaux sociaux ou sites pour adultes) n’est pas forcément un lien média direct : connexion, restrictions du site ou CORS peuvent empêcher l’accès.</p></div>
+<div id="fileMode" hidden><label for="file">Choisir un fichier sur ton appareil</label><input id="file" type="file" accept="video/*,audio/*,.mkv,.avi,.mov,.flv,.mpg,.mpeg,.m4v,.3gp,.ts,.m3u8,.mp3,.wav,.flac,.aac,.m4a,.ogg,.opus,.wma,.aiff"><p class="hint">Le fichier reste sur ton appareil pendant le traitement. Les très gros fichiers peuvent dépasser la mémoire disponible sur mobile.</p></div>
+<div class="grid"><div><label for="kind">Type de résultat</label><select id="kind"><option value="video">Vidéo</option><option value="audio">Audio uniquement</option><option value="gif">GIF animé</option></select></div><div><label for="format">Format de sortie</label><select id="format"></select></div></div>
+<div class="grid"><div><label for="quality">Qualité vidéo</label><select id="quality"><option value="high">Élevée</option><option value="balanced" selected>Équilibrée</option><option value="small">Fichier plus léger</option><option value="source">Copier si possible</option></select></div><div><label for="audioQuality">Qualité audio</label><select id="audioQuality"><option value="320">Très élevée — 320 kb/s</option><option value="192" selectedÉquilibrée — 192 kb/s</option><option value="128">Économique — 128 kb/s</option></select></div></div>
+<button id="start" type="button">Charger et convertir</button><div class="bar"><span id="progress"></span></div><div class="status" id="status" role="status" aria-live="polite"></div><a id="download" hidden download>Télécharger le résultat</a>
 </section>
-<section class="panel"><h2>Ça ne marche pas avec tous les liens ?</h2><p>Les sites peuvent empêcher l’accès depuis un autre domaine (CORS), exiger une connexion ou utiliser un lecteur protégé. Cette version ne contourne pas ces protections. Pour ces cas, utilise un export/téléchargement officiel du site, puis convertis le fichier avec un convertisseur local.</p><p class="hint">Les conversions peuvent consommer beaucoup de mémoire sur mobile. Ne ferme pas cette page pendant le traitement.</p></section>
+<section class="panel"><h2>Formats et compatibilité</h2><div><span class="pill">MP4</span><span class="pill">WebM</span><span class="pill">MOV</span><span class="pill">MKV*</span><span class="pill">AVI*</span><span class="pill">MP3</span><span class="pill">WAV</span><span class="pill">FLAC*</span><span class="pill">AAC*</span><span class="pill">M4A*</span><span class="pill">OGG</span><span class="pill">GIF</span></div><p class="hint">*La lecture et l’encodage exacts dépendent des codecs inclus dans le moteur, du navigateur et de la puissance de l’appareil. La liste de formats n’est pas une garantie que chaque codec soit disponible dans cette version web.</p><h3>À propos des liens de plateformes</h3><p class="hint">Aucun outil web ne peut garantir l’extraction depuis absolument tous les sites. Certains refusent les requêtes externes, nécessitent une session ou protègent leurs flux. Cette page ne contourne pas les DRM, les paywalls ni les contrôles d’accès. Pour ces sources, récupère d’abord le fichier via une option officielle puis importe-le ici.</p></section>
+<footer>NISS Convert • Conversion locale dans le navigateur • Ne partage pas de liens privés ou contenant des jetons d’accès.</footer>
 </main>
 <script type="module">
 const $=id=>document.getElementById(id);
-let ffmpeg=null, loaded=false;
-const setStatus=s=>$('status').textContent=s;
-const extMime={mp4:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg'};
-$('kind').addEventListener('change',()=>{const audio=$('kind').value==='audio';$('format').value=audio?'mp3':'mp4';[...$('format').options].forEach(o=>{o.hidden=audio?!['mp3','wav','ogg'].includes(o.value):!['mp4','webm'].includes(o.value)})});
+let ffmpeg=null,mode='link',busy=false;
+const formats={video:[['mp4','MP4 — compatible'],['webm','WebM — web'],['mov','MOV'],['mkv','MKV'],['avi','AVI']],audio:[['mp3','MP3'],['wav','WAV sans perte'],['ogg','OGG Vorbis'],['flac','FLAC sans perte'],['m4a','M4A / AAC']],gif:[['gif','GIF animé']]};
+function updateFormats(){const k=$('kind').value,old=$('format').value;$('format').innerHTML='';for(const [v,label] of formats[k]){const o=document.createElement('option');o.value=v;o.textContent=label;$('format').append(o)}if([...$('format').options].some(o=>o.value===old))$('format').value=old}
+$('kind').addEventListener('change',updateFormats);updateFormats();
+function setMode(m){mode=m;$('linkMode').hidden=m!=='link';$('fileMode').hidden=m!=='file';$('linkTab').classList.toggle('active',m==='link');$('fileTab').classList.toggle('active',m==='file');$('download').hidden=true;$('status').textContent=''}
+$('linkTab').onclick=()=>setMode('link');$('fileTab').onclick=()=>setMode('file');
+function status(s){$('status').textContent=s}
 $('start').addEventListener('click',async()=>{
- const raw=$('url').value.trim();let u;
- try{u=new URL(raw);if(!['http:','https:'].includes(u.protocol))throw Error()}catch{setStatus('Entre une URL HTTP ou HTTPS valide.');return}
- const fmt=$('format').value,button=$('start');button.disabled=true;$('download').hidden=true;$('progress').style.width='0%';
+ if(busy)return;let sourceFile=null,inputName='source.bin';
+ if(mode==='file'){sourceFile=$('file').files[0];if(!sourceFile){status('Choisis un fichier à convertir.');return}inputName='source'+((sourceFile.name.match(/\.[a-z0-9]{1,8}$/i)||['.bin'])[0].toLowerCase())}
+ else{let u;try{u=new URL($('url').value.trim());if(!['http:','https:'].includes(u.protocol))throw Error()}catch{status('Entre une URL HTTP ou HTTPS valide.');return}
+  status('Téléchargement du média depuis le lien…');try{const response=await fetch(u.href);if(!response.ok)throw Error('HTTP '+response.status);sourceFile=await response.blob();if(!sourceFile.size)throw Error('fichier vide');inputName='source'+((u.pathname.match(/\.[a-z0-9]{1,8}$/i)||['.bin'])[0].toLowerCase())}catch(e){status('Ce lien ne peut pas être récupéré par le navigateur. Le serveur peut bloquer l’accès (CORS), demander une connexion, ou l’adresse est une page plutôt qu’un fichier direct. Détail : '+(e.message||e));return}}
+ const fmt=$('format').value,kind=$('kind').value,button=$('start');busy=true;button.disabled=true;$('download').hidden=true;$('progress').style.width='0%';
  try{
-  setStatus('Chargement du moteur de conversion…');
-  if(!ffmpeg){const {FFmpeg}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');const {toBlobURL}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');ffmpeg=new FFmpeg();ffmpeg.on('progress',({progress})=>{$('progress').style.width=Math.round(progress*100)+'%'});await ffmpeg.load({coreURL:await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm','application/wasm')});}
-  setStatus('Récupération du fichier source…');
-  const res=await fetch(u.href);if(!res.ok)throw Error('Le serveur a répondu HTTP '+res.status+'.');const blob=await res.blob();if(!blob.size)throw Error('Le fichier reçu est vide.');
-  const input='source.'+((u.pathname.split('.').pop()||'mp4').match(/^[a-z0-9]{1,5}$/i)?.[0]||'mp4');
-  const output='converti.'+fmt;await ffmpeg.writeFile(input,new Uint8Array(await blob.arrayBuffer()));
-  setStatus('Conversion en cours…');
-  const args=fmt==='mp3'?['-i',input,'-vn','-codec:a','libmp3lame','-q:a','2',output]:fmt==='wav'?['-i',input,'-vn',output]:fmt==='ogg'?['-i',input,'-vn','-codec:a','libvorbis',output]:fmt==='webm'?['-i',input,'-c:v','libvpx','-c:a','libvorbis',output]:['-i',input,...($('kind').value==='audio'?['-vn']:[]),'-c:v','libx264','-c:a','aac','-movflags','+faststart',output];
-  await ffmpeg.exec(args);const data=await ffmpeg.readFile(output);const out=new Blob([data.buffer],{type:extMime[fmt]||'application/octet-stream'});const a=$('download');a.href=URL.createObjectURL(out);a.download=output;a.hidden=false;a.textContent='Télécharger '+output;setStatus('Conversion terminée. Clique sur le lien de téléchargement.');$('progress').style.width='100%';
- }catch(e){setStatus('Impossible de convertir ce lien : '+(e?.message||e)+'\n\nLe serveur peut bloquer les requêtes externes (CORS), ou le lien peut être une page web plutôt qu’un fichier direct. Essaie une URL directe accessible ou télécharge d’abord le fichier depuis la source officielle.')}
- finally{button.disabled=false}
+  status('Chargement du moteur FFmpeg (première utilisation parfois longue)…');
+  if(!ffmpeg){const {FFmpeg}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');const {toBlobURL}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');ffmpeg=new FFmpeg();ffmpeg.on('progress',({progress})=>{$('progress').style.width=Math.max(0,Math.min(100,Math.round(progress*100)))+'%'});const base='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/';await ffmpeg.load({coreURL:await toBlobURL(base+'ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(base+'ffmpeg-core.wasm','application/wasm')});}
+  status('Préparation du fichier…');await ffmpeg.writeFile(inputName,new Uint8Array(await sourceFile.arrayBuffer()));
+  const output='niss-converti.'+fmt;let args=['-i',inputName];
+  if(kind==='audio'){args.push('-vn');if(fmt==='mp3')args.push('-codec:a','libmp3lame','-b:a',$('audioQuality').value+'k');else if(fmt==='ogg')args.push('-codec:a','libvorbis','-q:a','5');else if(fmt==='flac')args.push('-codec:a','flac');else if(fmt==='m4a')args.push('-codec:a','aac','-b:a',$('audioQuality').value+'k');}
+  else if(kind==='gif'){args.push('-vf','fps=12,scale=720:-1:flags=lanczos','-loop','0')}
+  else if(fmt==='webm')args.push('-c:v','libvpx','-c:a','libvorbis');
+  else if(fmt==='mp4')args.push('-c:v','libx264','-c:a','aac','-movflags','+faststart');
+  else if(fmt==='mov')args.push('-c:v','mpeg4','-c:a','aac');
+  else if(fmt==='mkv')args.push('-c:v','mpeg4','-c:a','aac');
+  else if(fmt==='avi')args.push('-c:v','mpeg4','-c:a','libmp3lame');
+  if(kind==='video'&&$('quality').value!=='source'){args.push('-crf',$('quality').value==='high'?'20':$('quality').value==='small'?'30':'25');}
+  args.push(output);status('Conversion en cours… garde cette page ouverte.');
+  const code=await ffmpeg.exec(args);if(code!==0)throw Error('Le moteur FFmpeg n’a pas pu encoder ce format avec les codecs disponibles.');
+  const data=await ffmpeg.readFile(output);const mime=fmt==='mp4'?'video/mp4':fmt==='webm'?'video/webm':fmt==='gif'?'image/gif':fmt==='mp3'?'audio/mpeg':fmt==='wav'?'audio/wav':fmt==='ogg'?'audio/ogg':fmt==='flac'?'audio/flac':'application/octet-stream';const blob=new Blob([data],{type:mime});const a=$('download');if(a.dataset.url)URL.revokeObjectURL(a.dataset.url);a.href=URL.createObjectURL(blob);a.dataset.url=a.href;a.download=output;a.hidden=false;a.textContent='⬇ Télécharger '+output;status('Conversion terminée. Appuie sur « Télécharger » pour enregistrer le fichier.');$('progress').style.width='100%';
+ }catch(e){status('La conversion a échoué : '+(e?.message||e)+'\n\nTous les codecs ne sont pas inclus dans le moteur web. Essaie MP4 ou MP3, un fichier plus petit, ou utilise un convertisseur de bureau pour les formats avancés.');}
+ finally{busy=false;button.disabled=false}
 });
 </script></body></html>

@@ -1,238 +1,64 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#111111">
-<meta name="description" content="NISSKENZI Ciné — une bibliothèque de films en accès libre sous licence du domaine public et Creative Commons.">
-<title>NISSKENZI Ciné</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0b12"><meta name="description" content="NISSKENZI — ton catalogue anime personnel, léger et gratuit.">
+<title>NISSKENZI — Anime</title>
 <style>
-:root{color-scheme:dark;--bg:#101010;--panel:#1b1b1b;--muted:#b9b9b9;--red:#e50914;--line:#303030;--green:#a5e6b1}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:#f7f7f7;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-header{position:sticky;top:0;z-index:10;background:linear-gradient(#101010f5,#101010e8);backdrop-filter:blur(14px);border-bottom:1px solid #ffffff0b}
-.nav{max-width:1600px;margin:auto;display:flex;align-items:center;gap:24px;padding:15px clamp(14px,4vw,56px)}
-.logo{color:var(--red);font-weight:950;letter-spacing:.04em;font-size:clamp(20px,3vw,28px);white-space:nowrap}.logo span{color:white;font-weight:650}
-.links{display:flex;gap:18px;color:#ddd;font-size:13px}.links a{color:inherit;text-decoration:none}.links a:hover{color:white}
-.searchbox{margin-left:auto;display:flex;align-items:center;gap:8px;background:#0c0c0c;border:1px solid #555;border-radius:6px;padding:5px 9px;min-width:170px}.searchbox input{width:100%;min-width:0;background:transparent;border:0;color:white;outline:none;padding:6px}.searchbox button{background:transparent;border:0;color:#ddd;cursor:pointer;font-size:17px}
-main{max-width:1600px;margin:auto;padding:0 clamp(12px,4vw,56px) 52px}
-.hero{position:relative;min-height:390px;display:flex;align-items:flex-end;padding:clamp(24px,6vw,70px) clamp(10px,3vw,42px);overflow:hidden;background:linear-gradient(90deg,#101010 0%,#101010e8 28%,#10101055 65%,#10101020 100%),linear-gradient(0deg,#101010 0%,transparent 65%);isolation:isolate}
-.hero::before{content:"";position:absolute;inset:0;z-index:-2;background:linear-gradient(135deg,#3f1c1c,#171a24 55%,#121212)}
-.hero.has-poster::before{background-size:cover;background-position:center}
-.hero-inner{max-width:620px}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;color:#e7e7e7;font-size:12px;font-weight:750;letter-spacing:.15em;text-transform:uppercase}.dot{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%}
-.hero h1{font-size:clamp(34px,5vw,64px);line-height:1.02;margin:14px 0 12px;letter-spacing:-.035em;text-shadow:0 2px 18px #0009}
-.meta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;color:#d1d1d1;font-size:13px;margin-bottom:16px}.pill{border:1px solid #777;border-radius:3px;padding:1px 6px;font-size:11px}
-.hero p{max-width:560px;color:#e0e0e0;font-size:15px;line-height:1.6;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.btn{border:0;border-radius:5px;padding:11px 17px;font-weight:800;cursor:pointer;display:inline-flex;gap:9px;align-items:center}.btn-play{background:white;color:#111}.btn-info{background:#555c;color:white;margin-left:6px}.btn:hover{filter:brightness(.9)}
-.section{margin-top:24px}.section-top{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:10px}.section h2{font-size:21px;margin:0;letter-spacing:-.02em}.small{color:var(--muted);font-size:12px}
-.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 8px}.filter{background:#242424;color:#ddd;border:1px solid #444;border-radius:4px;padding:7px 11px;cursor:pointer;font-size:12px}.filter.active,.filter:hover{background:var(--red);border-color:var(--red);color:#fff}
-.grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
-.card{min-width:0;background:#191919;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;transition:transform .18s,border-color .18s;position:relative}
-.card:hover{transform:translateY(-3px);border-color:#6a6a6a}
-.poster{position:relative;aspect-ratio:2/3;background:linear-gradient(135deg,#302424,#222d38);overflow:hidden}.poster img{width:100%;height:100%;object-fit:cover;display:block}.poster-fallback{position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;font-weight:850;font-size:20px;line-height:1.1;color:#e8e8e8;background:radial-gradient(circle at 70% 20%,#8d3d3d88,transparent 42%),linear-gradient(145deg,#292b36,#171717)}
-.card-details{padding:9px}.card-title{font-weight:750;font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:35px}.card-meta{display:flex;justify-content:space-between;gap:5px;color:#aaa;font-size:11px;margin-top:7px}.card-actions{display:flex;gap:6px;margin-top:9px}.card-actions button{flex:1;min-width:0;border-radius:4px;padding:7px 4px;font-size:11px;font-weight:750;cursor:pointer;border:1px solid #555;background:#292929;color:white}.card-actions .watch{background:#f5f5f5;color:#111;border-color:#f5f5f5}
-.empty{padding:45px 16px;text-align:center;border:1px dashed #444;border-radius:8px;color:#bbb;grid-column:1/-1}
-footer{border-top:1px solid var(--line);padding:24px clamp(14px,4vw,56px);color:#a7a7a7;font-size:12px;max-width:1600px;margin:auto}footer a{color:#ddd}
-dialog{padding:0;border:1px solid #444;border-radius:12px;background:#151515;color:white;width:min(940px,95vw);max-height:92vh;overflow:auto;box-shadow:0 22px 100px #000c}dialog::backdrop{background:#000d;backdrop-filter:blur(4px)}.player-head{display:flex;align-items:center;gap:16px;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #333}.player-head h2{font-size:18px;margin:0}.close{border:0;border-radius:5px;background:#333;color:white;padding:7px 11px;cursor:pointer}
-video{display:block;width:100%;max-height:60vh;background:black} .player-info{padding:18px}.player-info p{color:#ccc;line-height:1.6}.player-info a{color:#d4d4ff}.license{display:inline-block;color:#b8e9c1;border:1px solid #456a4b;padding:3px 7px;border-radius:4px;font-size:11px;margin-right:8px}
-.loading{display:flex;justify-content:center;padding:48px;color:#bbb}
-@media(max-width:1200px){.grid{grid-template-columns:repeat(5,minmax(0,1fr))}.hero{min-height:350px}}
-@media(max-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}.links{display:none}.hero{min-height:320px}.searchbox{max-width:250px}}
-@media(max-width:600px){.nav{gap:10px;flex-wrap:wrap}.logo{font-size:20px}.searchbox{order:3;width:100%;max-width:none;margin-left:0}.hero{min-height:340px;padding:24px 10px}.hero h1{font-size:36px}.hero p{font-size:13px;-webkit-line-clamp:3}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.section h2{font-size:18px}.card-title{font-size:12px}.btn{padding:10px 12px;font-size:12px}}
-</style>
-</head>
+:root{color-scheme:dark;--bg:#0b0b12;--panel:#15151f;--panel2:#1d1d2a;--text:#f6f5fb;--muted:#a5a3b7;--accent:#a78bfa;--line:#29283a;--red:#fb7185}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.top{position:sticky;top:0;z-index:10;background:#0b0b12ed;backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}.nav{max-width:1280px;margin:auto;padding:12px 20px;display:flex;gap:18px;align-items:center}.logo{font-weight:950;letter-spacing:1px;font-size:20px;white-space:nowrap}.logo span{color:var(--accent)}.navlinks{display:flex;gap:6px}.nav button,.pill{background:transparent;border:0;color:var(--muted);padding:9px 12px;border-radius:10px}.nav button.active,.nav button:hover{background:var(--panel2);color:white}.search{margin-left:auto;width:min(300px,35vw);background:var(--panel);border:1px solid var(--line);color:white;border-radius:12px;padding:10px 13px;outline:none}.search:focus{border-color:var(--accent)}main{max-width:1280px;margin:auto;padding:22px 20px 60px}.hero{min-height:260px;border-radius:22px;padding:28px;display:flex;align-items:end;position:relative;overflow:hidden;background:linear-gradient(90deg,#171327 0%,#171327df 45%,#17132730 100%),url('https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1400&q=75') center 35%/cover}.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#0b0b12a8,transparent 65%);pointer-events:none}.heroContent{position:relative;z-index:1;max-width:560px}.eyebrow{color:#c4b5fd;text-transform:uppercase;letter-spacing:2px;font-size:11px;font-weight:800}.hero h1{font-size:clamp(30px,5vw,48px);line-height:1.08;margin:8px 0}.hero p{color:#dedbea;max-width:520px}.primary,.secondary{border:0;border-radius:11px;padding:10px 15px;font-weight:750}.primary{background:var(--accent);color:#160d2c}.secondary{background:#ffffff18;color:white;border:1px solid #ffffff25}.sectionHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:30px 0 14px}.sectionHead h2{font-size:21px;margin:0}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}.anime{min-width:0;cursor:pointer}.poster{aspect-ratio:2/3;background:var(--panel2);border-radius:13px;overflow:hidden;position:relative;border:1px solid #ffffff0b}.poster img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .2s}.anime:hover .poster img{transform:scale(1.035)}.score{position:absolute;top:8px;left:8px;background:#0b0b12dd;padding:3px 7px;border-radius:7px;font-size:12px;font-weight:800}.fav{position:absolute;right:7px;top:7px;background:#0b0b12dd;border:0;border-radius:50%;width:32px;height:32px;color:white;font-size:17px}.fav.on{color:#fb7185}.anime h3{font-size:14px;line-height:1.35;margin:9px 0 3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.anime .sub{font-size:12px;color:var(--muted)}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.filters select,.filters input{background:var(--panel);border:1px solid var(--line);border-radius:10px;color:white;padding:9px 11px}.status{padding:25px;text-align:center;color:var(--muted);background:var(--panel);border-radius:14px}.loadMore{display:block;margin:26px auto}.hidden{display:none!important}.modal{position:fixed;inset:0;z-index:30;background:#000b;display:grid;place-items:center;padding:18px}.dialog{background:var(--panel);border:1px solid var(--line);border-radius:20px;width:min(850px,100%);max-height:90vh;overflow:auto;position:relative}.close{position:sticky;top:8px;float:right;margin:8px 8px 0 0;border:0;background:#ffffff20;color:white;border-radius:50%;width:36px;height:36px;font-size:22px;z-index:2}.detail{display:grid;grid-template-columns:220px 1fr;gap:24px;padding:28px}.detail img{width:100%;border-radius:13px}.detail h2{font-size:28px;line-height:1.15;margin:5px 0 10px}.tags{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tag{background:var(--panel2);border:1px solid var(--line);padding:4px 9px;border-radius:99px;font-size:12px;color:#d5d1e5}.detailActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.footer{border-top:1px solid var(--line);margin-top:42px;padding-top:18px;color:var(--muted);font-size:12px}.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:50;background:#29243d;border:1px solid #55467b;border-radius:12px;padding:10px 16px}.mobileNav{display:none}
+@media(max-width:1000px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}}@media(max-width:650px){.nav{padding:10px 13px;gap:9px;flex-wrap:wrap}.logo{font-size:18px}.navlinks{order:3;width:100%;overflow:auto}.navlinks button{flex:1;padding:7px 8px;white-space:nowrap}.search{width:auto;flex:1;min-width:90px}.navlinks button:nth-child(4){display:none}main{padding:15px 13px 45px}.hero{min-height:250px;padding:20px;background-position:58% center}.grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}.anime h3{font-size:13px}.detail{grid-template-columns:100px 1fr;gap:15px;padding:18px}.detail h2{font-size:22px}.sectionHead{margin-top:24px}.poster{border-radius:10px}}
+@media(max-width:390px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{min-height:230px}.detail{grid-template-columns:1fr}.detail img{width:120px}}
+</style></head>
 <body>
-<header>
- <nav class="nav">
-  <a class="logo" href="./" style="text-decoration:none">NISSKENZI <span>CINÉ</span></a>
-  <div class="links"><a href="#trending">Populaires</a><a href="#new">Nouveautés</a><a href="#all">Catalogue</a></div>
-  <div class="searchbox"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Films, réalisateurs…" aria-label="Rechercher dans le catalogue"><button id="clearSearch" type="button" title="Effacer">×</button></div>
- </nav>
-</header>
-<main>
- <section class="hero" id="hero">
-  <div class="hero-inner">
-   <div class="eyebrow"><span class="dot"></span> BIBLIOTHÈQUE LIBRE • MIS À JOUR QUOTIDIENNEMENT</div>
-   <h1 id="heroTitle">Le cinéma, en accès libre.</h1>
-   <div class="meta" id="heroMeta"><span class="pill">Domaine public & Creative Commons</span></div>
-   <p id="heroDescription">Découvre des films disponibles sur Internet Archive sous des licences ouvertes vérifiables.</p>
-   <button class="btn btn-play" id="heroPlay" type="button" disabled>▶ Regarder</button>
-   <a class="btn btn-info" href="https://archive.org/details/movies" target="_blank" rel="noopener noreferrer" style="text-decoration:none">ℹ Explorer l’archive</a>
-  </div>
- </section>
- <section class="filters" aria-label="Filtres de licence">
-  <button class="filter active" data-license="all">Tout le catalogue</button>
-  <button class="filter" data-license="Marque du domaine public">Domaine public</button>
-  <button class="filter" data-license="CC0">CC0</button>
-  <button class="filter" data-license="Creative Commons BY">CC BY</button>
-  <button class="filter" data-license="Creative Commons BY-SA">CC BY-SA</button>
-  <span class="small" id="updated" style="margin-left:auto">Chargement du catalogue…</span>
- </section>
- <section class="section" id="trending">
-  <div class="section-top"><h2>Populaires</h2><span class="small">Triés par téléchargements</span></div>
-  <div class="grid" id="popularGrid"><div class="loading">Chargement du catalogue…</div></div>
- </section>
- <section class="section" id="new">
-  <div class="section-top"><h2>Nouveautés de l’archive</h2><span class="small">Ajouts récents dont la licence est indiquée</span></div>
-  <div class="grid" id="newGrid"><div class="loading">Chargement…</div></div>
- </section>
- <section class="section" id="all">
-  <div class="section-top"><h2>Catalogue</h2><span id="resultCount" class="small">0 film</span></div>
-  <div class="grid" id="allGrid"><div class="loading">Chargement…</div></div>
- </section>
-</main>
-<footer>
- <p><strong>NISSKENZI Ciné</strong> est un catalogue indépendant de films hébergés par Internet Archive sous licence de domaine public ou Creative Commons déclarée.</p>
- <p>Les licences affichées proviennent des métadonnées fournies par les déposants ; vérifie la fiche et la licence d’origine, ainsi que les règles applicables dans ton pays. Les vidéos sont lues depuis archive.org, elles ne sont pas réhébergées ici.</p>
- <p>Source : <a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a> · <a href="https://github.com/Nissay8z/NISSKENZI" target="_blank" rel="noopener noreferrer">Code du projet</a></p>
-</footer>
-<dialog id="player">
- <div class="player-head"><h2 id="playerTitle">Lecture</h2><button class="close" id="closePlayer" type="button">Fermer ✕</button></div>
- <video id="video" controls playsinline preload="metadata"></video>
- <div class="player-info">
-  <div id="playerLicense"></div>
-  <p id="playerDescription"></p>
-  <p><a id="sourceLink" target="_blank" rel="noopener noreferrer">Fiche d’origine sur Internet Archive ↗</a> · <a id="licenseLink" target="_blank" rel="noopener noreferrer">Consulter la licence ↗</a></p>
-  <small class="small" id="playerAttribution"></small>
- </div>
-</dialog>
+<header class="top"><div class="nav"><div class="logo">NISS<span>KENZI</span></div><div class="navlinks"><button class="active" data-page="home">Accueil</button><button data-page="popular">Populaires</button><button data-page="season">Saison</button><button data-page="genres">Genres</button><button data-page="saved">Ma liste <span id="savedCount"></span></button></div><input id="search" class="search" placeholder="Rechercher un anime…" autocomplete="off" aria-label="Rechercher un anime"></div></header>
+<main><section id="hero" class="hero"><div class="heroContent"><div class="eyebrow">Ton espace anime personnel</div><h1>Ton prochain anime<br>commence ici.</h1><p>Découvre, recherche et garde tes animes préférés. Gratuit, rapide et pensé pour mobile.</p><button class="primary" id="explore">Explorer les animes ↗</button></div></section>
+<div id="filters" class="filters hidden"><select id="genre"><option value="">Tous les genres</option></select><select id="sort"><option value="score">Mieux notés</option><option value="popularity">Popularité</option><option value="title">Titre A–Z</option></select></div>
+<section id="featuredSection"><div class="sectionHead"><h2>🔥 Les incontournables</h2><span class="muted">Sélection populaire</span></div><div id="featured" class="grid"><div class="status">Chargement du catalogue…</div></div></section>
+<section id="latestSection"><div class="sectionHead"><h2>✨ À découvrir</h2><span class="muted">Nouvelles découvertes</span></div><div id="latest" class="grid"><div class="status">Chargement…</div></div></section>
+<section id="resultsSection" class="hidden"><div class="sectionHead"><h2 id="resultsTitle">Catalogue</h2><span id="resultCount" class="muted"></span></div><div id="results" class="grid"></div><button id="loadMore" class="secondary loadMore hidden">Afficher plus</button></section>
+<div class="footer">NISSKENZI · Catalogue anime personnel · Données anime fournies par Jikan / MyAnimeList. Les affiches et métadonnées proviennent de leurs sources respectives. Ce site ne stocke ni n'héberge de vidéos.</div></main>
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true"><div class="dialog"><button class="close" id="close" aria-label="Fermer">×</button><div id="detail"></div></div></div><div id="toast" class="toast hidden"></div>
 <script>
-"use strict";
-(() => {
- const $ = id => document.getElementById(id);
- let catalog = [];
- let activeLicense = "all";
- let featured = null;
- let searchText = "";
- const escText = v => String(v ?? "");
- const toDate = v => v ? String(v).slice(0,10) : "";
- const movieYear = movie => movie.year ? String(movie.year) : (toDate(movie.date).slice(0,4) || "—");
- function safeUrl(value) {
-  try { const u = new URL(value); return ["https:","http:"].includes(u.protocol) ? u.href : ""; } catch (_) { return ""; }
- }
- function visibleItems() {
-  const q = searchText.trim().toLocaleLowerCase("fr");
-  return catalog.filter(movie => {
-   const licOK = activeLicense === "all" ||
-     movie.license_label === activeLicense ||
-     (activeLicense === "CC0" && String(movie.license_label).toLowerCase().startsWith("cc0"));
-   const text = [movie.title,movie.creator,movie.description,...(movie.subjects||[])].join(" ").toLocaleLowerCase("fr");
-   return licOK && (!q || text.includes(q));
-  });
- }
- function createCard(movie) {
-  const card = document.createElement("article"); card.className = "card";
-  const poster = document.createElement("div"); poster.className = "poster";
-  const fallback = document.createElement("div"); fallback.className = "poster-fallback"; fallback.textContent = movie.title || "Film";
-  poster.append(fallback);
-  const posterUrl = safeUrl(movie.poster_url);
-  if (posterUrl) {
-   const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = posterUrl;
-   img.onerror = () => img.remove(); img.onload = () => fallback.remove(); poster.append(img);
-  }
-  const details = document.createElement("div"); details.className = "card-details";
-  const title = document.createElement("div"); title.className = "card-title"; title.textContent = movie.title || "Sans titre";
-  const meta = document.createElement("div"); meta.className = "card-meta";
-  const year = document.createElement("span"); year.textContent = movieYear(movie);
-  const license = document.createElement("span"); license.textContent = movie.license_label || "Licence non précisée"; license.title = license.textContent;
-  meta.append(year,license);
-  const actions = document.createElement("div"); actions.className = "card-actions";
-  const watch = document.createElement("button"); watch.className = "watch"; watch.type = "button"; watch.textContent = "▶ Voir";
-  watch.addEventListener("click", () => openPlayer(movie));
-  const detailsLink = document.createElement("button"); detailsLink.type = "button"; detailsLink.textContent = "Fiche ↗";
-  detailsLink.addEventListener("click", () => { const url = safeUrl(movie.source_url); if (url) window.open(url,"_blank","noopener,noreferrer"); });
-  actions.append(watch,detailsLink); details.append(title,meta,actions); card.append(poster,details);
-  return card;
- }
- function fillGrid(element, items) {
-  element.replaceChildren();
-  if (!items.length) {
-   const empty = document.createElement("div"); empty.className = "empty";
-   empty.textContent = catalog.length ? "Aucun film ne correspond à la recherche." : "Le catalogue est en cours de préparation. Réessaie dans quelques minutes.";
-   element.append(empty); return;
-  }
-  const fragment = document.createDocumentFragment();
-  items.forEach(movie => fragment.append(createCard(movie)));
-  element.append(fragment);
- }
- function openPlayer(movie) {
-  const stream = safeUrl(movie.stream_url);
-  const source = safeUrl(movie.source_url);
-  const license = safeUrl(movie.license_url);
-  if (!stream) { alert("Adresse vidéo indisponible pour ce film."); return; }
-  $("playerTitle").textContent = movie.title || "Lecture";
-  $("playerDescription").textContent = movie.description || "Aucune description disponible.";
-  $("playerLicense").replaceChildren();
-  const badge = document.createElement("span"); badge.className = "license"; badge.textContent = movie.license_label || "Licence ouverte indiquée";
-  $("playerLicense").append(badge);
-  $("sourceLink").href = source || "https://archive.org";
-  $("licenseLink").href = license || source || "https://creativecommons.org";
-  $("playerAttribution").textContent = "Titre : " + (movie.title || "Sans titre") + (movie.creator ? " · Créateur : " + movie.creator : "") + " · Hébergement : Internet Archive";
-  const video = $("video");
-  video.pause(); video.removeAttribute("src"); video.load(); video.src = stream;
-  const dialog = $("player");
-  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open","");
-  video.play().catch(() => {});
- }
- function render() {
-  const items = visibleItems();
-  const popular = [...items].sort((a,b) => (b.downloads||0)-(a.downloads||0)).slice(0,12);
-  const latest = [...items].sort((a,b) => String(b.added_date||"").localeCompare(String(a.added_date||""))).slice(0,12);
-  const gridItems = items.slice(0,72);
-  fillGrid($("popularGrid"),popular);
-  fillGrid($("newGrid"),latest);
-  fillGrid($("allGrid"),gridItems);
-  $("resultCount").textContent = items.length + (items.length > 1 ? " films" : " film");
- }
- function setFeatured(movie) {
-  featured = movie;
-  if (!movie) return;
-  $("heroTitle").textContent = movie.title || "Le cinéma, en accès libre.";
-  $("heroDescription").textContent = movie.description || "Découvre ce film depuis Internet Archive.";
-  $("heroMeta").replaceChildren();
-  [movieYear(movie),movie.creator,movie.license_label].filter(Boolean).forEach((item,index) => {
-   const span = document.createElement("span"); span.textContent = item;
-   if (index === 2) span.className = "pill";
-   $("heroMeta").append(span);
-  });
-  const hero = $("hero"), poster = safeUrl(movie.poster_url);
-  if (poster) {
-   hero.classList.add("has-poster");
-   hero.style.setProperty("--hero-image",'url("' + poster.replace(/["\\]/g,"") + '")');
-   hero.style.backgroundImage = 'linear-gradient(90deg,#101010 0%,#101010e8 28%,#10101055 65%,#10101020 100%),linear-gradient(0deg,#101010 0%,transparent 65%),url("' + poster.replace(/["\\]/g,"") + '")';
-   hero.style.backgroundSize = "cover"; hero.style.backgroundPosition = "center 25%";
-  }
-  $("heroPlay").disabled = false;
- }
- async function init() {
-  try {
-   const response = await fetch("./catalog.json?ts=" + Date.now(), {cache:"no-store"});
-   if (!response.ok) throw new Error("HTTP " + response.status);
-   const data = await response.json();
-   catalog = Array.isArray(data.items) ? data.items : [];
-   $("updated").textContent = data.generated_at ? "Actualisé " + data.generated_at.slice(0,16).replace("T"," ") + " UTC" : "Catalogue";
-   const n = catalog.length;
-   if (!n) $("updated").textContent = "Catalogue en préparation";
-   const selected = [...catalog].sort((a,b)=>(b.downloads||0)-(a.downloads||0))[0];
-   setFeatured(selected);
-   render();
-  } catch (error) {
-   $("updated").textContent = "Catalogue indisponible";
-   ["popularGrid","newGrid","allGrid"].forEach(id => fillGrid($(id),[]));
-  }
- }
- $("search").addEventListener("input",e=>{searchText=e.target.value;render();});
- $("clearSearch").addEventListener("click",()=>{$("search").value="";searchText="";render();$("search").focus();});
- document.querySelectorAll("[data-license]").forEach(button=>button.addEventListener("click",()=>{
-  activeLicense=button.dataset.license;
-  document.querySelectorAll("[data-license]").forEach(b=>b.classList.toggle("active",b===button));
-  render();
- }));
- $("heroPlay").addEventListener("click",()=>{if(featured)openPlayer(featured);});
- $("closePlayer").addEventListener("click",()=>{$("video").pause();$("video").removeAttribute("src");$("video").load();$("player").close();});
- $("player").addEventListener("click",e=>{if(e.target===$("player")){$("video").pause();$("video").removeAttribute("src");$("video").load();$("player").close();}});
- init();
+(function(){
+'use strict';
+const API='https://api.jikan.moe/v4';
+const $=id=>document.getElementById(id);
+const state={page:'home',query:'',genre:'',sort:'score',pageNum:1,items:[],saved:readSaved(),busy:false,searchTimer:null};
+function readSaved(){try{return JSON.parse(localStorage.getItem('nisskenzi-saved')||'[]')}catch(e){return []}}
+function saveSaved(){try{localStorage.setItem('nisskenzi-saved',JSON.stringify(state.saved))}catch(e){} $('savedCount').textContent=state.saved.length?'('+state.saved.length+')':''}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function imageOf(a){return a.images&&a.images.webp&&(a.images.webp.large_image_url||a.images.webp.image_url)||a.images&&a.images.jpg&&(a.images.jpg.large_image_url||a.images.jpg.image_url)||''}
+function titleOf(a){return a.title_english||a.title||'Anime sans titre'}
+function yearOf(a){return a.year||a.aired&&a.aired.prop&&a.aired.prop.from&&a.aired.prop.from.year||'Année inconnue'}
+function scoreOf(a){return a.score?Number(a.score).toFixed(1):'—'}
+function isSaved(id){return state.saved.some(a=>a.mal_id===id)}
+function card(a){const img=imageOf(a);return '<article class="anime" data-id="'+a.mal_id+'"><div class="poster"><img loading="lazy" decoding="async" src="'+esc(img)+'" alt="'+esc(titleOf(a))+'" onerror="this.style.opacity=.2"><span class="score">★ '+scoreOf(a)+'</span><button class="fav '+(isSaved(a.mal_id)?'on':'')+'" data-fav="'+a.mal_id+'" aria-label="Ajouter à ma liste">'+(isSaved(a.mal_id)?'♥':'＋')+'</button></div><h3>'+esc(titleOf(a))+'</h3><div class="sub">'+esc(yearOf(a))+' · '+esc(a.type||'Anime')+'</div></article>'}
+function renderCards(target,items){$(target).innerHTML=items.length?items.map(card).join(''):'<div class="status">Aucun résultat pour le moment.</div>'}
+async function api(path){const r=await fetch(API+path);if(!r.ok)throw Error('API indisponible ('+r.status+')');const d=await r.json();return d.data||[]}
+function setStatus(target,msg){$(target).innerHTML='<div class="status">'+esc(msg)+'</div>'}
+async function init(){saveSaved();try{const [popular,upcoming]=await Promise.all([api('/top/anime?filter=bypopularity&limit=12'),api('/seasons/now?limit=12')]);renderCards('featured',popular);renderCards('latest',upcoming);fillGenres();}catch(e){setStatus('featured','Impossible de joindre Jikan pour le moment. Vérifie ta connexion puis réessaie.');setStatus('latest','Le catalogue se chargera dès que l’API sera disponible.')}} 
+async function fillGenres(){try{const genres=await api('/genres/anime');$('genre').innerHTML='<option value="">Tous les genres</option>'+genres.map(g=>'<option value="'+g.mal_id+'">'+esc(g.name)+'</option>').join('')}catch(e){}}
+function showResults(title){$('hero').classList.add('hidden');$('featuredSection').classList.add('hidden');$('latestSection').classList.add('hidden');$('resultsSection').classList.remove('hidden');$('filters').classList.toggle('hidden',!['genres','popular','season','search'].includes(state.page));$('resultsTitle').textContent=title}
+async function loadPage(reset){if(state.busy)return;if(reset){state.pageNum=1;state.items=[]}state.busy=true;const target='results';showResults(state.query?'Résultats pour « '+state.query+' »':({popular:'Animes populaires',season:'Cette saison',genres:'Explorer par genre',saved:'Ma liste'})[state.page]||'Catalogue');if(reset)setStatus(target,'Chargement du catalogue…');let path='';
+try{if(state.page==='saved'){state.items=state.saved.slice();renderCards(target,sortItems(state.items));$('resultCount').textContent=state.items.length+' anime(s)';$('loadMore').classList.add('hidden');return}
+if(state.query)path='/anime?q='+encodeURIComponent(state.query)+'&limit=24&page='+state.pageNum;
+else if(state.page==='popular')path='/top/anime?filter=bypopularity&limit=24&page='+state.pageNum;
+else if(state.page==='season')path='/seasons/now?limit=24&page='+state.pageNum;
+else if(state.page==='genres'&&state.genre)path='/anime?genres='+state.genre+'&limit=24&page='+state.pageNum;
+else path='/top/anime?limit=24&page='+state.pageNum;
+const data=await api(path);state.items=reset?data:state.items.concat(data);renderCards(target,sortItems(state.items));$('resultCount').textContent=state.items.length+' résultat(s)';$('loadMore').classList.toggle('hidden',data.length<24);
+}catch(e){if(reset)setStatus(target,'Le catalogue est temporairement indisponible. Réessaie dans quelques secondes.');toast(e.message)}finally{state.busy=false}}
+function sortItems(items){const a=items.slice();if(state.sort==='title')a.sort((x,y)=>titleOf(x).localeCompare(titleOf(y)));else if(state.sort==='popularity')a.sort((x,y)=>(x.popularity||999999)-(y.popularity||999999));else a.sort((x,y)=>(y.score||0)-(x.score||0));return a}
+function switchPage(page){state.page=page;state.query='';$('search').value='';document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page));if(page==='home'){$('hero').classList.remove('hidden');$('featuredSection').classList.remove('hidden');$('latestSection').classList.remove('hidden');$('resultsSection').classList.add('hidden');$('filters').classList.add('hidden')}else{if(page==='genres'){$('filters').classList.remove('hidden');$('genre').classList.remove('hidden')}else $('genre').classList.add('hidden');loadPage(true)}}
+function toggleSaved(id){id=Number(id);const found=state.items.concat(state.saved).find(a=>a.mal_id===id);if(isSaved(id)){state.saved=state.saved.filter(a=>a.mal_id!==id);toast('Retiré de ta liste')}else if(found){state.saved.unshift(found);toast('Ajouté à ta liste ♥')}saveSaved();document.querySelectorAll('[data-fav="'+id+'"]').forEach(b=>{b.classList.toggle('on',isSaved(id));b.textContent=isSaved(id)?'♥':'＋'});if(state.page==='saved')loadPage(true)}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').classList.add('hidden'),2400)}
+async function openDetail(id){$('modal').classList.remove('hidden');$('detail').innerHTML='<div class="status">Chargement de la fiche…</div>';try{const a=await api('/anime/'+id+'/full').then(d=>d[0]);if(!a)throw Error('Fiche indisponible');const img=imageOf(a);const genres=(a.genres||[]).concat(a.themes||[]).slice(0,9);$('detail').innerHTML='<div class="detail"><div>'+(img?'<img src="'+esc(img)+'" alt="'+esc(titleOf(a))+'">':'')+'</div><div><div class="eyebrow">'+esc(a.type||'ANIME')+' · '+esc(yearOf(a))+'</div><h2>'+esc(titleOf(a))+'</h2><div class="muted">★ '+scoreOf(a)+' · '+esc(a.episodes||'?')+' épisodes · '+esc(a.status||'')+'</div><div class="tags">'+genres.map(g=>'<span class="tag">'+esc(g.name)+'</span>').join('')+'</div><p>'+esc((a.synopsis||'Aucun synopsis disponible.').replace(/\[Written by MAL Rewrite\]/g,''))+'</p><div class="detailActions"><button class="primary" id="detailSave">'+(isSaved(a.mal_id)?'♥ Dans ma liste':'＋ Ajouter à ma liste')+'</button><a class="secondary" style="text-decoration:none" href="'+esc(a.url||'https://myanimelist.net/')+'" target="_blank" rel="noopener noreferrer">Fiche MyAnimeList ↗</a></div><p class="muted" style="font-size:12px;margin-top:16px">Les options de visionnage dépendent des services disponibles dans ta région. Cette fiche ne lit ni n’héberge de vidéo.</p></div></div>';$('detailSave').onclick=()=>{toggleSaved(a.mal_id);$('detailSave').textContent=isSaved(a.mal_id)?'♥ Dans ma liste':'＋ Ajouter à ma liste'}}catch(e){$('detail').innerHTML='<div class="status">Impossible de charger cette fiche. Réessaie plus tard.</div>'}}
+document.addEventListener('click',e=>{const fav=e.target.closest('[data-fav]');if(fav){e.stopPropagation();toggleSaved(fav.dataset.fav);return}const article=e.target.closest('.anime');if(article)openDetail(article.dataset.id);const page=e.target.closest('[data-page]');if(page)switchPage(page.dataset.page)});
+$('close').onclick=()=>$('modal').classList.add('hidden');$('modal').addEventListener('click',e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')});document.addEventListener('keydown',e=>{if(e.key==='Escape')$('modal').classList.add('hidden')});
+$('search').addEventListener('input',()=>{clearTimeout(state.searchTimer);const q=$('search').value.trim();state.searchTimer=setTimeout(()=>{state.query=q;state.page='search';if(q.length>=2)loadPage(true);else if(!q)switchPage('home')},350)});
+$('genre').addEventListener('change',()=>{state.genre=$('genre').value;loadPage(true)});$('sort').addEventListener('change',()=>{state.sort=$('sort').value;if(state.page==='saved'||state.items.length)renderCards('results',sortItems(state.items))});
+$('loadMore').onclick=()=>{state.pageNum++;loadPage(false)};$('explore').onclick=()=>switchPage('popular');
+init();
 })();
-</script>
-</body>
-</html>
+</script></body></html>

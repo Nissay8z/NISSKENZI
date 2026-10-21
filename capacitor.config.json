@@ -1,0 +1,8 @@
+{
+  "appId": "com.nisskenzi.app",
+  "appName": "NISSKENZI",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

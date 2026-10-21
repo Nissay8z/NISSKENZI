@@ -34,19 +34,21 @@ function renderCatalog(){
  catalog.querySelectorAll('.play').forEach(btn=>btn.addEventListener('click',()=>{const f=list[Number(btn.dataset.index)];if(!f)return;document.getElementById('playingTitle').textContent=f.title.replace(/^File:/,'');player.src='https://commons.wikimedia.org/wiki/Special:Redirect/file/'+encodeURIComponent(f.title.replace(/^File:/,''));player.classList.remove('hidden');player.load();document.getElementById('reader').scrollIntoView({behavior:'smooth'});status.textContent='Tentative de lecture depuis Wikimedia Commons… Si cela échoue, ouvre la fiche du fichier.';player.play().catch(()=>{status.textContent='Appuie sur Lecture. Si le format n’est pas compatible, utilise la fiche source.'})}));
 }
 async function loadCatalog(){
- catalogStatus.textContent='Recherche des fichiers disponibles sur Wikimedia Commons…';
+ catalogStatus.textContent='Recherche des vidéos dont la fiche indique CC0 / domaine public…';
  catalog.innerHTML='<div class="empty">Chargement…</div>';
  const cats=['Category:Pornographic_videos','Category:Videos_of_human_sexual_activity'];
  try{
   const results=await Promise.all(cats.map(async cat=>{
-   const url='https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&list=categorymembers&cmtitle='+encodeURIComponent(cat)+'&cmtype=file&cmlimit=50';
-   const res=await fetch(url);if(!res.ok)throw new Error('API indisponible');const data=await res.json();return (data.query?.categorymembers||[]).filter(x=>/\.(ogv|ogg|webm|mp4|mov|mkv)$/i.test(x.title));
+   const url='https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=categorymembers&gcmtitle='+encodeURIComponent(cat)+'&gcmtype=file&gcmlimit=100&prop=imageinfo&iiprop=url|extmetadata';
+   const res=await fetch(url);if(!res.ok)throw new Error('API indisponible');const data=await res.json();
+   return Object.values(data.query?.pages||{}).filter(p=>/\.(ogv|ogg|webm|mp4|mov|mkv)$/i.test(p.title)).map(p=>{const info=p.imageinfo?.[0]||{};const meta=info.extmetadata||{};const license=(meta.LicenseShortName?.value||'').replace(/<[^>]*>/g,'').trim();const licenseUrl=(meta.LicenseUrl?.value||'').trim();return {title:p.title,url:info.url||'',license,licenseUrl,description:(meta.ImageDescription?.value||'').replace(/<[^>]*>/g,' ').trim(),author:(meta.Artist?.value||'').replace(/<[^>]*>/g,' ').trim()};});
   }));
-  const seen=new Set();files=results.flat().filter(f=>!seen.has(f.title)&&seen.add(f.title));
-  if(!files.length){catalogStatus.textContent='Aucun fichier vidéo n’a été trouvé dans ces catégories pour le moment.';catalog.innerHTML='<div class="empty">Aucune vidéo disponible dans les catégories consultées. Tu peux consulter les catégories sources ci-dessous.</div>';return;}
-  catalogStatus.textContent=files.length+' fichier(s) vidéo trouvé(s). La licence de chaque fichier doit être vérifiée sur sa fiche.';
+  const seen=new Set();
+  files=results.flat().filter(f=>{if(seen.has(f.title)||!f.url)return false;seen.add(f.title);return /CC0|Public domain|Public Domain/i.test(f.license+' '+f.licenseUrl);});
+  if(!files.length){catalogStatus.textContent='Aucun fichier vidéo avec licence CC0 ou domaine public confirmé par les métadonnées n’a été trouvé dans les catégories consultées.';catalog.innerHTML='<div class="empty">Pas de résultat vérifié pour le moment. Consulte directement les catégories sources, mais vérifie la licence de chaque fichier.</div>';return;}
+  catalogStatus.textContent=files.length+' vidéo(s) dont la fiche indique CC0 ou domaine public. Vérifie aussi les droits à l’image et les obligations légales avant republication.';
   renderCatalog();
- }catch(e){catalogStatus.textContent='Le catalogue automatique n’a pas pu se connecter à Wikimedia Commons. Réessaie plus tard ou ouvre les catégories sources.';catalog.innerHTML='<div class="empty">Impossible de charger les résultats. Vérifie ta connexion ou consulte les liens de source.</div>';}
+ }catch(e){catalogStatus.textContent='Le catalogue automatique n’a pas pu vérifier les licences sur Wikimedia Commons. Réessaie plus tard ou consulte les catégories sources.';catalog.innerHTML='<div class="empty">Impossible de charger les résultats vérifiés.</div>';}
 }
 document.getElementById('search').addEventListener('input',renderCatalog);
 document.getElementById('reloadCatalog').addEventListener('click',loadCatalog);

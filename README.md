@@ -24,3 +24,16 @@ Le site est un catalogue : il ne télécharge, ne stocke et n'héberge aucune vi
 
 ## Développement
 Le site est volontairement sans framework et sans étape de compilation : modifie `index.html`, puis pousse sur `main`.
+
+## Application Android (APK)
+
+Le dépôt contient une configuration Capacitor et un workflow GitHub Actions qui construit automatiquement un APK de test installable, à chaque modification des fichiers de l'application.
+
+1. Ouvre l'onglet [Actions](https://github.com/Nissay8z/NISSKENZI/actions/workflows/android-apk.yml).
+2. Sélectionne **Build NISSKENZI Android APK**, puis le dernier lancement terminé.
+3. Dans **Artifacts**, télécharge **NISSKENZI-Android-APK** et extrais le fichier `app-debug.apk`.
+4. Ouvre l'APK sur ton téléphone et autorise l'installation depuis cette source si Android le demande.
+
+L'application vise une large compatibilité Android (Capacitor 6, Android 5.1/API 22 minimum par défaut). Le Galaxy A51 est largement compatible. Il s'agit d'un APK debug pour installation personnelle, pas d'une version signée pour publication sur le Play Store.
+
+Le catalogue utilise une API en ligne : l'application nécessite donc une connexion Internet pour récupérer les fiches et les recherches. Les résultats mis en cache peuvent rester disponibles temporairement.

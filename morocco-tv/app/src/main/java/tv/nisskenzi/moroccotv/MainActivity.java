@@ -27,7 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-  private final int bg=Color.rgb(12,15,22), panel=Color.rgb(25,30,42), red=Color.rgb(193,39,45), green=Color.rgb(0,98,51);
+  private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
   private LinearLayout root, list; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player;
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
   private static class Channel { String name,url,logo,group; Channel(String n,String u,String l,String g){name=n;url=u;logo=l;group=g;} }
@@ -37,9 +37,9 @@ public class MainActivity extends Activity {
     root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(34,22,34,18);setContentView(root);
     LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setOrientation(LinearLayout.HORIZONTAL);
     TextView flag=text("✦",34,Color.WHITE,true);flag.setBackgroundColor(green);flag.setGravity(Gravity.CENTER);header.addView(flag,new LinearLayout.LayoutParams(54,54));
-    LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(16,0,0,0);titles.addView(text("MOROCCO  TV",26,Color.WHITE,true));titles.addView(text("LA TÉLÉ MAROCAINE · EN DIRECT",12,0xFFB8C0D0,true));header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
+    LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(16,0,0,0);titles.addView(text("NISSAYSTREAM",26,Color.WHITE,true));titles.addView(text("VOTRE STREAMING · EN DIRECT",12,0xFFB8C0D0,true));header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
     TextView vavoo=text("VAVOO LIVE",14,Color.WHITE,true);vavoo.setPadding(18,14,18,14);vavoo.setBackgroundColor(red);vavoo.setFocusable(true);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);TextView refresh=text("↻  ACTUALISER",14,Color.WHITE,true);refresh.setPadding(18,14,18,14);refresh.setBackgroundColor(panel);refresh.setFocusable(true);refresh.setOnClickListener(v->loadChannels());LinearLayout.LayoutParams refreshParams=new LinearLayout.LayoutParams(-2,-2);refreshParams.leftMargin=10;header.addView(refresh,refreshParams);root.addView(header);
-    TextView heading=text("Les chaînes du Maroc",24,Color.WHITE,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=26;hp.bottomMargin=8;root.addView(heading,hp);
+    TextView heading=text("À LA UNE  ·  CHAÎNES EN DIRECT",22,Color.WHITE,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=26;hp.bottomMargin=8;root.addView(heading,hp);
     status=text("Chargement des chaînes publiques…",14,0xFFB8C0D0,false);root.addView(status);
     ScrollView scroll=new ScrollView(this);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(0,10,0,20);scroll.addView(list);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.topMargin=10;root.addView(scroll,sp);
     TextView foot=text("Sources publiques · La disponibilité dépend des diffuseurs",11,0xFF788397,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
@@ -71,8 +71,8 @@ public class MainActivity extends Activity {
     input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
     input.setPadding(18,12,18,12);input.setSelectAllOnFocus(true);
     LinearLayout wrap=new LinearLayout(this);wrap.setPadding(24,8,24,0);wrap.addView(input,new LinearLayout.LayoutParams(-1,-2));
-    new AlertDialog.Builder(this).setTitle("Configurer VAVOO Live")
-      .setMessage("Entre l’adresse du serveur proxy VAVOO accessible depuis la TV. Le serveur doit déjà être lancé.")
+    new AlertDialog.Builder(this).setTitle("VAVOO Live — configuration avancée")
+      .setMessage("Cette version nécessite encore un serveur compatible déjà lancé. Aucun achat de proxy n’est nécessaire pour tester les chaînes publiques. Cette configuration n’active pas VAVOO à elle seule.")
       .setView(wrap)
       .setPositiveButton("CONNECTER",(d,w)->{String value=input.getText().toString().trim().replaceAll("/+$","");if(!value.isEmpty()){prefs.edit().putString("vavoo_server",value).apply();loadVavooChannels();}})
       .setNeutralButton("EFFACER",(d,w)->{prefs.edit().remove("vavoo_server").apply();Toast.makeText(this,"Adresse VAVOO effacée",Toast.LENGTH_SHORT).show();})

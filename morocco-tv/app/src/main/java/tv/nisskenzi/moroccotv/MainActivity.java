@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
@@ -28,7 +30,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
-  private LinearLayout root, list; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel;
+  private LinearLayout root, list; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
   private static class Channel { String name,url,logo,group; Channel(String n,String u,String l,String g){name=n;url=u;logo=l;group=g;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
@@ -233,7 +235,7 @@ public class MainActivity extends Activity {
     nowTitle=text(ch.name,17,Color.WHITE,true);nowTitle.setSingleLine(true);nowTitle.setEllipsize(TextUtils.TruncateAt.END);nowTitle.setPadding(14,0,14,0);top.addView(nowTitle,new LinearLayout.LayoutParams(0,-2,1));
     TextView favorite=actionButton(isFavorite(ch)?"★ FAVORI":"☆ FAVORI",isFavorite(ch)?0xFF775A12:panel);favorite.setOnClickListener(v->{toggleFavorite(ch);favorite.setText(isFavorite(ch)?"★ FAVORI":"☆ FAVORI");favorite.setBackground(rounded(isFavorite(ch)?0xFF775A12:panel,10));});top.addView(favorite);
     root.addView(top,new LinearLayout.LayoutParams(-1,-2));
-    playerView=new PlayerView(this);playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);root.addView(playerView,new LinearLayout.LayoutParams(-1,0,1));
+    playerView=new PlayerView(this);playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);playerView.setUseTextureView(true);playerView.setShutterBackgroundColor(Color.BLACK);root.addView(playerView,new LinearLayout.LayoutParams(-1,0,1));
     LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);controls.setPadding(12,8,12,8);controls.setBackgroundColor(bg);
     TextView retry=actionButton("↻ RELANCER LE FLUX",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
     TextView info=actionButton("INFO FLUX",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=10;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nURL : "+ch.url+"\n\nSi la lecture échoue, le flux peut être hors ligne, géobloqué ou incompatible.").setPositiveButton("OK",null).show());
@@ -241,8 +243,7 @@ public class MainActivity extends Activity {
   }
   private void startPlayback(Channel ch){
     if(player!=null){player.release();player=null;}
-    player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(ch.url));player.prepare();player.play();
-    player.addListener(new Player.Listener(){@Override public void onPlayerError(PlaybackException e){Toast.makeText(MainActivity.this,"Lecture impossible : flux hors ligne, refusé ou format non pris en charge.",Toast.LENGTH_LONG).show();}});
+    player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(ch.url));player.addListener(new Player.Listener(){@Override public void onPlayerError(PlaybackException e){Toast.makeText(MainActivity.this,"Lecture impossible ("+e.getErrorCodeName()+"). Le flux peut être indisponible ou incompatible.",Toast.LENGTH_LONG).show();}});player.prepare();player.setPlayWhenReady(true);
   }
   private void returnHome(){if(player!=null){player.release();player=null;}currentChannel=null;buildHome();showChannels(new ArrayList<>(channels));}
   @Override public void onBackPressed(){if(player!=null){returnHome();}else super.onBackPressed();}

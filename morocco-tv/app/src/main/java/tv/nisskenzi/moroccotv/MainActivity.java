@@ -91,13 +91,14 @@ public class MainActivity extends Activity {
         HttpURLConnection c=(HttpURLConnection)new URL(playlist).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setRequestProperty("User-Agent","NissayStream/1.3");
         int code=c.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
         BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));String line,name="Chaîne importée",logo="",group="Playlist importée";
-        while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";int a=line.indexOf("tvg-logo=\\"");if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}int g=line.indexOf("group-title=\\"");if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group));}
+        while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group));}
         r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
       }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
       final ArrayList<Channel> result=found;final String err=error;
       runOnUiThread(()->{if(result.isEmpty())status.setText("Import impossible : "+err);else status.setText(result.size()+" chaînes importées");showChannels(result);});
     });
   }
+  private String attribute(String line,String key){String needle=key+"=\\\"";int a=line.indexOf(needle);if(a<0)return "";int start=a+needle.length();int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
   private void openVavooSettings(){
     SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
     String saved=prefs.getString("vavoo_server","");

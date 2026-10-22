@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
     titles.addView(text("NISSAYSTREAM",22,Color.WHITE,true));titles.addView(text("LE DIRECT, SANS COMPLICATION",10,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("M3U",panel);importBtn.setOnClickListener(v->openPlaylistImport());header.addView(importBtn); TextView vavoo=actionButton("VAVOO LIVE",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO LIVE",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(24,22,24,22);hero.setBackground(rounded(0xFF202633,18));
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
@@ -77,6 +77,34 @@ public class MainActivity extends Activity {
     };
     for(Channel extra:extras){boolean exists=false;for(Channel current:found){if(current.name.equalsIgnoreCase(extra.name)||current.url.equals(extra.url)){exists=true;break;}}if(!exists)found.add(extra);}
     final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
+  private void openSourceMenu(){
+    new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else openMacPortal();}).setNegativeButton("Annuler",null).show();
+  }
+  private EditText sourceField(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setTextColor(Color.WHITE);e.setHintTextColor(0xFF9BA7BA);return e;}
+  private void openXtream(){
+    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);
+    SharedPreferences p=getSharedPreferences("sources",MODE_PRIVATE);
+    EditText host=sourceField("Serveur, ex. https://exemple.com:8080"), user=sourceField("Nom d’utilisateur"), pass=sourceField("Mot de passe");
+    host.setText(p.getString("xc_host",""));user.setText(p.getString("xc_user",""));pass.setText(p.getString("xc_pass",""));
+    box.addView(host);box.addView(user);box.addView(pass);
+    new AlertDialog.Builder(this).setTitle("Xtream Codes").setMessage("Entre les identifiants fournis par ton service IPTV.").setView(box).setPositiveButton("CONNECTER",(d,w)->{
+      String h=host.getText().toString().trim().replaceAll("/+$",""),u=user.getText().toString().trim(),pw=pass.getText().toString().trim();
+      if(h.isEmpty()||u.isEmpty()||pw.isEmpty()){Toast.makeText(this,"Les trois champs sont obligatoires",Toast.LENGTH_SHORT).show();return;}
+      p.edit().putString("xc_host",h).putString("xc_user",u).putString("xc_pass",pw).apply();
+      loadImportedPlaylist(h+"/get.php?username="+android.net.Uri.encode(u)+"&password="+android.net.Uri.encode(pw)+"&type=m3u_plus&output=ts");
+    }).setNegativeButton("Annuler",null).show();
+  }
+  private void openMacPortal(){
+    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);
+    EditText portal=sourceField("URL du portail Stalker"),mac=sourceField("Adresse MAC de l’appareil autorisé");
+    box.addView(portal);box.addView(mac);
+    new AlertDialog.Builder(this).setTitle("Portail MAC / Stalker").setMessage("Les portails Stalker n’ont pas tous le même protocole. Cette option teste uniquement les portails qui exposent directement une playlist M3U via /playlist.m3u?mac=…; elle ne garantit pas la compatibilité avec tous les portails.").setView(box).setPositiveButton("TESTER",(d,w)->{
+      String h=portal.getText().toString().trim().replaceAll("/+$",""),m=mac.getText().toString().trim();
+      if(h.isEmpty()||m.isEmpty()){Toast.makeText(this,"URL et adresse MAC obligatoires",Toast.LENGTH_SHORT).show();return;}
+      getSharedPreferences("sources",MODE_PRIVATE).edit().putString("mac_portal",h).putString("mac_address",m).apply();
+      loadImportedPlaylist(h+"/playlist.m3u?mac="+android.net.Uri.encode(m));
+    }).setNegativeButton("Annuler",null).show();
+  }
   private void openPlaylistImport(){
     EditText input=new EditText(this);input.setSingleLine(true);input.setHint("URL complète de la playlist .m3u/.m3u8");input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
     String saved=getSharedPreferences("sources",MODE_PRIVATE).getString("m3u_url","");input.setText(saved);

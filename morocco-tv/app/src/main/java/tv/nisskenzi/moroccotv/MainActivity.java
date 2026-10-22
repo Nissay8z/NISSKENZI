@@ -1,6 +1,8 @@
 package tv.nisskenzi.moroccotv;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -36,7 +38,7 @@ public class MainActivity extends Activity {
     LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setOrientation(LinearLayout.HORIZONTAL);
     TextView flag=text("✦",34,Color.WHITE,true);flag.setBackgroundColor(green);flag.setGravity(Gravity.CENTER);header.addView(flag,new LinearLayout.LayoutParams(54,54));
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(16,0,0,0);titles.addView(text("MOROCCO  TV",26,Color.WHITE,true));titles.addView(text("LA TÉLÉ MAROCAINE · EN DIRECT",12,0xFFB8C0D0,true));header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView refresh=text("↻  ACTUALISER",14,Color.WHITE,true);refresh.setPadding(18,14,18,14);refresh.setBackgroundColor(panel);refresh.setFocusable(true);refresh.setOnClickListener(v->loadChannels());header.addView(refresh);root.addView(header);
+    TextView vavoo=text("VAVOO LIVE",14,Color.WHITE,true);vavoo.setPadding(18,14,18,14);vavoo.setBackgroundColor(red);vavoo.setFocusable(true);vavoo.setOnClickListener(v->openVavooSettings());header.addView(vavoo);TextView refresh=text("↻  ACTUALISER",14,Color.WHITE,true);refresh.setPadding(18,14,18,14);refresh.setBackgroundColor(panel);refresh.setFocusable(true);refresh.setOnClickListener(v->loadChannels());LinearLayout.LayoutParams refreshParams=new LinearLayout.LayoutParams(-2,-2);refreshParams.leftMargin=10;header.addView(refresh,refreshParams);root.addView(header);
     TextView heading=text("Les chaînes du Maroc",24,Color.WHITE,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=26;hp.bottomMargin=8;root.addView(heading,hp);
     status=text("Chargement des chaînes publiques…",14,0xFFB8C0D0,false);root.addView(status);
     ScrollView scroll=new ScrollView(this);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(0,10,0,20);scroll.addView(list);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.topMargin=10;root.addView(scroll,sp);
@@ -61,6 +63,53 @@ public class MainActivity extends Activity {
     };
     for(Channel extra:extras){boolean exists=false;for(Channel current:found){if(current.name.equalsIgnoreCase(extra.name)||current.url.equals(extra.url)){exists=true;break;}}if(!exists)found.add(extra);}
     final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
+  private void openVavooSettings(){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    String saved=prefs.getString("vavoo_server","");
+    EditText input=new EditText(this);input.setSingleLine(true);input.setText(saved);
+    input.setHint("http://IP_DU_SERVEUR:8888");
+    input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
+    input.setPadding(18,12,18,12);input.setSelectAllOnFocus(true);
+    LinearLayout wrap=new LinearLayout(this);wrap.setPadding(24,8,24,0);wrap.addView(input,new LinearLayout.LayoutParams(-1,-2));
+    new AlertDialog.Builder(this).setTitle("Configurer VAVOO Live")
+      .setMessage("Entre l’adresse du serveur proxy VAVOO accessible depuis la TV. Le serveur doit déjà être lancé.")
+      .setView(wrap)
+      .setPositiveButton("CONNECTER",(d,w)->{String value=input.getText().toString().trim().replaceAll("/+$","");if(!value.isEmpty()){prefs.edit().putString("vavoo_server",value).apply();loadVavooChannels();}})
+      .setNeutralButton("EFFACER",(d,w)->{prefs.edit().remove("vavoo_server").apply();Toast.makeText(this,"Adresse VAVOO effacée",Toast.LENGTH_SHORT).show();})
+      .setNegativeButton("ANNULER",null).show();
+  }
+  private void loadVavooChannels(){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    String server=prefs.getString("vavoo_server","").trim();
+    if(server.isEmpty()){openVavooSettings();return;}
+    status.setText("Chargement du catalogue VAVOO…");
+    io.execute(()->{
+      ArrayList<Channel> found=new ArrayList<>();
+      String playlist=server.endsWith("/channels.m3u8")?server:server+"/channels.m3u8";
+      HttpURLConnection c=null;
+      try{
+        URL u=new URL(playlist);c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(12000);c.setReadTimeout(25000);c.setRequestProperty("User-Agent","NISSKENZI-TV/1.0");
+        BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));
+        String line,name="VAVOO channel",logo="",group="VAVOO Live";
+        while((line=r.readLine())!=null){
+          if(line.startsWith("#EXTINF:")){
+            int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"VAVOO channel";logo="";group="VAVOO Live";
+            int a=line.indexOf("tvg-logo=\"");
+            if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
+            int g=line.indexOf("group-title=\"");
+            if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
+          }else if(line.startsWith("http://")||line.startsWith("https://")){
+            found.add(new Channel(name,line.trim(),logo,group));
+          }
+        }
+        r.close();
+      }catch(Exception e){
+        runOnUiThread(()->status.setText("Serveur VAVOO inaccessible. Vérifie l’adresse et le serveur."));
+      }finally{if(c!=null)c.disconnect();}
+      final ArrayList<Channel> result=found;
+      runOnUiThread(()->{if(result.isEmpty())status.setText("Aucune chaîne reçue de VAVOO. Vérifie que /channels.m3u8 répond.");showChannels(result);});
+    });
+  }
   private void showChannels(ArrayList<Channel> result){channels.clear();channels.addAll(result);list.removeAllViews();if(channels.isEmpty()){status.setText("Impossible de charger la liste pour le moment. Vérifie la connexion puis actualise.");return;}status.setText(channels.size()+" flux référencés · appuie sur une chaîne pour regarder");
     for(int i=0;i<channels.size();i++){Channel ch=channels.get(i);LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(16,12,16,12);row.setBackgroundColor(panel);row.setFocusable(true);row.setClickable(true);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=8;list.addView(row,rp);
       TextView badge=text(String.format(java.util.Locale.US,"%02d",i+1),18,Color.WHITE,true);badge.setGravity(Gravity.CENTER);badge.setBackgroundColor(i%3==0?red:green);row.addView(badge,new LinearLayout.LayoutParams(54,54));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(16,0,0,0);TextView n=text(ch.name,17,Color.WHITE,true);n.setSingleLine(true);n.setEllipsize(TextUtils.TruncateAt.END);info.addView(n);info.addView(text(ch.group,12,0xFF9BA7BA,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(text("▶",20,0xFF7DDAA4,true));row.setOnClickListener(v->play(ch));row.setOnFocusChangeListener((v,focus)->v.setBackgroundColor(focus?0xFF374255:panel));if(i==0)row.requestFocus();}

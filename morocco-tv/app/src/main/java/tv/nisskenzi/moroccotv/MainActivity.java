@@ -34,7 +34,7 @@ public class MainActivity extends Activity {
   private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
   private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
-  private static class Channel { String name,url,logo,group,vavooSourceUrl; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null);} Channel(String n,String u,String l,String g,boolean v,String source){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;} }
+  private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
               ("Italie".equals(wanted)&&item.country.equalsIgnoreCase("Italy")) ||
               ("Royaume-Uni".equals(wanted)&&item.country.equalsIgnoreCase("United Kingdom"));
           if(!matches)continue;
-          found.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl));
+          found.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl,item.country));
         }
         if(found.isEmpty())error="Aucune chaîne trouvée pour « "+wanted+" ». Maintiens VAVOO appuyé pour changer le pays.";
       }catch(Exception e){
@@ -193,6 +193,7 @@ public class MainActivity extends Activity {
           channels.clear();channels.addAll(result);activeFilter="TOUT";
           showChannels(new ArrayList<>(result));
           status.setText(result.size()+" chaînes VAVOO · catalogue natif chargé");
+          if(player!=null&&playerStage!=null){showChannelDrawer(false);}
         }
       });
     });
@@ -263,11 +264,12 @@ public class MainActivity extends Activity {
     ScrollView scroll=new ScrollView(this);LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(0,12,0,8);scroll.addView(rows);channelDrawer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
     if(countries){
       java.util.LinkedHashSet<String> countriesList=new java.util.LinkedHashSet<>();
-      for(Channel item:channels){if(item.isVavoo&&item.group!=null&&!item.group.trim().isEmpty())countriesList.add(item.group);}
+      for(Channel item:channels){if(item.isVavoo&&item.vavooCountry!=null&&!item.vavooCountry.trim().isEmpty())countriesList.add(item.vavooCountry);}
+      countriesList.add("Tous les pays");
       if(countriesList.isEmpty())for(String country:new String[]{"France","Germany","Spain","Italy","United Kingdom","Tous les pays"})countriesList.add(country);
       for(String country:countriesList){
         TextView row=drawerRow(country,"⌖");
-        row.setOnClickListener(v->{getSharedPreferences("sources",MODE_PRIVATE).edit().putString("vavoo_country_filter",country).apply();if(channelDrawer!=null)playerStage.removeView(channelDrawer);channelDrawer=null;loadVavooChannels();});
+        row.setOnClickListener(v->{String filter=country.equalsIgnoreCase("Germany")?"Allemagne":country.equalsIgnoreCase("Spain")?"Espagne":country.equalsIgnoreCase("Italy")?"Italie":country.equalsIgnoreCase("United Kingdom")?"Royaume-Uni":country;getSharedPreferences("sources",MODE_PRIVATE).edit().putString("vavoo_country_filter",filter).apply();if(channelDrawer!=null)playerStage.removeView(channelDrawer);channelDrawer=null;loadVavooChannels();});
         rows.addView(row);
       }
     }else{

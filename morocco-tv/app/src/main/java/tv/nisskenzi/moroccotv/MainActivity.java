@@ -17,6 +17,8 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -31,8 +33,8 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
   private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
-  private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
-  private static class Channel { String name,url,logo,group; Channel(String n,String u,String l,String g){name=n;url=u;logo=l;group=g;} }
+  private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
+  private static class Channel { String name,url,logo,group,vavooSourceUrl; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null);} Channel(String n,String u,String l,String g,boolean v,String source){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
@@ -49,7 +51,7 @@ public class MainActivity extends Activity {
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
     titles.addView(text("NISSAYSTREAM",20,Color.WHITE,true));titles.addView(text("TON UNIVERS EN DIRECT",9,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->loadVavooChannels());vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
     searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
@@ -145,72 +147,54 @@ public class MainActivity extends Activity {
   }
   private String attribute(String line,String key){int a=line.indexOf(key+"=");if(a<0)return "";int start=a+key.length()+1;if(start<line.length()&&line.charAt(start)=='"')start++;int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
   private void openVavooSettings(){
+    String[] labels={"France","Allemagne","Espagne","Italie","Royaume-Uni","Tous les pays"};
+    String[] catalogCountries={"France","Germany","Spain","Italy","United Kingdom","*"};
     SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    String saved=prefs.getString("vavoo_server","");
-    EditText input=new EditText(this);input.setSingleLine(true);input.setText(saved);
-    input.setHint("https://serveur/playlist.m3u8");
-    input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
-    input.setPadding(18,12,18,12);input.setSelectAllOnFocus(true);
-    LinearLayout wrap=new LinearLayout(this);wrap.setPadding(24,8,24,0);wrap.addView(input,new LinearLayout.LayoutParams(-1,-2));
-    new AlertDialog.Builder(this).setTitle("VAVOO · VXParser")
-      .setMessage("Adresse de base d’une instance VXParser accessible. NISSKENZI essaie l’API Xtream JSON puis la playlist M3U. Le catalogue LiveTV doit être initialisé dans VXParser. Cette étape connecte l’application à VXParser ; elle n’embarque pas encore le moteur Python dans l’APK.")
-      .setView(wrap)
-      .setPositiveButton("CONNECTER",(d,w)->{String value=input.getText().toString().trim().replaceAll("/+$","");if(!value.isEmpty()){prefs.edit().putString("vavoo_server",value).apply();loadVavooChannels();}})
-      .setNeutralButton("EFFACER",(d,w)->{prefs.edit().remove("vavoo_server").apply();Toast.makeText(this,"Adresse VAVOO effacée",Toast.LENGTH_SHORT).show();})
-      .setNegativeButton("ANNULER",null).show();
+    String saved=prefs.getString("vavoo_country_filter","France");
+    int selected=0;
+    for(int i=0;i<labels.length;i++)if(labels[i].equals(saved)){selected=i;break;}
+    new AlertDialog.Builder(this).setTitle("VAVOO · pays du catalogue")
+      .setSingleChoiceItems(labels,selected,(dialog,which)->{
+        prefs.edit().putString("vavoo_country_filter",labels[which]).apply();
+        dialog.dismiss();
+        loadVavooChannels();
+      })
+      .setNegativeButton("Fermer",null).show();
   }
   private void loadVavooChannels(){
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    String server=prefs.getString("vavoo_server","").trim().replaceAll("/+$","");
-    if(server.isEmpty()){openVavooSettings();return;}
-    status.setText("Connexion à VXParser · catalogue VAVOO…");
+    status.setText("Connexion native à VAVOO…");
     io.execute(()->{
       ArrayList<Channel> found=new ArrayList<>();
-      String lastError="Aucune chaîne reçue depuis VXParser.";
+      String error="";
       try{
-        String api=server+"/player_api.php?username=nissay&password=stream&action=get_live_streams";
-        HttpURLConnection c=(HttpURLConnection)new URL(api).openConnection();
-        c.setConnectTimeout(10000);c.setReadTimeout(25000);c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent","NissayStream/1.5");
-        int code=c.getResponseCode();
-        if(code<200||code>=300)throw new java.io.IOException("API VXParser : HTTP "+code);
-        StringBuilder body=new StringBuilder();BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));
-        String line;while((line=r.readLine())!=null)body.append(line);r.close();c.disconnect();
-        JSONArray items;String json=body.toString().trim();
-        if(json.startsWith("["))items=new JSONArray(json);
-        else if(json.startsWith("{")){
-          JSONObject object=new JSONObject(json);
-          if(object.has("data")&&object.get("data") instanceof JSONArray)items=object.getJSONArray("data");
-          else {items=new JSONArray();java.util.Iterator<String> keys=object.keys();while(keys.hasNext()){Object value=object.opt(keys.next());if(value instanceof JSONObject)items.put(value);}}
-        }else throw new java.io.IOException("Réponse API VXParser non reconnue.");
-        for(int i=0;i<items.length();i++){
-          JSONObject item=items.optJSONObject(i);if(item==null)continue;
-          String id=item.optString("stream_id",item.optString("id",""));
-          String name=item.optString("name",item.optString("stream_name","Chaîne VAVOO"));
-          String logo=item.optString("stream_icon",item.optString("logo",""));
-          String group=item.optString("category_name",item.optString("group-title","VAVOO Live"));
-          String stream=item.optString("direct_source","");
-          if(stream.isEmpty()&&!id.isEmpty())stream=server+"/live/nissay/stream/"+android.net.Uri.encode(id)+".m3u8";
-          if(stream.startsWith("http://")||stream.startsWith("https://"))found.add(new Channel(name,stream,logo,group));
+        java.util.List<VavooProvider.VavooChannel> remote=VavooProvider.loadChannels();
+        String wanted=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_country_filter","France");
+        for(VavooProvider.VavooChannel item:remote){
+          boolean matches="Tous les pays".equals(wanted) ||
+              ("France".equals(wanted)&&item.country.equalsIgnoreCase("France")) ||
+              ("Allemagne".equals(wanted)&&item.country.equalsIgnoreCase("Germany")) ||
+              ("Espagne".equals(wanted)&&item.country.equalsIgnoreCase("Spain")) ||
+              ("Italie".equals(wanted)&&item.country.equalsIgnoreCase("Italy")) ||
+              ("Royaume-Uni".equals(wanted)&&item.country.equalsIgnoreCase("United Kingdom"));
+          if(!matches)continue;
+          found.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl));
         }
-        if(found.isEmpty())lastError="L’API répond, mais aucune chaîne LiveTV n’est en cache. Lance « Get LiveTV Lists » dans VXParser.";
-      }catch(Exception e){lastError=e.getMessage()==null?"Connexion API impossible":e.getMessage();}
-      if(found.isEmpty()){
-        String[] candidates={server+"/get.php?username=nissay&password=stream&type=m3u_plus&output=hls",server+"/get.php?username=nissay&password=stream&type=m3u&output=hls"};
-        for(String playlist:candidates){
-          HttpURLConnection conn=null;
-          try{
-            conn=(HttpURLConnection)new URL(playlist).openConnection();conn.setConnectTimeout(10000);conn.setReadTimeout(25000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.5");
-            int code=conn.getResponseCode();if(code<200||code>=300){lastError="VXParser M3U : HTTP "+code;continue;}
-            BufferedReader r=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));String ln,name="Chaîne VAVOO",logo="",group="VAVOO Live";
-            while((ln=r.readLine())!=null){ln=ln.trim();if(ln.startsWith("#EXTINF:")){int comma=ln.lastIndexOf(',');name=comma>=0?ln.substring(comma+1).trim():"Chaîne VAVOO";logo=attribute(ln,"tvg-logo");group=attribute(ln,"group-title");if(group.isEmpty())group="VAVOO Live";}else if((ln.startsWith("http://")||ln.startsWith("https://"))&&!ln.startsWith("#"))found.add(new Channel(name,ln,logo,group));}
-            r.close();if(!found.isEmpty()){lastError="";break;}
-          }catch(Exception e){lastError=e.getMessage()==null?"Import M3U impossible":e.getMessage();}
-          finally{if(conn!=null)conn.disconnect();}
-        }
+        if(found.isEmpty())error="Aucune chaîne trouvée pour « "+wanted+" ». Maintiens VAVOO appuyé pour changer le pays.";
+      }catch(Exception e){
+        error=e.getMessage()==null?"Erreur de connexion au catalogue":e.getMessage();
       }
-      final ArrayList<Channel> result=found;final String error=lastError;
-      runOnUiThread(()->{if(result.isEmpty()){status.setText("VAVOO / VXParser : "+error);list.removeAllViews();}else{channels.clear();channels.addAll(result);activeFilter="TOUT";showChannels(new ArrayList<>(result));status.setText(result.size()+" chaînes VAVOO chargées via VXParser");}});
+      final ArrayList<Channel> result=found;final String err=error;
+      runOnUiThread(()->{
+        if(result.isEmpty()){
+          status.setText("VAVOO : "+err);
+          list.removeAllViews();
+          Toast.makeText(this,err,Toast.LENGTH_LONG).show();
+        }else{
+          channels.clear();channels.addAll(result);activeFilter="TOUT";
+          showChannels(new ArrayList<>(result));
+          status.setText(result.size()+" chaînes VAVOO · catalogue natif chargé");
+        }
+      });
     });
   }
   private void showChannels(ArrayList<Channel> result){
@@ -242,7 +226,7 @@ public class MainActivity extends Activity {
     }
     if(!channels.isEmpty())list.setFocusable(false);
   }
-  private void loadLogo(ImageView target,TextView fallback,String address){io.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
+  private void loadLogo(ImageView target,TextView fallback,String address){logoIo.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
   private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}
   private void toggleFavorite(Channel ch){SharedPreferences p=getSharedPreferences("favorites",MODE_PRIVATE);p.edit().putBoolean(ch.url,!p.getBoolean(ch.url,false)).apply();}
   private void play(Channel ch){
@@ -261,9 +245,41 @@ public class MainActivity extends Activity {
   }
   private void startPlayback(Channel ch){
     if(player!=null){player.release();player=null;}
-    player=new ExoPlayer.Builder(this).build();playerView.setPlayer(player);player.setMediaItem(MediaItem.fromUri(ch.url));player.addListener(new Player.Listener(){@Override public void onPlayerError(PlaybackException e){Toast.makeText(MainActivity.this,"Lecture impossible ("+e.getErrorCodeName()+"). Le flux peut être indisponible ou incompatible.",Toast.LENGTH_LONG).show();}});player.prepare();player.setPlayWhenReady(true);
+    DefaultHttpDataSource.Factory dataSourceFactory=new DefaultHttpDataSource.Factory()
+      .setUserAgent(ch.isVavoo?"VAVOO/2.6":"NissayStream/1.5")
+      .setAllowCrossProtocolRedirects(true);
+    ExoPlayer activePlayer=new ExoPlayer.Builder(this)
+      .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)).build();
+    player=activePlayer;
+    playerView.setPlayer(activePlayer);
+    activePlayer.addListener(new Player.Listener(){
+      @Override public void onPlayerError(PlaybackException e){
+        Toast.makeText(MainActivity.this,"Lecture impossible ("+e.getErrorCodeName()+"). Le flux peut être indisponible ou incompatible.",Toast.LENGTH_LONG).show();
+      }
+    });
+    if(ch.isVavoo){
+      Toast.makeText(this,"Résolution du flux VAVOO…",Toast.LENGTH_SHORT).show();
+      io.execute(()->{
+        try{
+          String resolved=VavooProvider.resolveStream(ch.vavooSourceUrl);
+          runOnUiThread(()->{
+            if(player!=activePlayer||currentChannel!=ch)return;
+            activePlayer.setMediaItem(MediaItem.fromUri(resolved));
+            activePlayer.prepare();
+            activePlayer.setPlayWhenReady(true);
+          });
+        }catch(Exception e){
+          String message=e.getMessage()==null?"Résolution VAVOO impossible":e.getMessage();
+          runOnUiThread(()->{if(player==activePlayer)Toast.makeText(MainActivity.this,"VAVOO : "+message,Toast.LENGTH_LONG).show();});
+        }
+      });
+    }else{
+      activePlayer.setMediaItem(MediaItem.fromUri(ch.url));
+      activePlayer.prepare();
+      activePlayer.setPlayWhenReady(true);
+    }
   }
   private void returnHome(){if(player!=null){player.release();player=null;}currentChannel=null;buildHome();showChannels(new ArrayList<>(channels));}
   @Override public void onBackPressed(){if(player!=null){returnHome();}else super.onBackPressed();}
-  @Override protected void onDestroy(){if(player!=null)player.release();io.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(player!=null)player.release();io.shutdownNow();logoIo.shutdownNow();super.onDestroy();}
 }

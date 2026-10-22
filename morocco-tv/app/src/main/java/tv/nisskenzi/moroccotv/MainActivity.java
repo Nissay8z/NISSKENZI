@@ -30,7 +30,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
-  private LinearLayout root, list; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT";
+  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
   private static class Channel { String name,url,logo,group; Channel(String n,String u,String l,String g){name=n;url=u;logo=l;group=g;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
@@ -43,19 +43,20 @@ public class MainActivity extends Activity {
     TextView b=text(label,13,Color.WHITE,true);b.setGravity(Gravity.CENTER);b.setPadding(18,12,18,12);b.setBackground(rounded(color,10));b.setFocusable(true);return b;
   }
   private void buildHome(){
-    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(28,18,28,12);setContentView(root);
+    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(20,14,20,10);setContentView(root);
     LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
-    TextView brand=text("N",26,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(red,10));header.addView(brand,new LinearLayout.LayoutParams(48,48));
+    TextView brand=text("N",27,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(red,14));header.addView(brand,new LinearLayout.LayoutParams(44,44));
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
-    titles.addView(text("NISSAYSTREAM",22,Color.WHITE,true));titles.addView(text("LE DIRECT, SANS COMPLICATION",10,0xFFADB4C2,true));
+    titles.addView(text("NISSAYSTREAM",20,Color.WHITE,true));titles.addView(text("TON UNIVERS EN DIRECT",9,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
-    LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(24,22,24,22);hero.setBackground(rounded(0xFF202633,18));
+    searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
+    LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
-    TextView eyebrow=text("NISSAYSTREAM  ORIGINAL",10,0xFFFF5964,true);hero.addView(eyebrow);
+    TextView eyebrow=text("À LA UNE  •  DIRECT",10,0xFFFF5964,true);hero.addView(eyebrow);
     TextView title=text("Le direct.\nEn grand.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
-    TextView desc=text("Retrouve les chaînes marocaines et tes flux en direct dans une interface simple.",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
+    TextView desc=text("Tes chaînes et tes playlists, réunies au même endroit.",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
     status=text("Chargement des chaînes…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
     LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
     TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
@@ -202,7 +203,7 @@ public class MainActivity extends Activity {
   private void showChannels(ArrayList<Channel> result){
     if(result!=null&&!result.isEmpty()){channels.clear();channels.addAll(result);}list.removeAllViews();
     ArrayList<Channel> visible=new ArrayList<>();
-    for(Channel ch:channels){if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;visible.add(ch);}
+    for(Channel ch:channels){if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;String q=searchQuery==null?"":searchQuery.trim().toLowerCase(java.util.Locale.ROOT);if(!q.isEmpty()&&!((ch.name+" "+ch.group).toLowerCase(java.util.Locale.ROOT).contains(q)))continue;visible.add(ch);}
     if(visible.isEmpty()){status.setText("Aucun contenu dans "+activeFilter+". Importe une playlist ou ajoute des favoris.");return;}
     status.setText(visible.size()+" contenus disponibles · sélectionne une carte pour regarder");
     java.util.LinkedHashMap<String,ArrayList<Channel>> sections=new java.util.LinkedHashMap<>();
@@ -217,7 +218,8 @@ public class MainActivity extends Activity {
       for(Channel ch:section.getValue()){
         LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(10,10,10,12);card.setBackground(rounded(panel,12));card.setFocusable(true);card.setClickable(true);
         LinearLayout.LayoutParams cardP=new LinearLayout.LayoutParams(154,154);cardP.rightMargin=10;cards.addView(card,cardP);
-        TextView poster=text("▶",27,Color.WHITE,true);poster.setGravity(Gravity.CENTER);poster.setBackground(rounded(count%3==0?0xFF9E1018:(count%3==1?0xFF174D3B:0xFF303A50),10));card.addView(poster,new LinearLayout.LayoutParams(-1,82));
+        FrameLayout posterBox=new FrameLayout(this);posterBox.setBackground(rounded(count%3==0?0xFF55232B:(count%3==1?0xFF1D493D:0xFF303A50),10));LinearLayout.LayoutParams posterP=new LinearLayout.LayoutParams(-1,82);card.addView(posterBox,posterP);
+        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.FIT_CENTER);poster.setPadding(14,10,14,10);posterBox.addView(poster,new FrameLayout.LayoutParams(-1,-1));TextView placeholder=text("▶",24,0xFFDCE2EB,true);placeholder.setGravity(Gravity.CENTER);posterBox.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));if(ch.logo!=null&&!ch.logo.trim().isEmpty())loadLogo(poster,placeholder,ch.logo);
         TextView name=text(ch.name,13,Color.WHITE,true);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);LinearLayout.LayoutParams nameP=new LinearLayout.LayoutParams(-1,0,1);nameP.topMargin=8;card.addView(name,nameP);
         TextView meta=text((isFavorite(ch)?"★  ":"")+"EN DIRECT",9,isFavorite(ch)?0xFFFFD166:0xFFB7C0CF,true);LinearLayout.LayoutParams metaP=new LinearLayout.LayoutParams(-1,-2);metaP.topMargin=4;card.addView(meta,metaP);
         card.setOnLongClickListener(v->{toggleFavorite(ch);Toast.makeText(this,isFavorite(ch)?"Ajouté aux favoris":"Retiré des favoris",Toast.LENGTH_SHORT).show();showChannels(new ArrayList<>(channels));return true;});
@@ -227,6 +229,7 @@ public class MainActivity extends Activity {
     }
     if(!channels.isEmpty())list.setFocusable(false);
   }
+  private void loadLogo(ImageView target,TextView fallback,String address){io.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
   private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}
   private void toggleFavorite(Channel ch){SharedPreferences p=getSharedPreferences("favorites",MODE_PRIVATE);p.edit().putBoolean(ch.url,!p.getBoolean(ch.url,false)).apply();}
   private void play(Channel ch){

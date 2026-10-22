@@ -33,16 +33,30 @@ public class MainActivity extends Activity {
   private static class Channel { String name,url,logo,group; Channel(String n,String u,String l,String g){name=n;url=u;logo=l;group=g;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
+  private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
+    android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
+    d.setColor(color);d.setCornerRadius(radius);return d;
+  }
+  private TextView actionButton(String label,int color){
+    TextView b=text(label,13,Color.WHITE,true);b.setGravity(Gravity.CENTER);b.setPadding(18,12,18,12);b.setBackground(rounded(color,10));b.setFocusable(true);return b;
+  }
   private void buildHome(){
-    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(34,22,34,18);setContentView(root);
-    LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setOrientation(LinearLayout.HORIZONTAL);
-    TextView flag=text("✦",34,Color.WHITE,true);flag.setBackgroundColor(green);flag.setGravity(Gravity.CENTER);header.addView(flag,new LinearLayout.LayoutParams(54,54));
-    LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(16,0,0,0);titles.addView(text("NISSAYSTREAM",26,Color.WHITE,true));titles.addView(text("VOTRE STREAMING · EN DIRECT",12,0xFFB8C0D0,true));header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView vavoo=text("VAVOO LIVE",14,Color.WHITE,true);vavoo.setPadding(18,14,18,14);vavoo.setBackgroundColor(red);vavoo.setFocusable(true);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);TextView refresh=text("↻  ACTUALISER",14,Color.WHITE,true);refresh.setPadding(18,14,18,14);refresh.setBackgroundColor(panel);refresh.setFocusable(true);refresh.setOnClickListener(v->loadChannels());LinearLayout.LayoutParams refreshParams=new LinearLayout.LayoutParams(-2,-2);refreshParams.leftMargin=10;header.addView(refresh,refreshParams);root.addView(header);
-    TextView heading=text("À LA UNE  ·  CHAÎNES EN DIRECT",22,Color.WHITE,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=26;hp.bottomMargin=8;root.addView(heading,hp);
-    status=text("Chargement des chaînes publiques…",14,0xFFB8C0D0,false);root.addView(status);
-    ScrollView scroll=new ScrollView(this);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(0,10,0,20);scroll.addView(list);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.topMargin=10;root.addView(scroll,sp);
-    TextView foot=text("Sources publiques · La disponibilité dépend des diffuseurs",11,0xFF788397,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
+    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(28,18,28,12);setContentView(root);
+    LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
+    TextView brand=text("N",26,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(red,10));header.addView(brand,new LinearLayout.LayoutParams(48,48));
+    LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
+    titles.addView(text("NISSAYSTREAM",22,Color.WHITE,true));titles.addView(text("LE DIRECT, SANS COMPLICATION",10,0xFFADB4C2,true));
+    header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
+    TextView vavoo=actionButton("VAVOO LIVE",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
+    LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(24,22,24,22);hero.setBackground(rounded(0xFF202633,18));
+    LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
+    TextView eyebrow=text("NISSAYSTREAM  ORIGINAL",10,0xFFFF5964,true);hero.addView(eyebrow);
+    TextView title=text("Le direct.\nEn grand.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
+    TextView desc=text("Retrouve les chaînes marocaines et tes flux en direct dans une interface simple.",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
+    status=text("Chargement des chaînes…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
+    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
+    TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
   }
   private void loadChannels(){status.setText("Mise à jour de la liste…");io.execute(()->{ArrayList<Channel> found=new ArrayList<>();try{
     URL u=new URL("https://iptv-org.github.io/iptv/countries/ma.m3u");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(12000);c.setReadTimeout(18000);c.setRequestProperty("User-Agent","MoroccoTV/1.0");
@@ -110,9 +124,30 @@ public class MainActivity extends Activity {
       runOnUiThread(()->{if(result.isEmpty())status.setText("Aucune chaîne reçue de VAVOO. Vérifie que /channels.m3u8 répond.");showChannels(result);});
     });
   }
-  private void showChannels(ArrayList<Channel> result){channels.clear();channels.addAll(result);list.removeAllViews();if(channels.isEmpty()){status.setText("Impossible de charger la liste pour le moment. Vérifie la connexion puis actualise.");return;}status.setText(channels.size()+" flux référencés · appuie sur une chaîne pour regarder");
-    for(int i=0;i<channels.size();i++){Channel ch=channels.get(i);LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(16,12,16,12);row.setBackgroundColor(panel);row.setFocusable(true);row.setClickable(true);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=8;list.addView(row,rp);
-      TextView badge=text(String.format(java.util.Locale.US,"%02d",i+1),18,Color.WHITE,true);badge.setGravity(Gravity.CENTER);badge.setBackgroundColor(i%3==0?red:green);row.addView(badge,new LinearLayout.LayoutParams(54,54));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(16,0,0,0);TextView n=text(ch.name,17,Color.WHITE,true);n.setSingleLine(true);n.setEllipsize(TextUtils.TruncateAt.END);info.addView(n);info.addView(text(ch.group,12,0xFF9BA7BA,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(text("▶",20,0xFF7DDAA4,true));row.setOnClickListener(v->play(ch));row.setOnFocusChangeListener((v,focus)->v.setBackgroundColor(focus?0xFF374255:panel));if(i==0)row.requestFocus();}
+  private void showChannels(ArrayList<Channel> result){
+    channels.clear();channels.addAll(result);list.removeAllViews();
+    if(channels.isEmpty()){status.setText("Aucun flux reçu. Vérifie la connexion puis actualise.");return;}
+    status.setText(channels.size()+" chaînes disponibles · sélectionne une carte pour regarder");
+    java.util.LinkedHashMap<String,ArrayList<Channel>> sections=new java.util.LinkedHashMap<>();
+    for(Channel ch:channels){String group=(ch.group==null||ch.group.trim().isEmpty())?"En direct":ch.group.trim();if(!sections.containsKey(group))sections.put(group,new ArrayList<>());sections.get(group).add(ch);}
+    int count=0;
+    for(java.util.Map.Entry<String,ArrayList<Channel>> section:sections.entrySet()){
+      LinearLayout sectionBox=new LinearLayout(this);sectionBox.setOrientation(LinearLayout.VERTICAL);
+      TextView heading=text(section.getKey().toUpperCase(java.util.Locale.ROOT),14,Color.WHITE,true);
+      LinearLayout.LayoutParams headingP=new LinearLayout.LayoutParams(-1,-2);headingP.topMargin=12;headingP.bottomMargin=8;sectionBox.addView(heading,headingP);
+      HorizontalScrollView rail=new HorizontalScrollView(this);rail.setHorizontalScrollBarEnabled(false);
+      LinearLayout cards=new LinearLayout(this);cards.setOrientation(LinearLayout.HORIZONTAL);
+      for(Channel ch:section.getValue()){
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(10,10,10,12);card.setBackground(rounded(panel,12));card.setFocusable(true);card.setClickable(true);
+        LinearLayout.LayoutParams cardP=new LinearLayout.LayoutParams(154,154);cardP.rightMargin=10;cards.addView(card,cardP);
+        TextView poster=text("▶",27,Color.WHITE,true);poster.setGravity(Gravity.CENTER);poster.setBackground(rounded(count%3==0?0xFF9E1018:(count%3==1?0xFF174D3B:0xFF303A50),10));card.addView(poster,new LinearLayout.LayoutParams(-1,82));
+        TextView name=text(ch.name,13,Color.WHITE,true);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);LinearLayout.LayoutParams nameP=new LinearLayout.LayoutParams(-1,0,1);nameP.topMargin=8;card.addView(name,nameP);
+        TextView meta=text("EN DIRECT",9,0xFFB7C0CF,true);LinearLayout.LayoutParams metaP=new LinearLayout.LayoutParams(-1,-2);metaP.topMargin=4;card.addView(meta,metaP);
+        card.setOnClickListener(v->play(ch));card.setOnFocusChangeListener((v,focus)->card.setBackground(rounded(focus?0xFF394253:panel,12)));count++;
+      }
+      rail.addView(cards);sectionBox.addView(rail);list.addView(sectionBox);
+    }
+    if(!channels.isEmpty())list.setFocusable(false);
   }
   private void play(Channel ch){
     if(player!=null){player.release();player=null;}root.removeAllViews();root.setPadding(0,0,0,0);root.setOrientation(LinearLayout.VERTICAL);LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);top.setPadding(24,12,24,12);top.setBackgroundColor(bg);TextView back=text("‹  CHAÎNES",16,Color.WHITE,true);back.setFocusable(true);back.setPadding(10,10,20,10);back.setOnClickListener(v->{if(player!=null){player.release();player=null;}buildHome();showChannels(new ArrayList<>(channels));});top.addView(back);nowTitle=text(ch.name,19,Color.WHITE,true);nowTitle.setPadding(20,0,0,0);top.addView(nowTitle);root.addView(top,new LinearLayout.LayoutParams(-1,-2));

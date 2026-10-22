@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
     titles.addView(text("NISSAYSTREAM",22,Color.WHITE,true));titles.addView(text("LE DIRECT, SANS COMPLICATION",10,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO LIVE",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->{String configured=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_server","");if(configured.trim().isEmpty())openVavooSettings();else loadVavooChannels();});vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(24,22,24,22);hero.setBackground(rounded(0xFF202633,18));
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     TextView title=text("Le direct.\nEn grand.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
     TextView desc=text("Retrouve les chaînes marocaines et tes flux en direct dans une interface simple.",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
     status=text("Chargement des chaînes…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
-    LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS","ANIME"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
+    LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
     TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
   }
   private void loadChannels(){status.setText("Mise à jour de la liste…");io.execute(()->{ArrayList<Channel> found=new ArrayList<>();try{
@@ -151,8 +151,8 @@ public class MainActivity extends Activity {
     input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
     input.setPadding(18,12,18,12);input.setSelectAllOnFocus(true);
     LinearLayout wrap=new LinearLayout(this);wrap.setPadding(24,8,24,0);wrap.addView(input,new LinearLayout.LayoutParams(-1,-2));
-    new AlertDialog.Builder(this).setTitle("VAVOO Live — configuration avancée")
-      .setMessage("Colle l’URL complète d’une playlist M3U/M3U8, ou l’adresse de base d’un serveur compatible exposant /channels.m3u8 ou /playlist.m3u8. Un serveur doit déjà être lancé : cette application ne crée pas le serveur VAVOO. Aucun achat n’est nécessaire pour tester les flux publics.")
+    new AlertDialog.Builder(this).setTitle("VAVOO Live — connexion à une playlist")
+      .setMessage("État actuel : le moteur VAVOO n’est pas intégré dans l’application. Cette option teste uniquement une playlist M3U/M3U8 ou un serveur compatible déjà disponible. Elle ne démarre pas VAVOO toute seule.")
       .setView(wrap)
       .setPositiveButton("CONNECTER",(d,w)->{String value=input.getText().toString().trim().replaceAll("/+$","");if(!value.isEmpty()){prefs.edit().putString("vavoo_server",value).apply();loadVavooChannels();}})
       .setNeutralButton("EFFACER",(d,w)->{prefs.edit().remove("vavoo_server").apply();Toast.makeText(this,"Adresse VAVOO effacée",Toast.LENGTH_SHORT).show();})
@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
   private void showChannels(ArrayList<Channel> result){
     if(result!=null&&!result.isEmpty()){channels.clear();channels.addAll(result);}list.removeAllViews();
     ArrayList<Channel> visible=new ArrayList<>();
-    for(Channel ch:channels){boolean anime=(ch.group+" "+ch.name).toLowerCase(java.util.Locale.ROOT).matches(".*(anime|animé|manga|vostfr).*");if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;if("ANIME".equals(activeFilter)&&!anime)continue;visible.add(ch);}
+    for(Channel ch:channels){if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;visible.add(ch);}
     if(visible.isEmpty()){status.setText("Aucun contenu dans "+activeFilter+". Importe une playlist ou ajoute des favoris.");return;}
     status.setText(visible.size()+" contenus disponibles · sélectionne une carte pour regarder");
     java.util.LinkedHashMap<String,ArrayList<Channel>> sections=new java.util.LinkedHashMap<>();
@@ -237,7 +237,7 @@ public class MainActivity extends Activity {
     nowTitle=text(ch.name,17,Color.WHITE,true);nowTitle.setSingleLine(true);nowTitle.setEllipsize(TextUtils.TruncateAt.END);nowTitle.setPadding(14,0,14,0);top.addView(nowTitle,new LinearLayout.LayoutParams(0,-2,1));
     TextView favorite=actionButton(isFavorite(ch)?"★ FAVORI":"☆ FAVORI",isFavorite(ch)?0xFF775A12:panel);favorite.setOnClickListener(v->{toggleFavorite(ch);favorite.setText(isFavorite(ch)?"★ FAVORI":"☆ FAVORI");favorite.setBackground(rounded(isFavorite(ch)?0xFF775A12:panel,10));});top.addView(favorite);
     root.addView(top,new LinearLayout.LayoutParams(-1,-2));
-    playerView=new PlayerView(this);playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);playerView.setUseTextureView(true);playerView.setShutterBackgroundColor(Color.BLACK);root.addView(playerView,new LinearLayout.LayoutParams(-1,0,1));
+    playerView=new PlayerView(this);playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);playerView.setShutterBackgroundColor(Color.BLACK);root.addView(playerView,new LinearLayout.LayoutParams(-1,0,1));
     LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER);controls.setPadding(12,8,12,8);controls.setBackgroundColor(bg);
     TextView retry=actionButton("↻ RELANCER LE FLUX",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
     TextView info=actionButton("INFO FLUX",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=10;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nURL : "+ch.url+"\n\nSi la lecture échoue, le flux peut être hors ligne, géobloqué ou incompatible.").setPositiveButton("OK",null).show());

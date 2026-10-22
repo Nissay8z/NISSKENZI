@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
     for(Channel extra:extras){boolean exists=false;for(Channel current:found){if(current.name.equalsIgnoreCase(extra.name)||current.url.equals(extra.url)){exists=true;break;}}if(!exists)found.add(extra);}
     final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
   private void openSourceMenu(){
-    new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else openMacPortal();}).setNegativeButton("Annuler",null).show();
+    new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","VXParser VAVOO","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else if(which==2)openVxParser();else openMacPortal();}).setNegativeButton("Annuler",null).show();
   }
   private EditText sourceField(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setTextColor(Color.WHITE);e.setHintTextColor(0xFF9BA7BA);return e;}
   private void openXtream(){
@@ -93,6 +93,20 @@ public class MainActivity extends Activity {
       p.edit().putString("xc_host",h).putString("xc_user",u).putString("xc_pass",pw).apply();
       loadImportedPlaylist(h+"/get.php?username="+android.net.Uri.encode(u)+"&password="+android.net.Uri.encode(pw)+"&type=m3u_plus&output=ts");
     }).setNegativeButton("Annuler",null).show();
+  }
+  private void openVxParser(){
+    SharedPreferences p=getSharedPreferences("sources",MODE_PRIVATE);
+    EditText host=sourceField("Adresse VXParser, ex. http://127.0.0.1:8080");
+    host.setText(p.getString("vxparser_host",""));
+    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);box.addView(host);
+    new AlertDialog.Builder(this).setTitle("VXParser · VAVOO + Xtream")
+      .setMessage("VXParser est un serveur Python/FastAPI séparé, pas une bibliothèque Android intégrée. Démarre-le sur ton téléphone (par exemple avec Termux) ou sur un appareil de ton réseau, puis colle son adresse ici. Il faut avoir généré la liste LiveTV dans VXParser au moins une fois. L’application récupère ensuite sa playlist Xtream/M3U; elle ne lance pas VXParser toute seule.")
+      .setView(box).setPositiveButton("CONNECTER",(d,w)->{
+        String h=host.getText().toString().trim().replaceAll("/+$","");
+        if(h.isEmpty()){Toast.makeText(this,"Adresse du serveur obligatoire",Toast.LENGTH_SHORT).show();return;}
+        p.edit().putString("vxparser_host",h).apply();
+        loadImportedPlaylist(h+"/get.php?username=nissay&password=stream&type=m3u_plus&output=hls");
+      }).setNegativeButton("Annuler",null).show();
   }
   private void openMacPortal(){
     LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);
@@ -126,7 +140,7 @@ public class MainActivity extends Activity {
       runOnUiThread(()->{if(result.isEmpty())status.setText("Import impossible : "+err);else status.setText(result.size()+" chaînes importées");showChannels(result);});
     });
   }
-  private String attribute(String line,String key){String needle=key+"=\\\"";int a=line.indexOf(needle);if(a<0)return "";int start=a+needle.length();int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
+  private String attribute(String line,String key){int a=line.indexOf(key+"=");if(a<0)return "";int start=a+key.length()+1;if(start<line.length()&&line.charAt(start)=='"')start++;int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
   private void openVavooSettings(){
     SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
     String saved=prefs.getString("vavoo_server","");

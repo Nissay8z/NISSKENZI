@@ -47,7 +47,20 @@ public class MainActivity extends Activity {
     BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));String line,name="Chaîne marocaine",logo="",group="Maroc";
     while((line=r.readLine())!=null){if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne marocaine";logo="";group="Maroc";int a=line.indexOf("tvg-logo=\"");if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}int g=line.indexOf("group-title=\"");if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}}else if(line.startsWith("http://")||line.startsWith("https://")){found.add(new Channel(name,line.trim(),logo,group));}}
     r.close();c.disconnect();
-  }catch(Exception e){} final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
+  }catch(Exception e){}
+    // Additional broadcaster streams, used as fallbacks when the community playlist omits them.
+    Channel[] extras = new Channel[] {
+      new Channel("Al Aoula — الأولى","https://streaming.snrtlive.ma/live/slaalaoula/slaalaoula.m3u8","","SNRT · officiel"),
+      new Channel("2M Monde","https://cdnamd-hls-globecast.akamaized.net/live/ramdisk/2m/2m.m3u8","","Diffuseur · flux public"),
+      new Channel("Arryadia — الرياضية","https://streaming.snrtlive.ma/live/slaarryadia/slaarryadia.m3u8","","SNRT · officiel"),
+      new Channel("Tamazight TV","https://streaming.snrtlive.ma/live/slataamazight/slataamazight.m3u8","","SNRT · officiel"),
+      new Channel("Assadissa — السادسة","https://streaming.snrtlive.ma/live/slaassadissa/slaassadissa.m3u8","","SNRT · officiel"),
+      new Channel("Al Maghribia — المغربية","https://streaming.snrtlive.ma/live/slamaghribia/slamaghribia.m3u8","","SNRT · officiel"),
+      new Channel("Medi1 TV","https://streaming.medi1tv.com/live/smil:medi1tv.smil/playlist.m3u8","","Medi1 · flux public"),
+      new Channel("Chada TV","https://chadatv.vedge.infomaniak.com/livecast/chadatv/playlist.m3u8","","Flux public à vérifier")
+    };
+    for(Channel extra:extras){boolean exists=false;for(Channel current:found){if(current.name.equalsIgnoreCase(extra.name)||current.url.equals(extra.url)){exists=true;break;}}if(!exists)found.add(extra);}
+    final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
   private void showChannels(ArrayList<Channel> result){channels.clear();channels.addAll(result);list.removeAllViews();if(channels.isEmpty()){status.setText("Impossible de charger la liste pour le moment. Vérifie la connexion puis actualise.");return;}status.setText(channels.size()+" flux référencés · appuie sur une chaîne pour regarder");
     for(int i=0;i<channels.size();i++){Channel ch=channels.get(i);LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(16,12,16,12);row.setBackgroundColor(panel);row.setFocusable(true);row.setClickable(true);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=8;list.addView(row,rp);
       TextView badge=text(String.format(java.util.Locale.US,"%02d",i+1),18,Color.WHITE,true);badge.setGravity(Gravity.CENTER);badge.setBackgroundColor(i%3==0?red:green);row.addView(badge,new LinearLayout.LayoutParams(54,54));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(16,0,0,0);TextView n=text(ch.name,17,Color.WHITE,true);n.setSingleLine(true);n.setEllipsize(TextUtils.TruncateAt.END);info.addView(n);info.addView(text(ch.group,12,0xFF9BA7BA,false));row.addView(info,new LinearLayout.LayoutParams(0,-2,1));row.addView(text("▶",20,0xFF7DDAA4,true));row.setOnClickListener(v->play(ch));row.setOnFocusChangeListener((v,focus)->v.setBackgroundColor(focus?0xFF374255:panel));if(i==0)row.requestFocus();}

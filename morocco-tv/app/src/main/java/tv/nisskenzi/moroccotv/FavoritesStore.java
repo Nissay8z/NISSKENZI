@@ -14,7 +14,6 @@ public final class FavoritesStore {
     private final SharedPreferences preferences;
     private final HashSet<String> favoriteUrls = new HashSet<>();
     private long revision = 0L;
-    private long revision = 0L;
 
     public FavoritesStore(SharedPreferences preferences) {
         this.preferences = preferences;
@@ -45,15 +44,12 @@ public final class FavoritesStore {
             preferences.edit().putBoolean(url, true).apply();
         }
         revision++;
-        revision++;
         return nowFavorite;
     }
 
     public synchronized Set<String> snapshotUrls() {
         return new HashSet<>(favoriteUrls);
     }
-
-    public synchronized long revision() { return revision; }
 
     public synchronized long revision() { return revision; }
 

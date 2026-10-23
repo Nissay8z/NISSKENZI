@@ -22,15 +22,16 @@ public final class LivePlaybackFactory {
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(userAgent == null ? "NISSKENZI+/2.1" : userAgent)
                 .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(8_000)
-                .setReadTimeoutMs(15_000);
+                .setConnectTimeoutMs(6_000)
+                .setReadTimeoutMs(10_000);
         DefaultDataSource.Factory data = new DefaultDataSource.Factory(
                 context.getApplicationContext(), http);
 
-        // A modest live buffer starts promptly without the long safety buffer used
-        // for long-form video; streams with unstable networks may still rebuffer.
+        // Prioritize quick live startup, especially on low-memory TV boxes. A short
+        // startup threshold helps the first frame arrive earlier; slow/unstable links
+        // may need to buffer again rather than waiting for a large initial download.
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(8_000, 30_000, 1_000, 2_000)
+                .setBufferDurationsMs(4_000, 15_000, 500, 1_500)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
 

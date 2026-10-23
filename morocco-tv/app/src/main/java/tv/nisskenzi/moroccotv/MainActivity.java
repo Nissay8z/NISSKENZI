@@ -959,7 +959,7 @@ public class MainActivity extends ComponentActivity {
         details.setPadding(0, dp(10), 0, dp(4));
         statusCard.addView(details);
 
-        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser " + sourceFilter, true);
+        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser toutes les sources M3U", true);
         LinearLayout.LayoutParams rp = lp(-1, 48); rp.topMargin = dp(16); page.addView(refresh, rp);
         refresh.setOnClickListener(v -> loadChannels(true));
         if (loadingCatalog) refresh.setAlpha(0.65f);
@@ -973,12 +973,12 @@ public class MainActivity extends ComponentActivity {
             .setPositiveButton("Effacer", (dialog, which) -> {
                 CatalogCache.clear(MainActivity.this);
                 M3UParser.clearMemoryCache();
-                Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
-                channels.clear();
-                markCatalogChanged();
                 activeCountry = "Tous les pays";
+                favoritesOnly = false;
+                recentOnly = false;
                 lastRenderedFilterKey = "";
-                renderPage();
+                if (channelViewModel != null) channelViewModel.clearLocalDatabase();
+                Toast.makeText(this, "Base SQLite effacée. Les playlists seront rechargées en arrière-plan.", Toast.LENGTH_LONG).show();
             }).show());
 
         TextView note = label("Le catalogue est lu depuis une playlist M3U locale ou distante. Les références VAVOO sont résolues uniquement au clic sur une chaîne.", 10, MUTED, false);
@@ -1022,12 +1022,14 @@ public class MainActivity extends ComponentActivity {
     }
 
     private String sourceStatus(String source) {
-        boolean loading = "VAVOO".equals(source) ? loadingVavoo : loadingIptv;
-        if (loading) return "playlist M3U en lecture";
-        if (source.equals(sourceFilter) && !channels.isEmpty()) return "M3U chargé · " + channels.size();
-        String key = "VAVOO".equals(source) ? "vavoo_url" : "iptv_org_url";
-        String url = getSharedPreferences("m3u_sources", MODE_PRIVATE).getString(key, "");
-        return url == null || url.trim().isEmpty() ? "M3U local intégré" : "URL M3U distante configurée";
+        if (loadingCatalog) return "actualisation en arrière-plan";
+        String id = ChannelRepository.canonicalSourceId(source);
+        int count = 0;
+        for (Channel channel : channels) {
+            if (channel != null && id.equals(channel.catalogSource)) count++;
+        }
+        if (count > 0) return count + " chaînes enregistrées dans SQLite";
+        return "playlist prête à charger en arrière-plan";
     }
 
     private void switchSource(String source) {

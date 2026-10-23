@@ -186,7 +186,7 @@ public final class M3UParser {
                 if (line.isEmpty()) continue;
 
                 if (line.startsWith("#EXTINF:")) {
-                    int comma = line.lastIndexOf(',');
+                    int comma = titleSeparator(line);
                     name = comma >= 0 ? line.substring(comma + 1).trim() : "";
                     String tvgName = attribute(line, "tvg-name");
                     if (!tvgName.isEmpty()) name = tvgName;
@@ -267,6 +267,25 @@ public final class M3UParser {
         } catch (Exception ignored) {
             return value;
         }
+    }
+
+    /** Finds the EXTINF metadata/title comma outside quoted attributes. */
+    private static int titleSeparator(String line) {
+        char quote = 0;
+        boolean escaped = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (quote != 0) {
+                if (escaped) escaped = false;
+                else if (ch == '\\\\') escaped = true;
+                else if (ch == quote) quote = 0;
+            } else if (ch == '"' || ch == '\\'') {
+                quote = ch;
+            } else if (ch == ',') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static String attribute(String line, String key) {

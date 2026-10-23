@@ -46,7 +46,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 @Override
                 public boolean areItemsTheSame(@NonNull Channel oldItem,
                                                @NonNull Channel newItem) {
-                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url));
+                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url))
+                            && TextUtils.equals(safe(oldItem.catalogSource), safe(newItem.catalogSource));
                 }
 
                 @Override
@@ -57,6 +58,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
                             && TextUtils.equals(safe(oldItem.country), safe(newItem.country))
                             && oldItem.isVavoo == newItem.isVavoo
+                            && TextUtils.equals(safe(oldItem.epgId), safe(newItem.epgId))
+                            && TextUtils.equals(safe(oldItem.catalogSource), safe(newItem.catalogSource))
                             && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl));
                 }
             };
@@ -67,6 +70,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     private final FavoriteChecker favoriteChecker;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
+    private String selectedSourceId = "";
     private volatile boolean shutDown;
 
     public ChannelAdapter(@NonNull OnChannelClickListener listener,

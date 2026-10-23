@@ -187,11 +187,19 @@ async function refreshIptvOrgCatalog() {
   });
   if (!response.ok) throw new Error(`IPTV-org playlist HTTP ${response.status}`);
   const raw = await response.text();
-  const playlist = raw.endsWith('\n') ? raw : raw + '\n';
-  const channelCount = (playlist.match(/^#EXTINF:/gm) || []).length;
-  if (!playlist.trimStart().startsWith('#EXTM3U') || channelCount < 1000) {
+  const normalized = raw.endsWith('\n') ? raw : raw + '\n';
+  const channelCount = (normalized.match(/^#EXTINF:/gm) || []).length;
+  if (!normalized.trimStart().startsWith('#EXTM3U') || channelCount < 1000) {
     throw new Error(`IPTV-org playlist invalide/incomplète: ${channelCount} entrées détectées.`);
   }
+
+  // Stable content fingerprint lets Android invalidate its binary cache only when
+  // the playlist actually changes. The parser ignores this standard M3U comment.
+  const digest = crypto.createHash('sha256').update(normalized, 'utf8').digest('hex').slice(0, 24);
+  const newline = normalized.indexOf('\n');
+  const playlist = newline < 0
+    ? `${normalized.trimEnd()}\n#NISSKENZI-IPTV-CATALOG sha256="${digest}" channels="${channelCount}"\n`
+    : `${normalized.slice(0, newline)}\n#NISSKENZI-IPTV-CATALOG sha256="${digest}" channels="${channelCount}"\n${normalized.slice(newline + 1)}`;
 
   let existing = '';
   try { existing = fs.readFileSync(IPTV_OUT, 'utf8'); } catch {}

@@ -39,6 +39,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
@@ -120,6 +121,8 @@ public class MainActivity extends Activity {
     private int countryStatsVersion = -1;
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
+    private final Set<String> channelUrlCache = new HashSet<>();
+    private int channelUrlSetVersion = -1;
     private int favoriteCountCache = 0;
     private int favoriteCountCatalogVersion = -1;
     private long favoriteCountStoreRevision = -1L;
@@ -571,7 +574,9 @@ public class MainActivity extends Activity {
             // each distinct country only once; do not run Unicode normalization/regex
             // for every row on the UI thread whenever the category panel is built.
             HashMap<String, String> normalizedCountries = new HashMap<>();
+            channelUrlCache.clear();
             for (Channel ch : channels) {
+                if (ch != null && !safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
                 String rawCountry = safe(ch.country);
                 String country = normalizedCountries.get(rawCountry);
                 if (country == null) {
@@ -584,6 +589,7 @@ public class MainActivity extends Activity {
             for (String country : countryCountCache.keySet()) {
                 countryCodeCache.put(country, countryCode(country));
             }
+            channelUrlSetVersion = catalogVersion;
             countryStatsVersion = catalogVersion;
         }
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
@@ -661,8 +667,12 @@ public class MainActivity extends Activity {
         if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
             int count = 0;
             if (recentStore != null) {
-                Set<String> recent = recentStore.snapshotUrls();
-                for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                Set<String> recent = recentStore.snapshotUrls(); // At most 100 URLs.
+                if (channelUrlSetVersion == catalogVersion) {
+                    for (String url : recent) if (channelUrlCache.contains(url)) count++;
+                } else {
+                    for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                }
             }
             recentCountCache = count;
             recentCountCatalogVersion = catalogVersion;

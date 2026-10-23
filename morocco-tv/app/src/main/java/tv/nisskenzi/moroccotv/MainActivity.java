@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -74,6 +75,9 @@ public class MainActivity extends Activity {
     private static final int TEXT = 0xFFF3F6FD;
     private static final int GREEN = 0xFF40D79D;
     private static final int YELLOW = 0xFFF5CE6B;
+    private static final int CHANNELS_PER_BATCH = 72;
+    private static final int MAX_CACHED_CHANNELS = 1200;
+    private static final int MAX_LOGO_CACHE = 160;
 
     private LinearLayout root;
     private FrameLayout contentHost;
@@ -95,6 +99,9 @@ public class MainActivity extends Activity {
     private volatile String activePage = "Accueil";
     private volatile String catalogStatus = "Chargement des catalogues VAVOO + IPTV-ORG…";
     private boolean loadingCatalog = false;
+    private volatile boolean activityDestroyed = false;
+    private int visibleChannelLimit = CHANNELS_PER_BATCH;
+    private int focusChannelIndex = -1;
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "Toutes";
     private String searchText = "";
@@ -102,7 +109,12 @@ public class MainActivity extends Activity {
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService logoIo = Executors.newFixedThreadPool(2);
-    private final Map<String, Bitmap> logoCache = Collections.synchronizedMap(new HashMap<>());
+    private final Map<String, Bitmap> logoCache = Collections.synchronizedMap(
+        new LinkedHashMap<String, Bitmap>(128, 0.75f, true) {
+            @Override protected boolean removeEldestEntry(Map.Entry<String, Bitmap> eldest) {
+                return size() > MAX_LOGO_CACHE;
+            }
+        });
 
     private static class Channel {
         String name, url, logo, group, vavooSourceUrl, country;
@@ -122,6 +134,11 @@ public class MainActivity extends Activity {
 
     private int dp(float value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private boolean isTelevision() {
+        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_MASK)
+                == Configuration.UI_MODE_TYPE_TELEVISION;
     }
 
     private GradientDrawable rounded(int color, int radiusDp) {
@@ -147,11 +164,28 @@ public class MainActivity extends Activity {
     }
 
     private TextView buttonText(String text, boolean selected) {
-        TextView b = label(text, 12, selected ? Color.WHITE : MUTED, true);
+        TextView b = label(text, isTelevision() ? 15 : 12, selected ? Color.WHITE : MUTED, true);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(13), dp(10), dp(13), dp(10));
+        int padH = isTelevision() ? 17 : 13;
+        int padV = isTelevision() ? 13 : 10;
+        b.setPadding(dp(padH), dp(padV), dp(padH), dp(padV));
         b.setBackground(rounded(selected ? 0xFF25204A : PANEL2, 10));
         b.setFocusable(true);
+        b.setOnFocusChangeListener((view, focused) -> {
+            if (focused) {
+                b.setBackground(outlined(0xFF19324B, 10, CYAN));
+                b.setTextColor(Color.WHITE);
+                b.setScaleX(1.04f);
+                b.setScaleY(1.04f);
+            } else {
+                boolean active = b == liveTab ? "Live TV".equals(activePage)
+                        : b == settingsTab ? "Paramètres".equals(activePage) : selected;
+                b.setBackground(rounded(active ? 0xFF25204A : PANEL2, 10));
+                b.setTextColor(active ? Color.WHITE : MUTED);
+                b.setScaleX(1f);
+                b.setScaleY(1f);
+            }
+        });
         return b;
     }
 
@@ -179,20 +213,21 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         LinearLayout header = horizontal();
-        header.setPadding(dp(15), dp(12), dp(15), dp(12));
+        int headerPad = isTelevision() ? 22 : 15;
+        header.setPadding(dp(headerPad), dp(isTelevision() ? 16 : 12), dp(headerPad), dp(isTelevision() ? 16 : 12));
         header.setBackgroundColor(0xFF070C15);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
         root.addView(header, hp);
 
-        TextView mark = label("N", 24, Color.WHITE, true);
+        TextView mark = label("N", isTelevision() ? 29 : 24, Color.WHITE, true);
         mark.setGravity(Gravity.CENTER);
         mark.setBackground(rounded(0xFF246FEE, 12));
-        header.addView(mark, lp(42, 42));
+        header.addView(mark, lp(isTelevision() ? 54 : 42, isTelevision() ? 54 : 42));
 
         LinearLayout brand = vertical();
         brand.setPadding(dp(10), 0, dp(12), 0);
-        brand.addView(label("NISSKENZI+", 17, TEXT, true));
-        TextView tagline = label("LIVE TV · MONDE ENTIER", 8, MUTED, true);
+        brand.addView(label("NISSKENZI+", isTelevision() ? 21 : 17, TEXT, true));
+        TextView tagline = label("LIVE TV · MONDE ENTIER", isTelevision() ? 10 : 8, MUTED, true);
         tagline.setLetterSpacing(0.12f);
         brand.addView(tagline);
         header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
@@ -202,7 +237,7 @@ public class MainActivity extends Activity {
         boolean onHome = "Accueil".equals(activePage);
         liveTab.setVisibility(onHome ? View.GONE : View.VISIBLE);
         settingsTab.setVisibility(onHome ? View.GONE : View.VISIBLE);
-        LinearLayout.LayoutParams navp = lp(-2, 42);
+        LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 50 : 42);
         navp.leftMargin = dp(5);
         header.addView(liveTab, navp);
         header.addView(settingsTab, navp);
@@ -253,7 +288,8 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         LinearLayout page = vertical();
-        page.setPadding(dp(18), dp(20), dp(18), dp(22));
+        int homeInset = isTelevision() ? 44 : 18;
+        page.setPadding(dp(homeInset), dp(isTelevision() ? 28 : 20), dp(homeInset), dp(isTelevision() ? 28 : 22));
         scroll.addView(page);
         contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
@@ -261,13 +297,13 @@ public class MainActivity extends Activity {
         eyebrow.setLetterSpacing(0.16f);
         page.addView(eyebrow);
 
-        TextView title = label("Tout le direct,\nau même endroit.", 26, TEXT, true);
+        TextView title = label("Tout le direct,\nau même endroit.", isTelevision() ? 38 : 26, TEXT, true);
         title.setLineSpacing(dp(1), 1f);
         LinearLayout.LayoutParams tp = lp(-1, -2); tp.topMargin = dp(8);
         page.addView(title, tp);
 
-        TextView subtitle = label("Choisis une section pour commencer.", 12, MUTED, false);
-        LinearLayout.LayoutParams stp = lp(-1, -2); stp.topMargin = dp(7); stp.bottomMargin = dp(20);
+        TextView subtitle = label("Choisis une section pour commencer.", isTelevision() ? 16 : 12, MUTED, false);
+        LinearLayout.LayoutParams stp = lp(-1, -2); stp.topMargin = dp(7); stp.bottomMargin = dp(isTelevision() ? 30 : 20);
         page.addView(subtitle, stp);
 
         boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
@@ -284,8 +320,8 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams livep;
         LinearLayout.LayoutParams settingsp;
         if (landscape) {
-            livep = new LinearLayout.LayoutParams(0, dp(242), 1f);
-            settingsp = new LinearLayout.LayoutParams(0, dp(242), 1f);
+            livep = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 300 : 242), 1f);
+            settingsp = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 300 : 242), 1f);
             livep.rightMargin = dp(10); settingsp.leftMargin = dp(10);
         } else {
             livep = lp(-1, 185); settingsp = lp(-1, 185);
@@ -293,8 +329,9 @@ public class MainActivity extends Activity {
         }
         tiles.addView(live, livep);
         tiles.addView(settings, settingsp);
+        if (isTelevision()) live.requestFocus();
 
-        TextView footer = label("VAVOO  ·  IPTV-ORG  ·  LECTEUR MEDIA3 / VLC", 9, MUTED, true);
+        TextView footer = label("VAVOO  ·  IPTV-ORG  ·  LECTEUR MEDIA3 / VLC", isTelevision() ? 11 : 9, MUTED, true);
         footer.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams fp = lp(-1, -2); fp.topMargin = dp(18);
         page.addView(footer, fp);
@@ -311,26 +348,34 @@ public class MainActivity extends Activity {
         card.setFocusable(true);
         card.setClickable(true);
         card.setOnClickListener(click);
+        card.setOnFocusChangeListener((view, focused) -> {
+            GradientDrawable state = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+            state.setCornerRadius(dp(18));
+            state.setStroke(dp(focused ? 3 : 1), focused ? accent : 0xFF29445F);
+            card.setBackground(state);
+            card.setScaleX(focused ? 1.025f : 1f);
+            card.setScaleY(focused ? 1.025f : 1f);
+        });
 
-        TextView top = label("NISSKENZI+", 9, 0xFFC8D8EF, true);
+        TextView top = label("NISSKENZI+", isTelevision() ? 11 : 9, 0xFFC8D8EF, true);
         top.setLetterSpacing(0.12f);
         card.addView(top);
 
-        TextView icon = label(symbol, 42, accent, true);
+        TextView icon = label(symbol, isTelevision() ? 50 : 42, accent, true);
         icon.setGravity(Gravity.CENTER);
         icon.setBackground(rounded(0x332F8EFF, 14));
-        LinearLayout.LayoutParams iconp = lp(66, 66); iconp.topMargin = dp(16);
+        LinearLayout.LayoutParams iconp = lp(isTelevision() ? 82 : 66, isTelevision() ? 82 : 66); iconp.topMargin = dp(isTelevision() ? 20 : 16);
         card.addView(icon, iconp);
 
-        TextView heading = label(title, 19, TEXT, true);
+        TextView heading = label(title, isTelevision() ? 24 : 19, TEXT, true);
         LinearLayout.LayoutParams hdp = lp(-1, -2); hdp.topMargin = dp(11);
         card.addView(heading, hdp);
 
-        TextView details = label(description, 11, 0xFFB5C5DC, false);
+        TextView details = label(description, isTelevision() ? 14 : 11, 0xFFB5C5DC, false);
         LinearLayout.LayoutParams ddp = lp(-1, -2); ddp.topMargin = dp(5);
         card.addView(details, ddp);
 
-        TextView open = label("OUVRIR  →", 9, accent, true);
+        TextView open = label("OUVRIR  →", isTelevision() ? 11 : 9, accent, true);
         open.setLetterSpacing(0.08f);
         LinearLayout.LayoutParams op = lp(-1, -2); op.topMargin = dp(14);
         card.addView(open, op);
@@ -342,31 +387,32 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(false);
         scroll.setVerticalScrollBarEnabled(true);
         LinearLayout page = vertical();
-        page.setPadding(dp(16), dp(15), dp(16), dp(18));
+        int liveInset = isTelevision() ? 32 : 16;
+        page.setPadding(dp(liveInset), dp(isTelevision() ? 24 : 15), dp(liveInset), dp(isTelevision() ? 28 : 18));
         scroll.addView(page);
         contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout titleRow = horizontal();
-        TextView title = label("Télévision en direct", 22, TEXT, true);
+        TextView title = label("Télévision en direct", isTelevision() ? 30 : 22, TEXT, true);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        countView = label(channels.size() + " chaînes", 10, MUTED, true);
+        countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, MUTED, true);
         countView.setPadding(dp(10), dp(8), dp(10), dp(8));
         countView.setBackground(rounded(PANEL, 9));
         titleRow.addView(countView);
         page.addView(titleRow);
-        TextView subtitle = label("Catalogue mondial · VAVOO + IPTV-ORG", 11, MUTED, false);
+        TextView subtitle = label("Catalogue mondial · VAVOO + IPTV-ORG", isTelevision() ? 14 : 11, MUTED, false);
         LinearLayout.LayoutParams subp = lp(-1, -2); subp.topMargin = dp(4);
         page.addView(subtitle, subp);
 
         LinearLayout searchRow = horizontal();
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams srp = lp(-1, 45); srp.topMargin = dp(14); srp.bottomMargin = dp(12);
+        LinearLayout.LayoutParams srp = lp(-1, isTelevision() ? 56 : 45); srp.topMargin = dp(isTelevision() ? 20 : 14); srp.bottomMargin = dp(12);
         page.addView(searchRow, srp);
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
         searchInput.setTextColor(TEXT);
         searchInput.setHintTextColor(MUTED);
-        searchInput.setTextSize(12);
+        searchInput.setTextSize(isTelevision() ? 16 : 12);
         searchInput.setHint("⌕  Rechercher une chaîne ou un pays…");
         searchInput.setPadding(dp(12), 0, dp(12), 0);
         searchInput.setBackground(outlined(PANEL, 10, LINE));
@@ -380,6 +426,8 @@ public class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence s,int st,int count,int after) {}
             @Override public void onTextChanged(CharSequence s,int st,int before,int count) {
                 searchText = s == null ? "" : s.toString();
+                visibleChannelLimit = CHANNELS_PER_BATCH;
+                focusChannelIndex = -1;
                 updateChannelResults();
             }
             @Override public void afterTextChanged(Editable e) {}
@@ -393,7 +441,7 @@ public class MainActivity extends Activity {
         countryChoices = horizontal();
         countryChoices.setPadding(0, dp(8), 0, dp(8));
         countriesScroll.addView(countryChoices);
-        LinearLayout.LayoutParams csp = lp(-1, 48);
+        LinearLayout.LayoutParams csp = lp(-1, isTelevision() ? 56 : 48);
         page.addView(countriesScroll, csp);
         renderCountryChoices();
 
@@ -406,9 +454,9 @@ public class MainActivity extends Activity {
         sources.setPadding(0, dp(7), 0, dp(10));
         for (String source : new String[]{"Toutes", "VAVOO", "IPTV-ORG"}) {
             TextView chip = buttonText(source.equals("Toutes") ? "Toutes les sources" : source, source.equals(sourceFilter));
-            LinearLayout.LayoutParams cp = lp(-2, 36); cp.rightMargin = dp(7);
+            LinearLayout.LayoutParams cp = lp(-2, isTelevision() ? 44 : 36); cp.rightMargin = dp(7);
             sources.addView(chip, cp);
-            chip.setOnClickListener(v -> { sourceFilter = source; renderPage(); });
+            chip.setOnClickListener(v -> { sourceFilter = source; visibleChannelLimit = CHANNELS_PER_BATCH; focusChannelIndex = -1; renderPage(); });
         }
         sourceScroll.addView(sources);
         page.addView(sourceScroll, lp(-1, 45));
@@ -424,7 +472,7 @@ public class MainActivity extends Activity {
         TextView all = buttonText("🌐 Tous les pays  " + channels.size(), "Tous les pays".equals(activeCountry));
         LinearLayout.LayoutParams allp = lp(-2, 36); allp.rightMargin = dp(7);
         countryChoices.addView(all, allp);
-        all.setOnClickListener(v -> { activeCountry = "Tous les pays"; renderPage(); });
+        all.setOnClickListener(v -> { activeCountry = "Tous les pays"; visibleChannelLimit = CHANNELS_PER_BATCH; focusChannelIndex = -1; renderPage(); });
 
         Map<String, Integer> counts = new HashMap<>();
         Map<String, String> codes = new HashMap<>();
@@ -438,9 +486,9 @@ public class MainActivity extends Activity {
         for (String country : names) {
             String text = flag(country, codes.get(country)) + " " + country + "  " + counts.get(country);
             TextView chip = buttonText(text, country.equals(activeCountry));
-            LinearLayout.LayoutParams cp = lp(-2, 36); cp.rightMargin = dp(7);
+            LinearLayout.LayoutParams cp = lp(-2, isTelevision() ? 44 : 36); cp.rightMargin = dp(7);
             countryChoices.addView(chip, cp);
-            chip.setOnClickListener(v -> { activeCountry = country; renderPage(); });
+            chip.setOnClickListener(v -> { activeCountry = country; visibleChannelLimit = CHANNELS_PER_BATCH; focusChannelIndex = -1; renderPage(); });
         }
     }
 
@@ -470,46 +518,83 @@ public class MainActivity extends Activity {
             empty.setBackground(outlined(PANEL, 14, LINE));
             TextView symbol = label("▣", 30, PURPLE, true); symbol.setGravity(Gravity.CENTER);
             empty.addView(symbol);
-            TextView heading = label(channels.isEmpty() ? "Connexion aux catalogues…" : "Aucune chaîne trouvée", 16, TEXT, true);
+            TextView heading = label(channels.isEmpty() ? "Connexion aux catalogues…" : "Aucune chaîne trouvée",
+                    isTelevision() ? 21 : 16, TEXT, true);
             heading.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams ehp=lp(-1,-2);ehp.topMargin=dp(9);empty.addView(heading,ehp);
-            TextView msg = label(channels.isEmpty() ? "VAVOO et IPTV-ORG se chargent automatiquement. Vérifie ta connexion ou actualise." : "Essaie un autre pays, une autre source ou une recherche différente.", 11, MUTED, false);
+            TextView msg = label(channels.isEmpty()
+                    ? "VAVOO et IPTV-ORG se chargent automatiquement. Vérifie ta connexion ou actualise."
+                    : "Essaie un autre pays, une autre source ou une recherche différente.",
+                    isTelevision() ? 14 : 11, MUTED, false);
             msg.setGravity(Gravity.CENTER);
             msg.setPadding(0,dp(6),0,dp(12));
             empty.addView(msg);
             TextView tryAgain = buttonText("↻ Actualiser les catalogues", true);
-            empty.addView(tryAgain, lp(-2, 40));
+            empty.addView(tryAgain, lp(-2, isTelevision() ? 52 : 40));
             tryAgain.setOnClickListener(v -> loadChannels());
             channelResults.addView(empty, lp(-1,-2));
             return;
         }
 
-        int columns = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 2 : 1;
-        LinearLayout row = null;
-        int width = getResources().getDisplayMetrics().widthPixels;
-        if (width > dp(1050)) columns = 3;
-        for (int i=0;i<filtered.size();i++) {
+        float widthDp = getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density;
+        int columns;
+        if (isTelevision()) columns = widthDp >= 1500 ? 4 : 3;
+        else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE)
+            columns = widthDp >= 1250 ? 3 : 2;
+        else columns = 1;
+
+        final int shown = Math.min(filtered.size(), visibleChannelLimit);
+        for (int i=0; i<shown; i++) {
             if (i % columns == 0) {
-                row = horizontal();
+                LinearLayout row = horizontal();
                 row.setGravity(Gravity.TOP);
                 LinearLayout.LayoutParams rp = lp(-1,-2); rp.bottomMargin=dp(9);
                 channelResults.addView(row,rp);
             }
+            LinearLayout row = (LinearLayout) channelResults.getChildAt(channelResults.getChildCount()-1);
             Channel ch = filtered.get(i);
             LinearLayout card = channelCard(ch);
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
-            cp.rightMargin = i % columns == columns - 1 ? 0 : dp(9);
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0,
+                    dp(isTelevision() ? 104 : 82), 1);
+            cp.rightMargin = i % columns == columns - 1 ? 0 : dp(isTelevision() ? 13 : 9);
             row.addView(card, cp);
+            if (i == focusChannelIndex) {
+                focusChannelIndex = -1;
+                if (isTelevision()) card.post(() -> card.requestFocus());
+            }
+        }
+
+        if (shown < filtered.size()) {
+            int addCount = Math.min(CHANNELS_PER_BATCH, filtered.size() - shown);
+            String moreText = "Afficher " + addCount + " chaîne" + (addCount > 1 ? "s" : "")
+                    + " supplémentaires  ·  " + shown + " / " + filtered.size();
+            TextView more = buttonText(moreText, false);
+            more.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams morep = lp(-1, isTelevision() ? 54 : 44);
+            morep.topMargin = dp(4);
+            morep.bottomMargin = dp(12);
+            channelResults.addView(more, morep);
+            more.setOnClickListener(v -> {
+                focusChannelIndex = shown;
+                visibleChannelLimit = Math.min(filtered.size(), visibleChannelLimit + CHANNELS_PER_BATCH);
+                updateChannelResults();
+            });
         }
     }
 
     private LinearLayout channelCard(Channel ch) {
         LinearLayout card = horizontal();
-        card.setPadding(dp(10), dp(8), dp(8), dp(8));
+        card.setPadding(dp(isTelevision() ? 14 : 10), dp(isTelevision() ? 12 : 8), dp(8), dp(isTelevision() ? 12 : 8));
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setBackground(outlined(PANEL, 12, LINE));
         card.setFocusable(true);
         card.setClickable(true);
+        card.setOnFocusChangeListener((view, focused) -> {
+            card.setBackground(outlined(focused ? 0xFF142D45 : PANEL, 12, focused ? CYAN : LINE));
+            card.setScaleX(focused ? 1.025f : 1f);
+            card.setScaleY(focused ? 1.025f : 1f);
+        });
 
         FrameLayout logoFrame = new FrameLayout(this);
         logoFrame.setBackground(rounded(0xFFEAF2FC, 8));
@@ -520,7 +605,7 @@ public class MainActivity extends Activity {
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setPadding(dp(3),dp(3),dp(3),dp(3));
         logoFrame.addView(image, new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout.LayoutParams logop = lp(48, 48);
+        LinearLayout.LayoutParams logop = lp(isTelevision() ? 60 : 48, isTelevision() ? 60 : 48);
         logop.rightMargin = dp(10);
         card.addView(logoFrame, logop);
         loadLogo(ch.logo, image, initials);
@@ -528,16 +613,17 @@ public class MainActivity extends Activity {
         LinearLayout info = vertical();
         info.setGravity(Gravity.CENTER_VERTICAL);
         card.addView(info, new LinearLayout.LayoutParams(0,-1,1));
-        TextView name = label(safe(ch.name), 12, TEXT, true);
+        TextView name = label(safe(ch.name), isTelevision() ? 15 : 12, TEXT, true);
         name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
         info.addView(name);
-        TextView meta = label((ch.isVavoo ? "VAVOO" : "IPTV-ORG") + " · " + safeCountry(ch.country), 9, MUTED, false);
+        TextView meta = label((ch.isVavoo ? "VAVOO" : "IPTV-ORG") + " · " + safeCountry(ch.country), isTelevision() ? 11 : 9, MUTED, false);
         meta.setSingleLine(true); meta.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams mp=lp(-1,-2);mp.topMargin=dp(5);info.addView(meta,mp);
 
-        TextView star = label(isFavorite(ch) ? "★" : "☆", 20, YELLOW, true);
+        TextView star = label(isFavorite(ch) ? "★" : "☆", isTelevision() ? 26 : 20, YELLOW, true);
         star.setGravity(Gravity.CENTER);
-        card.addView(star, lp(26, 42));
+        star.setFocusable(false);
+        card.addView(star, lp(isTelevision() ? 34 : 26, isTelevision() ? 52 : 42));
         star.setOnClickListener(v -> {
             toggleFavorite(ch);
             star.setText(isFavorite(ch) ? "★" : "☆");
@@ -556,9 +642,9 @@ public class MainActivity extends Activity {
             try {
                 conn = (HttpURLConnection) new URL(address).openConnection();
                 conn.setConnectTimeout(7000); conn.setReadTimeout(9000);
-                conn.setRequestProperty("User-Agent", "NISSKENZI+/1.8");
+                conn.setRequestProperty("User-Agent", "NISSKENZI+/1.9.3");
                 try (InputStream in = conn.getInputStream()) {
-                    Bitmap bitmap = BitmapFactory.decodeStream(in);
+                    Bitmap bitmap = decodeLogo(in);
                     if (bitmap != null) {
                         logoCache.put(address, bitmap);
                         image.post(() -> {
@@ -573,6 +659,32 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             } finally { if (conn != null) conn.disconnect(); }
         });
+    }
+
+    private Bitmap decodeLogo(InputStream input) throws java.io.IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            total += read;
+            if (total > 2 * 1024 * 1024) return null;
+            output.write(buffer, 0, read);
+        }
+        byte[] data = output.toByteArray();
+        if (data.length == 0) return null;
+
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+
+        int sample = 1;
+        while (bounds.outWidth / sample > 192 || bounds.outHeight / sample > 192) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        return BitmapFactory.decodeByteArray(data, 0, data.length, options);
     }
 
     private void renderSettings() {
@@ -662,10 +774,15 @@ public class MainActivity extends Activity {
         try {
             String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("merged_channels","");
             if (raw.isEmpty()) return;
+            if (raw.length() > 1_500_000) {
+                getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().remove("merged_channels").apply();
+                return;
+            }
             JSONArray arr=new JSONArray(raw);
             ArrayList<Channel> cached=new ArrayList<>();
             for(int i=0;i<arr.length();i++) {
                 JSONObject o=arr.optJSONObject(i); if(o==null) continue;
+                if (cached.size() >= MAX_CACHED_CHANNELS) break;
                 String url=o.optString("url","");
                 if(url.isEmpty()) continue;
                 boolean v=o.optBoolean("isVavoo",false);
@@ -704,8 +821,39 @@ public class MainActivity extends Activity {
         } catch(Exception ignored) {}
     }
 
+    private ArrayList<Channel> cacheableChannels(ArrayList<Channel> items) {
+        int vavooCount = 0;
+        int iptvCount = 0;
+        for (Channel ch : items) { if (ch.isVavoo) vavooCount++; else iptvCount++; }
+        int vavooLimit = Math.min(vavooCount, MAX_CACHED_CHANNELS / 2);
+        int iptvLimit = Math.min(iptvCount, MAX_CACHED_CHANNELS / 2);
+        int remaining = MAX_CACHED_CHANNELS - vavooLimit - iptvLimit;
+        int extraVavoo = Math.min(remaining, vavooCount - vavooLimit);
+        vavooLimit += extraVavoo;
+        remaining -= extraVavoo;
+        iptvLimit += Math.min(remaining, iptvCount - iptvLimit);
+
+        ArrayList<Channel> cached = new ArrayList<>(Math.min(items.size(), MAX_CACHED_CHANNELS));
+        int vavooAdded = 0;
+        int iptvAdded = 0;
+        for (Channel ch : items) {
+            if (ch.isVavoo) {
+                if (vavooAdded >= vavooLimit) continue;
+                vavooAdded++;
+            } else {
+                if (iptvAdded >= iptvLimit) continue;
+                iptvAdded++;
+            }
+            cached.add(ch);
+            if (cached.size() >= MAX_CACHED_CHANNELS) break;
+        }
+        return cached;
+    }
+
     private void loadChannels() {
         if (loadingCatalog) return;
+        visibleChannelLimit = CHANNELS_PER_BATCH;
+        focusChannelIndex = -1;
         loadingCatalog=true;
         catalogStatus="Actualisation des catalogues VAVOO + IPTV-ORG…";
         updateStatus();
@@ -758,14 +906,16 @@ public class MainActivity extends Activity {
             } catch(Exception e){iptvError=e.getMessage()==null?"playlist IPTV-ORG indisponible":e.getMessage();}
             finally {if(conn!=null)conn.disconnect();}
 
-            final ArrayList<Channel> all=new ArrayList<>(merged);
+            final ArrayList<Channel> all=merged;
+            final ArrayList<Channel> cacheSnapshot=cacheableChannels(all);
+            if (!cacheSnapshot.isEmpty()) saveCachedChannels(cacheSnapshot);
             final String ve=vavooError, ie=iptvError;
             final int vc=vavooCount, ic=iptvCount;
             runOnUiThread(() -> {
+                if (activityDestroyed) return;
                 loadingCatalog=false;
                 if(!all.isEmpty()){
                     channels.clear();channels.addAll(all);
-                    saveCachedChannels(all);
                     if(!activeCountry.equals("Tous les pays")){
                         boolean found=false;for(Channel ch:channels)if(activeCountry.equals(safeCountry(ch.country))){found=true;break;}
                         if(!found)activeCountry="Tous les pays";
@@ -1102,6 +1252,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        activityDestroyed = true;
         releasePlayer();
         io.shutdownNow();
         logoIo.shutdownNow();

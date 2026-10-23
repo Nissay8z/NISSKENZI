@@ -46,6 +46,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -419,7 +420,7 @@ public class MainActivity extends Activity {
         searchInput.setText(searchText);
         searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, -1, 1));
         TextView refresh = buttonText("↻", false);
-        LinearLayout.LayoutParams rfp = lp(44, 44); rfp.leftMargin = dp(8);
+        LinearLayout.LayoutParams rfp = lp(isTelevision() ? 54 : 44, isTelevision() ? 54 : 44); rfp.leftMargin = dp(8);
         searchRow.addView(refresh, rfp);
         refresh.setOnClickListener(v -> loadChannels());
         searchInput.addTextChangedListener(new TextWatcher() {
@@ -441,7 +442,7 @@ public class MainActivity extends Activity {
         countryChoices = horizontal();
         countryChoices.setPadding(0, dp(8), 0, dp(8));
         countriesScroll.addView(countryChoices);
-        LinearLayout.LayoutParams csp = lp(-1, isTelevision() ? 56 : 48);
+        LinearLayout.LayoutParams csp = lp(-1, isTelevision() ? 64 : 48);
         page.addView(countriesScroll, csp);
         renderCountryChoices();
 
@@ -459,7 +460,7 @@ public class MainActivity extends Activity {
             chip.setOnClickListener(v -> { sourceFilter = source; visibleChannelLimit = CHANNELS_PER_BATCH; focusChannelIndex = -1; renderPage(); });
         }
         sourceScroll.addView(sources);
-        page.addView(sourceScroll, lp(-1, 45));
+        page.addView(sourceScroll, lp(-1, isTelevision() ? 62 : 45));
 
         channelResults = vertical();
         page.addView(channelResults, lp(-1, -2));
@@ -470,7 +471,7 @@ public class MainActivity extends Activity {
         if (countryChoices == null) return;
         countryChoices.removeAllViews();
         TextView all = buttonText("🌐 Tous les pays  " + channels.size(), "Tous les pays".equals(activeCountry));
-        LinearLayout.LayoutParams allp = lp(-2, 36); allp.rightMargin = dp(7);
+        LinearLayout.LayoutParams allp = lp(-2, isTelevision() ? 44 : 36); allp.rightMargin = dp(7);
         countryChoices.addView(all, allp);
         all.setOnClickListener(v -> { activeCountry = "Tous les pays"; visibleChannelLimit = CHANNELS_PER_BATCH; focusChannelIndex = -1; renderPage(); });
 
@@ -772,6 +773,8 @@ public class MainActivity extends Activity {
 
     private void loadCachedChannels() {
         try {
+            File cacheFile = new File(getApplicationInfo().dataDir, "shared_prefs/catalog_cache.xml");
+            if (cacheFile.exists() && cacheFile.length() > 1_500_000L) cacheFile.delete();
             String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("merged_channels","");
             if (raw.isEmpty()) return;
             if (raw.length() > 1_500_000) {

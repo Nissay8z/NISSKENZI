@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog(); String savedPlaylist=getSharedPreferences("sources",MODE_PRIVATE).getString("last_imported_playlist",""); if(!savedPlaylist.isEmpty())loadImportedPlaylist(savedPlaylist);}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -307,6 +307,23 @@ public class MainActivity extends Activity {
     LinearLayout box=new LinearLayout(this);box.setPadding(24,8,24,0);box.addView(input,new LinearLayout.LayoutParams(-1,-2));
     new AlertDialog.Builder(this).setTitle("Importer une playlist").setMessage("Colle une playlist M3U/M3U8 accessible et que tu es autorisé à utiliser.").setView(box).setPositiveButton("CHARGER",(d,w)->{String u=input.getText().toString().trim();if(!u.isEmpty()){getSharedPreferences("sources",MODE_PRIVATE).edit().putString("m3u_url",u).apply();loadImportedPlaylist(u);}}).setNegativeButton("Annuler",null).show();
   }
+  private void rememberPlaylist(String playlist){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    java.util.HashSet<String> urls=new java.util.HashSet<>(prefs.getStringSet("user_playlist_urls",java.util.Collections.emptySet()));
+    urls.add(playlist);
+    prefs.edit().putStringSet("user_playlist_urls",urls).putString("last_imported_playlist",playlist).apply();
+  }
+  private void loadSavedSourcePlaylists(){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    java.util.Set<String> saved=prefs.getStringSet("user_playlist_urls",null);
+    java.util.ArrayList<String> urls=new java.util.ArrayList<>();
+    if(saved!=null)urls.addAll(saved);
+    if(urls.isEmpty()){
+      String legacy=prefs.getString("last_imported_playlist","");
+      if(!legacy.isEmpty())urls.add(legacy);
+    }
+    for(String url:urls)if(url!=null&&!url.trim().isEmpty())loadImportedPlaylist(url);
+  }
   private void loadImportedPlaylist(String playlist){
     status.setText("Chargement de la playlist…");
     io.execute(()->{
@@ -315,14 +332,15 @@ public class MainActivity extends Activity {
         HttpURLConnection c=(HttpURLConnection)new URL(playlist).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setRequestProperty("User-Agent","NissayStream/1.3");
         int code=c.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
         BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));String line,name="Chaîne importée",logo="",group="Playlist importée";
-        while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group));}
+        while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group,false,playlist,""));}
         r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
       }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
       final ArrayList<Channel> result=found;final String err=error;
       runOnUiThread(()->{
         if(result.isEmpty()){status.setText("Import impossible : "+err);return;}
-        importedChannels.clear();importedChannels.addAll(result);
-        getSharedPreferences("sources",MODE_PRIVATE).edit().putString("last_imported_playlist",playlist).apply();
+        for(java.util.Iterator<Channel> it=importedChannels.iterator();it.hasNext();){Channel existing=it.next();if(playlist.equals(existing.vavooSourceUrl))it.remove();}
+        importedChannels.addAll(result);
+        rememberPlaylist(playlist);
         ArrayList<Channel> base=new ArrayList<>(baseChannels.isEmpty()?allVavooChannels:baseChannels);
         ArrayList<Channel> combined=mergeChannels(base,importedChannels);
         allVavooChannels.clear();allVavooChannels.addAll(combined);

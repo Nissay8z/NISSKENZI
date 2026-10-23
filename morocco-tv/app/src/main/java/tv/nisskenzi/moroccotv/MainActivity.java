@@ -38,6 +38,14 @@ public class MainActivity extends Activity {
   private LinearLayout root; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private volatile String activeSection="Live TV"; private volatile String catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
+  private TextView actionButton(String label,int color){
+    TextView button=text(label,13,Color.WHITE,true);
+    button.setGravity(Gravity.CENTER);
+    button.setPadding(18,12,18,12);
+    button.setBackground(rounded(color,10));
+    button.setFocusable(true);
+    return button;
+  }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
@@ -157,6 +165,7 @@ public class MainActivity extends Activity {
         for(VavooProvider.VavooChannel item:VavooProvider.loadChannels()){
           String vavooCountry=normalizeCountry(item.country);
           if(vavooCountry.isEmpty()||"default".equalsIgnoreCase(vavooCountry))vavooCountry=normalizeCountry(item.group);
+          if(vavooCountry.isEmpty()||"default".equalsIgnoreCase(vavooCountry))vavooCountry="Pays non précisé";
           Channel ch=new Channel(item.name,"vavoo://"+item.id,item.logo,
             "VAVOO · "+(item.group==null||item.group.trim().isEmpty()?"Direct":item.group),
             true,item.sourceUrl,vavooCountry.isEmpty()?"Pays non précisé":vavooCountry);

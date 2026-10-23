@@ -779,12 +779,13 @@ public class MainActivity extends Activity {
             .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Vos favoris sont conservés.")
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
-                getSharedPreferences("catalog_cache", MODE_PRIVATE).edit().clear().apply();
-                deleteFullCatalogCache("VAVOO");
-                deleteFullCatalogCache("IPTV-ORG");
-                VavooProvider.invalidateCatalogCache();
+                CatalogCache.clear(MainActivity.this);
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
-                channels.clear(); activeCountry = "Tous les pays"; renderPage();
+                channels.clear();
+                markCatalogChanged();
+                activeCountry = "Tous les pays";
+                lastRenderedFilterKey = "";
+                renderPage();
             }).show());
 
         TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
@@ -823,79 +824,6 @@ public class MainActivity extends Activity {
         return "pas encore chargé";
     }
 
-    private void loadCachedChannels() {
-        try {
-            SharedPreferences prefs = getSharedPreferences("catalog_cache", MODE_PRIVATE);
-            String key = "VAVOO".equals(sourceFilter) ? "vavoo_channels" : "iptv_org_channels";
-            String raw = prefs.getString(key, "");
-            if (raw.isEmpty()) return;
-            if (raw.length() > 1_500_000) {
-                prefs.edit().remove(key).apply();
-                return;
-            }
-            JSONArray arr = new JSONArray(raw);
-            ArrayList<Channel> cached = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null || cached.size() >= MAX_CACHED_CHANNELS) continue;
-                String url = o.optString("url", "");
-                if (url.isEmpty()) continue;
-                boolean isVavoo = o.optBoolean("isVavoo", false);
-                if (isVavoo != "VAVOO".equals(sourceFilter)) continue;
-                String group = o.optString("group", "Direct");
-                String country = knownCountry(o.optString("country", ""));
-                if (country.isEmpty()) {
-                    String prefix = isVavoo ? "VAVOO · " : "IPTV-ORG · ";
-                    country = knownCountry(group.startsWith(prefix) ? group.substring(prefix.length()) : group);
-                }
-                if (country.isEmpty()) country = "Pays non précisé";
-                cached.add(new Channel(o.optString("name", "Chaîne"), url,
-                        o.optString("logo", ""), group, isVavoo,
-                        o.optString("sourceUrl", ""), country));
-            }
-            if (!cached.isEmpty()) {
-                channels.clear();
-                channels.addAll(cached);
-                catalogStatus = sourceFilter + " · " + cached.size() + " chaînes en cache, actualisation…";
-                updateStatus();
-                renderPage();
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private void saveCachedChannels(ArrayList<Channel> items, String source) {
-        try {
-            JSONArray arr = new JSONArray();
-            int limit = 0;
-            for (Channel ch : items) {
-                if (limit++ >= MAX_CACHED_CHANNELS) break;
-                JSONObject o = new JSONObject();
-                o.put("name", safe(ch.name));
-                o.put("url", safe(ch.url));
-                o.put("logo", safe(ch.logo));
-                o.put("group", safe(ch.group));
-                o.put("isVavoo", ch.isVavoo);
-                o.put("sourceUrl", safe(ch.vavooSourceUrl));
-                o.put("country", safe(ch.country));
-                arr.put(o);
-            }
-            String key = "VAVOO".equals(source) ? "vavoo_channels" : "iptv_org_channels";
-            getSharedPreferences("catalog_cache", MODE_PRIVATE).edit()
-                    .putString(key, arr.toString())
-                    .putLong(key + "_updated_at", System.currentTimeMillis())
-                    .apply();
-        } catch (Exception ignored) {}
-    }
-
-    private ArrayList<Channel> cacheableChannels(ArrayList<Channel> items) {
-        ArrayList<Channel> cached = new ArrayList<>(Math.min(items.size(), MAX_CACHED_CHANNELS));
-        for (Channel ch : items) {
-            if (cached.size() >= MAX_CACHED_CHANNELS) break;
-            cached.add(ch);
-        }
-        return cached;
-    }
-
     private void switchSource(String source) {
         boolean changed = !source.equals(sourceFilter);
         if (!changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
@@ -915,7 +843,6 @@ public class MainActivity extends Activity {
             if (searchInput != null) searchInput.setText("");
         }
         updateHeaderTabs();
-        if (changed) loadCachedChannels();
         renderPage();
         if (changed || channels.isEmpty()) loadChannels();
     }

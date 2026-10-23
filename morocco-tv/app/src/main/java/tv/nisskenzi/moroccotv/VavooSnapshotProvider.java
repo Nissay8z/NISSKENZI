@@ -35,12 +35,26 @@ public final class VavooSnapshotProvider {
 
     public static ArrayList<Channel> readBundled(Context context, int maximum,
                                                   CountryResolver countryResolver) {
+        // The packaged M3U revision is checked using only its first few comment lines.
+        // On repeat launches, restore the already-parsed binary snapshot instead of
+        // reparsing roughly ten thousand rows from M3U on each source switch.
+        ArrayList<Channel> cached = FastCatalogCache.read(
+                context, "VAVOO", M3U_ASSET_NAME, maximum, 500);
+        if (cached.size() >= 500) return cached;
+
         ArrayList<Channel> m3u = readM3u(context, maximum, countryResolver);
-        if (m3u.size() >= 500) return m3u;
+        if (m3u.size() >= 500) {
+            FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, m3u, maximum, 500);
+            return m3u;
+        }
 
         // Transitional fallback for old APKs/builds that contain only the JSON snapshot.
         ArrayList<Channel> legacy = readLegacyJson(context, maximum, countryResolver);
-        return legacy.size() > m3u.size() ? legacy : m3u;
+        ArrayList<Channel> best = legacy.size() > m3u.size() ? legacy : m3u;
+        if (best.size() >= 500) {
+            FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, best, maximum, 500);
+        }
+        return best;
     }
 
     private static ArrayList<Channel> readM3u(Context context, int maximum,

@@ -871,7 +871,7 @@ public class MainActivity extends ComponentActivity {
 
         page.addView(label("Paramètres", 26, TEXT, true));
         TextView intro = label(
-                "Deux catalogues seulement : VAVOO natif et IPTV-org mondial.",
+                "Interface Android native · deux catalogues seulement.",
                 11, MUTED, false);
         LinearLayout.LayoutParams ip = lp(-1, -2);
         ip.topMargin = dp(6);
@@ -895,17 +895,9 @@ public class MainActivity extends ComponentActivity {
         LinearLayout.LayoutParams gap = lp(-1, -2);
         gap.topMargin = dp(12);
         page.addView(sourceCard(
-                "IPTV-org", "🌍", "Playlist mondiale via GitHub Raw",
-                "Téléchargement du master M3U public : pays, group-title et tvg-country sont conservés et indexés dans Room.",
+                "IPTV-org", "🌍", "Catalogue mondial intégré à l’APK",
+                "La playlist M3U est embarquée dans l’application. Les pays et les groupes sont disponibles sans télécharger de catalogue au démarrage, puis les chaînes sont mises en cache dans Room.",
                 PURPLE), gap);
-
-        LinearLayout.LayoutParams urlParams = lp(-1, -2);
-        urlParams.topMargin = dp(12);
-        TextView sourceUrl = label(
-                "Catalogue IPTV-org : raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u",
-                10, MUTED, false);
-        sourceUrl.setTextIsSelectable(true);
-        page.addView(sourceUrl, urlParams);
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -921,7 +913,7 @@ public class MainActivity extends ComponentActivity {
         statusCard.addView(details);
 
         TextView refresh = buttonText(
-                loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser VAVOO + IPTV-org",
+                loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser les catalogues locaux",
                 true);
         LinearLayout.LayoutParams rp = lp(-1, 48);
         rp.topMargin = dp(16);

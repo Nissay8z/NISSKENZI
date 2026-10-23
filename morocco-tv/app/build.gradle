@@ -7,8 +7,8 @@ android {
         applicationId 'tv.nisskenzi.moroccotv'
         minSdk 23
         targetSdk 28
-        versionCode 17
-        versionName '2.2.0'
+        versionCode 18
+        versionName '2.3.0'
         ndk {
             // ARM architectures cover typical Android phones and TV boxes; avoid bundling Intel VLC binaries.
             abiFilters 'arm64-v8a', 'armeabi-v7a'

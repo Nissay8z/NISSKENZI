@@ -225,8 +225,8 @@ public class MainActivity extends ComponentActivity {
                 b.setScaleY(1.035f);
             } else {
                 boolean active = b == liveTab ? "Live TV".equals(activePage)
-                        : b == vavooTab ? ("Live TV".equals(activePage) && "VAVOO".equals(sourceFilter))
-                        : b == iptvTab ? ("Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter))
+                        : b == vavooTab ? ("Live TV".equals(activePage) && "vavoo".equals(sourceFilter))
+                        : b == iptvTab ? ("Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
                 b.setBackground(rounded(active ? 0xFF173D52 : 0xFF242E3B, 22));
                 b.setTextColor(active ? YELLOW : Color.WHITE);
@@ -278,8 +278,8 @@ public class MainActivity extends ComponentActivity {
         back.setOnClickListener(v -> onBackPressed());
 
         liveTab = buttonText("Live TV", true);
-        vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
+        vavooTab = buttonText("VAVOO", "vavoo".equals(sourceFilter));
+        iptvTab = buttonText("IPTV-ORG", "iptv-org-fr".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
 
         LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
@@ -456,7 +456,7 @@ public class MainActivity extends ComponentActivity {
 
         // En-tête de la liste centrale
         LinearLayout middleHeader = horizontal();
-        TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
+        TextView sourceTitle = label(ChannelRepository.displayName(this, sourceFilter), isTelevision() ? 24 : 18, Color.WHITE, true);
         middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
         countView.setBackground(rounded(0xFF212B38, 15));
@@ -465,7 +465,7 @@ public class MainActivity extends ComponentActivity {
         middle.addView(middleHeader, lp(-1, -2));
 
         TextView listSubtitle = label(
-                "Flux direct · " + ("VAVOO".equals(sourceFilter) ? "VAVOO Server" : "IPTV-ORG Playlist"),
+                "Catalogue SQLite · " + ("all".equals(sourceFilter) ? "toutes les sources M3U" : "source M3U sélectionnée"),
                 isTelevision() ? 12 : 9, 0xEEFFFFFF, false);
         LinearLayout.LayoutParams lsp = lp(-1, -2);
         lsp.topMargin = dp(4);
@@ -540,7 +540,8 @@ public class MainActivity extends ComponentActivity {
 
         previewDetail = label(currentChannel == null
                 ? "La lecture s'intègre directement ici."
-                : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
+                : ("SOURCE  " + ChannelRepository.displayName(this, currentChannel.catalogSource)
+                        + "     ·     PAYS  " + safeCountry(currentChannel.country)),
                 isTelevision() ? 13 : 10, Color.WHITE, false);
         previewDetail.setPadding(0, dp(12), 0, 0);
         right.addView(previewDetail, lp(-1, -2));
@@ -1235,7 +1236,8 @@ public class MainActivity extends ComponentActivity {
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Ouverture du direct…");
         if (previewDetail != null) previewDetail.setText(
-                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
+                "SOURCE  " + ChannelRepository.displayName(this, ch.catalogSource)
+                        + "     ·     PAYS  " + safeCountry(ch.country));
 
         // Don't rebuild the country pane every time a channel is chosen. The
         // full catalogue can contain ten thousand rows and this was causing stutter.
@@ -1251,7 +1253,7 @@ public class MainActivity extends ComponentActivity {
 
         final NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
         nativeView.setChannelName(ch.name);
-        nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+        nativeView.setSourceLabel(ChannelRepository.displayName(this, ch.catalogSource));
         nativeView.setBackAction(nativeView::hideControls);
         nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
                 this::loadEpgForCurrentChannel);

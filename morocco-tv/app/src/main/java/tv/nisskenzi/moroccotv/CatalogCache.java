@@ -172,7 +172,6 @@ public final class CatalogCache {
             if (temporary.exists()) temporary.delete();
             if (backup.exists()) backup.delete();
         }
-        FastCatalogCache.clearMemory();
         ResolvedStreamCache.clear();
         VavooProvider.invalidateCatalogCache();
     }

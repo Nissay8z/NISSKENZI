@@ -87,12 +87,14 @@ public final class EpgProvider {
         final String countryCode;
         final Map<String, List<Programme>> programmesById;
         final Map<String, List<Programme>> programmesByName;
+        final long loadedAtMs;
 
         GuideIndex(String countryCode, Map<String, List<Programme>> byId,
-                   Map<String, List<Programme>> byName) {
+                   Map<String, List<Programme>> byName, long loadedAtMs) {
             this.countryCode = countryCode;
             this.programmesById = byId;
             this.programmesByName = byName;
+            this.loadedAtMs = loadedAtMs;
         }
     }
 
@@ -144,7 +146,8 @@ public final class EpgProvider {
     private static GuideIndex getGuide(Context context, String code, long now) throws Exception {
         String key = code.toLowerCase(Locale.ROOT);
         GuideIndex inMemory = MEMORY_CACHE.get(key);
-        if (inMemory != null) return inMemory;
+        if (inMemory != null && now - inMemory.loadedAtMs < CACHE_TTL_MS) return inMemory;
+        if (inMemory != null) MEMORY_CACHE.remove(key, inMemory);
 
         File directory = new File(context.getFilesDir(), "epg");
         if (!directory.exists() && !directory.mkdirs()) throw new Exception("Impossible de créer le cache EPG");
@@ -197,7 +200,7 @@ public final class EpgProvider {
             int status = connection.getResponseCode();
             if (status < 200 || status >= 300) throw new Exception("EPG HTTP " + status);
 
-            long reportedLength = connection.getContentLengthLong();
+            int reportedLength = connection.getContentLength();
             if (reportedLength > MAX_DOWNLOAD_BYTES) throw new Exception("Fichier EPG trop volumineux");
             try (InputStream input = new BufferedInputStream(connection.getInputStream());
                  OutputStream output = new BufferedOutputStream(new FileOutputStream(temporary))) {
@@ -273,7 +276,7 @@ public final class EpgProvider {
                 }
             }
         }
-        return new GuideIndex(code, byId, byName);
+        return new GuideIndex(code, byId, byName, now);
     }
 
     private static void insertProgramme(List<Programme> list, Programme item) {

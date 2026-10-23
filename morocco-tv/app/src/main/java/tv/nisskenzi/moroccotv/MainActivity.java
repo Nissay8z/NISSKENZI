@@ -3,14 +3,8 @@ package tv.nisskenzi.moroccotv;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
-import android.content.Intent;
-import android.database.Cursor;
-import android.provider.OpenableColumns;
-import android.net.Uri;
 import android.os.Bundle;
 import android.graphics.Color;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
@@ -41,20 +35,14 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
-  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private String activeFilter="TOUT"; private volatile String activeSection="Live TV"; private String searchQuery=""; private volatile String catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
-  private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ArrayList<Channel> baseChannels=new ArrayList<>(); private final ArrayList<Channel> importedChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
+  private LinearLayout root; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private volatile String activeSection="Live TV"; private volatile String catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
+  private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
-  private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
-  private final ArrayList<MediaEntry> movies=new ArrayList<>();
-  private final ArrayList<MediaEntry> series=new ArrayList<>();
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
     d.setColor(color);d.setCornerRadius(radius);return d;
-  }
-  private TextView actionButton(String label,int color){
-    TextView b=text(label,13,Color.WHITE,true);b.setGravity(Gravity.CENTER);b.setPadding(18,12,18,12);b.setBackground(rounded(color,10));b.setFocusable(true);return b;
   }
   private void buildHome(){
     activeSection="Live TV";homeWebReady=false;
@@ -65,57 +53,8 @@ public class MainActivity extends Activity {
     homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();}});
     root.addView(homeWebView,new LinearLayout.LayoutParams(-1,0,1));
     status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
-    list=new LinearLayout(this);setContentView(root);
+    setContentView(root);
     homeWebView.loadUrl("file:///android_asset/nisskenzi_home.html");
-  }
-  private void loadCachedMedia(){
-    try{
-      SharedPreferences prefs=getSharedPreferences("catalog_cache",MODE_PRIVATE);
-      JSONArray cachedMovies=new JSONArray(prefs.getString("vod_movies","[]"));
-      JSONArray cachedSeries=new JSONArray(prefs.getString("vod_series","[]"));
-      movies.clear();series.clear();
-      for(int i=0;i<cachedMovies.length();i++){
-        JSONObject o=cachedMovies.optJSONObject(i);if(o==null)continue;
-        movies.add(new MediaEntry(o.optString("name","Film"),o.optString("url",""),o.optString("poster",""),o.optString("group","Films"),o.optString("type","movie"),o.optString("id",""),o.optString("extension","mp4")));
-      }
-      for(int i=0;i<cachedSeries.length();i++){
-        JSONObject o=cachedSeries.optJSONObject(i);if(o==null)continue;
-        series.add(new MediaEntry(o.optString("name","Série"),o.optString("url",""),o.optString("poster",""),o.optString("group","Séries"),o.optString("type","series"),o.optString("id",""),o.optString("extension","")));
-      }
-    }catch(Exception ignored){}
-  }
-  private void saveCachedMedia(){
-    try{
-      JSONArray cachedMovies=new JSONArray(),cachedSeries=new JSONArray();
-      for(MediaEntry item:movies){JSONObject o=new JSONObject();o.put("name",item.name);o.put("url",item.url);o.put("poster",item.poster);o.put("group",item.group);o.put("type",item.type);o.put("id",item.id);o.put("extension",item.extension);cachedMovies.put(o);}
-      for(MediaEntry item:series){JSONObject o=new JSONObject();o.put("name",item.name);o.put("url",item.url);o.put("poster",item.poster);o.put("group",item.group);o.put("type",item.type);o.put("id",item.id);o.put("extension",item.extension);cachedSeries.put(o);}
-      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("vod_movies",cachedMovies.toString()).putString("vod_series",cachedSeries.toString()).apply();
-    }catch(Exception ignored){}
-  }
-  private void loadCachedImportedChannels(){
-    try{
-      String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("imported_channels","");
-      if(raw.isEmpty())return;
-      JSONArray arr=new JSONArray(raw);
-      importedChannels.clear();
-      for(int i=0;i<arr.length();i++){
-        JSONObject o=arr.optJSONObject(i);if(o==null)continue;
-        String name=o.optString("name","Chaîne importée"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Playlist importée");
-        if(url.isEmpty())continue;
-        importedChannels.add(new Channel(name,url,logo,group,false,o.optString("sourceUrl",""),o.optString("country","")));
-      }
-    }catch(Exception ignored){}
-  }
-  private void saveCachedImportedChannels(){
-    try{
-      JSONArray arr=new JSONArray();
-      for(Channel ch:importedChannels){
-        JSONObject o=new JSONObject();o.put("name",ch.name==null?"Chaîne importée":ch.name);o.put("url",ch.url==null?"":ch.url);
-        o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Playlist importée":ch.group);
-        o.put("sourceUrl",ch.vavooSourceUrl==null?"":ch.vavooSourceUrl);o.put("country",ch.vavooCountry==null?"":ch.vavooCountry);arr.put(o);
-      }
-      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("imported_channels",arr.toString()).apply();
-    }catch(Exception ignored){}
   }
   private void loadCachedChannels(){
     try{
@@ -139,8 +78,6 @@ public class MainActivity extends Activity {
       }
       if(!cached.isEmpty()){
         channels.clear();channels.addAll(cached);
-        baseChannels.clear();baseChannels.addAll(cached);
-        allVavooChannels.clear();allVavooChannels.addAll(cached);
         showChannels(new ArrayList<>(cached));
         status.setText(cached.size()+" chaînes en cache · actualisation en arrière-plan…");
       }
@@ -256,231 +193,21 @@ public class MainActivity extends Activity {
         reader.close();conn.disconnect();
       }catch(Exception e){iptvError=e.getMessage()==null?"playlist IPTV-ORG indisponible":e.getMessage();}
       final ArrayList<Channel> all=new ArrayList<>(merged);
-      final ArrayList<Channel> vAll=new ArrayList<>(vavooAll);
       final String ve=vavooError,ie=iptvError;
       runOnUiThread(()->{
-        baseChannels.clear();baseChannels.addAll(all);
-        ArrayList<Channel> combined=new ArrayList<>(baseChannels);
-        allVavooChannels.clear();allVavooChannels.addAll(combined);
-        channels.clear();channels.addAll(combined);
-        if(!combined.isEmpty())saveCachedChannels(combined);
-        activeFilter="TOUT";
-        showChannels(new ArrayList<>(combined));
-        String msg=combined.size()+" chaînes réunies";
+        channels.clear();channels.addAll(all);
+        if(!all.isEmpty())saveCachedChannels(all);
+        showChannels(new ArrayList<>(all));
+        String msg=all.size()+" chaînes réunies";
         if(!ve.isEmpty())msg+=" · VAVOO indisponible";
         if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
         status.setText(msg);catalogStatus=msg+"\nVAVOO : "+(ve.isEmpty()?"catalogue chargé · "+vavooAll.size()+" chaînes":"indisponible · "+ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"playlist internationale chargée":"indisponible · "+ie);
         if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("setCatalogStatus("+JSONObject.quote(catalogStatus)+");",null);
-        if(combined.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
-      });
-    });
-  }
-  private void showSectionInfo(String section){
-    list.removeAllViews();
-    LinearLayout panelBox=new LinearLayout(this);panelBox.setOrientation(LinearLayout.VERTICAL);panelBox.setPadding(24,26,24,26);panelBox.setBackground(rounded(0xFF111827,20));
-    TextView icon=text(section.equals("Films")?"▶":section.equals("Séries")?"▤":section.equals("Animés")?"✦":section.equals("Sport")?"⚽":"☁",32,0xFF6D5BFF,true);panelBox.addView(icon);
-    TextView title=text(section,26,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=10;panelBox.addView(title,titleP);
-    TextView desc=text("Cette rubrique est prête à accueillir son catalogue, mais aucune source de "+section.toLowerCase(java.util.Locale.ROOT)+" n’est connectée pour le moment. Connecte une playlist ou un service que tu es autorisé à utiliser.",14,0xFFB7C0CF,false);desc.setLineSpacing(3,1f);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=8;panelBox.addView(desc,descP);
-    TextView connect=actionButton("＋ CONNECTER UNE SOURCE",0xFF3921A8);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=18;panelBox.addView(connect,cp);connect.setOnClickListener(v->openSourceMenu());
-    TextView live=actionButton("RETOUR AU DIRECT",red);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=8;panelBox.addView(live,lp);live.setOnClickListener(v->{activeSection="Live TV";activeFilter="TOUT";showChannels(new ArrayList<>(channels));});
-    list.addView(panelBox);status.setText("Rubrique "+section+" · source nécessaire");
-  }
-  private void openCloudInfo(){
-    new AlertDialog.Builder(this).setTitle("NISSKENZI+ · Cloud").setMessage("La rubrique Cloud pourra afficher les fichiers locaux et les sources cloud compatibles après connexion. Aucune connexion cloud n’est configurée dans cette version.").setPositiveButton("OK",null).setNegativeButton("Connecter une playlist",(d,w)->openSourceMenu()).show();
-  }
-  private String xtreamUrl(String host,String user,String pass,String action){
-    return host.replaceAll("/+$","")+"/player_api.php?username="+android.net.Uri.encode(user)+"&password="+android.net.Uri.encode(pass)+(action==null||action.isEmpty()?"":"&action="+android.net.Uri.encode(action));
-  }
-  private JSONArray requestJsonArray(String address) throws Exception{
-    HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();
-    conn.setConnectTimeout(10000);conn.setReadTimeout(18000);conn.setRequestProperty("User-Agent","NISSKENZI+/1.7");
-    try{
-      int code=conn.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
-      BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));
-      StringBuilder body=new StringBuilder();String line;while((line=reader.readLine())!=null)body.append(line);reader.close();
-      String raw=body.toString().trim();if(!raw.startsWith("["))throw new java.io.IOException("Réponse API invalide");return new JSONArray(raw);
-    }finally{conn.disconnect();}
-  }
-  private java.util.HashMap<String,String> xtreamCategories(String host,String user,String pass,String action){
-    java.util.HashMap<String,String> result=new java.util.HashMap<>();
-    try{JSONArray array=requestJsonArray(xtreamUrl(host,user,pass,action));for(int i=0;i<array.length();i++){JSONObject o=array.optJSONObject(i);if(o!=null)result.put(o.optString("category_id",""),o.optString("category_name","Autres"));}}catch(Exception ignored){}
-    return result;
-  }
-  private void loadXtreamCatalog(){
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    String host=prefs.getString("xc_host","").trim().replaceAll("/+$",""),user=prefs.getString("xc_user","").trim(),pass=prefs.getString("xc_pass","");
-    if(host.isEmpty()||user.isEmpty()||pass.isEmpty())return;
-    status.setText("Chargement des catalogues Films et Séries…");
-    io.execute(()->{
-      ArrayList<MediaEntry> newMovies=new ArrayList<>(),newSeries=new ArrayList<>();String error="";
-      try{
-        java.util.HashMap<String,String> movieCategories=xtreamCategories(host,user,pass,"get_vod_categories");
-        java.util.HashMap<String,String> seriesCategories=xtreamCategories(host,user,pass,"get_series_categories");
-        JSONArray vod=requestJsonArray(xtreamUrl(host,user,pass,"get_vod_streams"));
-        for(int i=0;i<vod.length()&&newMovies.size()<700;i++){
-          JSONObject o=vod.optJSONObject(i);if(o==null)continue;
-          String id=o.optString("stream_id","");if(id.isEmpty())continue;
-          String name=o.optString("name","Film");String ext=o.optString("container_extension","mp4");
-          String cat=(movieCategories.containsKey(o.optString("category_id",""))?movieCategories.get(o.optString("category_id","")):"Films");
-          String url=host+"/movie/"+android.net.Uri.encode(user)+"/"+android.net.Uri.encode(pass)+"/"+id+"."+(ext.isEmpty()?"mp4":ext);
-          newMovies.add(new MediaEntry(name,url,o.optString("stream_icon",""),cat,"movie",id,ext));
-        }
-        JSONArray tv=requestJsonArray(xtreamUrl(host,user,pass,"get_series"));
-        for(int i=0;i<tv.length()&&newSeries.size()<700;i++){
-          JSONObject o=tv.optJSONObject(i);if(o==null)continue;
-          String id=o.optString("series_id","");if(id.isEmpty())continue;
-          String cat=(seriesCategories.containsKey(o.optString("category_id",""))?seriesCategories.get(o.optString("category_id","")):"Séries");
-          newSeries.add(new MediaEntry(o.optString("name","Série"),"",o.optString("cover",""),cat,"series",id,""));
-        }
-      }catch(Exception e){error=e.getMessage()==null?"API Xtream indisponible":e.getMessage();}
-      final ArrayList<MediaEntry> m=newMovies,s=newSeries;final String err=error;
-      runOnUiThread(()->{
-        if(!m.isEmpty()||!s.isEmpty()){movies.clear();movies.addAll(m);series.clear();series.addAll(s);saveCachedMedia();}
-        renderMediaToWeb();
-        if(movies.isEmpty()&&series.isEmpty()&&!err.isEmpty())status.setText("Catalogues VOD indisponibles : "+err);
-        else status.setText(movies.size()+" films · "+series.size()+" séries disponibles");
-      });
-    });
-  }
-  private void openSeriesEpisodes(MediaEntry item){
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    String host=prefs.getString("xc_host","").trim().replaceAll("/+$",""),user=prefs.getString("xc_user","").trim(),pass=prefs.getString("xc_pass","");
-    if(host.isEmpty()||user.isEmpty()||pass.isEmpty()){new AlertDialog.Builder(this).setTitle(item.name).setMessage("Connecte un compte Xtream compatible pour charger les épisodes de cette série.").setPositiveButton("OK",null).show();return;}
-    status.setText("Chargement des épisodes de "+item.name+"…");
-    io.execute(()->{
-      ArrayList<MediaEntry> eps=new ArrayList<>();String err="";
-      try{
-        String address=xtreamUrl(host,user,pass,"get_series_info")+"&series_id="+android.net.Uri.encode(item.id);
-        HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(10000);conn.setReadTimeout(18000);conn.setRequestProperty("User-Agent","NISSKENZI+/1.7");
-        JSONObject rootObj;
-        try{int code=conn.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);BufferedReader r=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));StringBuilder b=new StringBuilder();String line;while((line=r.readLine())!=null)b.append(line);r.close();rootObj=new JSONObject(b.toString());}finally{conn.disconnect();}
-        JSONObject episodeMap=rootObj.optJSONObject("episodes");
-        if(episodeMap!=null){java.util.Iterator<String> seasons=episodeMap.keys();while(seasons.hasNext()){String season=seasons.next();JSONArray arr=episodeMap.optJSONArray(season);if(arr==null)continue;for(int i=0;i<arr.length();i++){JSONObject ep=arr.optJSONObject(i);if(ep==null)continue;String id=ep.optString("id","");if(id.isEmpty())continue;String ext=ep.optString("container_extension","mp4");String label=ep.optString("title","Épisode "+ep.optString("episode_num",String.valueOf(i+1)));String stream=host+"/series/"+android.net.Uri.encode(user)+"/"+android.net.Uri.encode(pass)+"/"+id+"."+(ext.isEmpty()?"mp4":ext);eps.add(new MediaEntry(label,stream,ep.optString("info",""),"Saison "+season,"episode",id,ext));}}}
-        if(eps.isEmpty())throw new java.io.IOException("Aucun épisode n’a été retourné par la source.");
-      }catch(Exception e){err=e.getMessage()==null?"Impossible de charger les épisodes":e.getMessage();}
-      final ArrayList<MediaEntry> items=eps;final String error=err;
-      runOnUiThread(()->{
-        if(items.isEmpty()){new AlertDialog.Builder(this).setTitle(item.name).setMessage("Épisodes indisponibles : "+error).setPositiveButton("OK",null).show();return;}
-        String[] labels=new String[items.size()];for(int i=0;i<items.size();i++)labels[i]=items.get(i).group+" · "+items.get(i).name;
-        new AlertDialog.Builder(this).setTitle(item.name).setItems(labels,(d,which)->{MediaEntry ep=items.get(which);play(new Channel(item.name+" — "+ep.name,ep.url,item.poster,"Séries · "+ep.group));}).setNegativeButton("Fermer",null).show();
-      });
-    });
-  }
-  private void openSourceMenu(){
-    new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","VXParser VAVOO","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else if(which==2)openVxParser();else openMacPortal();}).setNegativeButton("Annuler",null).show();
-  }
-  private EditText sourceField(String hint){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setTextColor(Color.WHITE);e.setHintTextColor(0xFF9BA7BA);return e;}
-  private void openXtream(){
-    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);
-    SharedPreferences p=getSharedPreferences("sources",MODE_PRIVATE);
-    EditText host=sourceField("Serveur, ex. https://exemple.com:8080"), user=sourceField("Nom d’utilisateur"), pass=sourceField("Mot de passe");
-    host.setText(p.getString("xc_host",""));user.setText(p.getString("xc_user",""));pass.setText(p.getString("xc_pass",""));
-    box.addView(host);box.addView(user);box.addView(pass);
-    new AlertDialog.Builder(this).setTitle("Xtream Codes").setMessage("Entre les identifiants fournis par ton service IPTV.").setView(box).setPositiveButton("CONNECTER",(d,w)->{
-      String h=host.getText().toString().trim().replaceAll("/+$",""),u=user.getText().toString().trim(),pw=pass.getText().toString().trim();
-      if(h.isEmpty()||u.isEmpty()||pw.isEmpty()){Toast.makeText(this,"Les trois champs sont obligatoires",Toast.LENGTH_SHORT).show();return;}
-      p.edit().putString("xc_host",h).putString("xc_user",u).putString("xc_pass",pw).apply();
-      loadImportedPlaylist(h+"/get.php?username="+android.net.Uri.encode(u)+"&password="+android.net.Uri.encode(pw)+"&type=m3u_plus&output=ts");loadXtreamCatalog();
-    }).setNegativeButton("Annuler",null).show();
-  }
-  private void openVxParser(){
-    SharedPreferences p=getSharedPreferences("sources",MODE_PRIVATE);
-    EditText host=sourceField("Adresse VXParser, ex. http://127.0.0.1:8080");
-    host.setText(p.getString("vxparser_host",""));
-    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);box.addView(host);
-    new AlertDialog.Builder(this).setTitle("VXParser · VAVOO + Xtream")
-      .setMessage("VXParser est un serveur Python/FastAPI séparé, pas une bibliothèque Android intégrée. Démarre-le sur ton téléphone (par exemple avec Termux) ou sur un appareil de ton réseau, puis colle son adresse ici. Il faut avoir généré la liste LiveTV dans VXParser au moins une fois. L’application récupère ensuite sa playlist Xtream/M3U; elle ne lance pas VXParser toute seule.")
-      .setView(box).setPositiveButton("CONNECTER",(d,w)->{
-        String h=host.getText().toString().trim().replaceAll("/+$","");
-        if(h.isEmpty()){Toast.makeText(this,"Adresse du serveur obligatoire",Toast.LENGTH_SHORT).show();return;}
-        p.edit().putString("vxparser_host",h).apply();
-        loadImportedPlaylist(h+"/get.php?username=nissay&password=stream&type=m3u_plus&output=hls");
-      }).setNegativeButton("Annuler",null).show();
-  }
-  private void openMacPortal(){
-    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(24,4,24,0);
-    EditText portal=sourceField("URL du portail Stalker"),mac=sourceField("Adresse MAC de l’appareil autorisé");
-    box.addView(portal);box.addView(mac);
-    new AlertDialog.Builder(this).setTitle("Portail MAC / Stalker").setMessage("Les portails Stalker n’ont pas tous le même protocole. Cette option teste uniquement les portails qui exposent directement une playlist M3U via /playlist.m3u?mac=…; elle ne garantit pas la compatibilité avec tous les portails.").setView(box).setPositiveButton("TESTER",(d,w)->{
-      String h=portal.getText().toString().trim().replaceAll("/+$",""),m=mac.getText().toString().trim();
-      if(h.isEmpty()||m.isEmpty()){Toast.makeText(this,"URL et adresse MAC obligatoires",Toast.LENGTH_SHORT).show();return;}
-      getSharedPreferences("sources",MODE_PRIVATE).edit().putString("mac_portal",h).putString("mac_address",m).apply();
-      loadImportedPlaylist(h+"/playlist.m3u?mac="+android.net.Uri.encode(m));
-    }).setNegativeButton("Annuler",null).show();
-  }
-  private void openPlaylistImport(){
-    EditText input=new EditText(this);input.setSingleLine(true);input.setHint("URL complète de la playlist .m3u/.m3u8");input.setTextColor(Color.WHITE);input.setHintTextColor(0xFF9BA7BA);
-    String saved=getSharedPreferences("sources",MODE_PRIVATE).getString("m3u_url","");input.setText(saved);
-    LinearLayout box=new LinearLayout(this);box.setPadding(24,8,24,0);box.addView(input,new LinearLayout.LayoutParams(-1,-2));
-    new AlertDialog.Builder(this).setTitle("Importer une playlist").setMessage("Colle une playlist M3U/M3U8 accessible et que tu es autorisé à utiliser.").setView(box).setPositiveButton("CHARGER",(d,w)->{String u=input.getText().toString().trim();if(!u.isEmpty()){getSharedPreferences("sources",MODE_PRIVATE).edit().putString("m3u_url",u).apply();loadImportedPlaylist(u);}}).setNegativeButton("Annuler",null).show();
-  }
-  private void rememberPlaylist(String playlist){
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    java.util.HashSet<String> urls=new java.util.HashSet<>(prefs.getStringSet("user_playlist_urls",java.util.Collections.emptySet()));
-    urls.add(playlist);
-    prefs.edit().putStringSet("user_playlist_urls",urls).putString("last_imported_playlist",playlist).apply();
-  }
-  private void loadSavedSourcePlaylists(){
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    java.util.Set<String> saved=prefs.getStringSet("user_playlist_urls",null);
-    java.util.ArrayList<String> urls=new java.util.ArrayList<>();
-    if(saved!=null)urls.addAll(saved);
-    if(urls.isEmpty()){
-      String legacy=prefs.getString("last_imported_playlist","");
-      if(!legacy.isEmpty())urls.add(legacy);
-    }
-    for(String url:urls)if(url!=null&&!url.trim().isEmpty())loadImportedPlaylist(url);
-  }
-  private void loadImportedPlaylist(String playlist){
-    status.setText("Chargement de la playlist…");
-    io.execute(()->{
-      ArrayList<Channel> found=new ArrayList<>();String error="";
-      try{
-        HttpURLConnection c=(HttpURLConnection)new URL(playlist).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setRequestProperty("User-Agent","NissayStream/1.3");
-        int code=c.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
-        BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));String line,name="Chaîne importée",logo="",group="Playlist importée",country="Pays non précisé";
-        while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";country=normalizeCountry(attribute(line,"tvg-country"));if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));if(country.isEmpty())country="Pays non précisé";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group,false,playlist,country));}
-        r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
-      }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
-      final ArrayList<Channel> result=found;final String err=error;
-      runOnUiThread(()->{
-        if(result.isEmpty()){status.setText("Import impossible : "+err);return;}
-        for(java.util.Iterator<Channel> it=importedChannels.iterator();it.hasNext();){Channel existing=it.next();if(playlist.equals(existing.vavooSourceUrl))it.remove();}
-        importedChannels.addAll(result);
-        saveCachedImportedChannels();
-        rememberPlaylist(playlist);
-        ArrayList<Channel> base=new ArrayList<>(baseChannels.isEmpty()?allVavooChannels:baseChannels);
-        ArrayList<Channel> combined=mergeChannels(base,importedChannels);
-        allVavooChannels.clear();allVavooChannels.addAll(combined);
-        channels.clear();channels.addAll(combined);saveCachedChannels(combined);
-        status.setText(result.size()+" chaînes importées · "+combined.size()+" au total");
-        showChannels(new ArrayList<>(combined));
+        if(all.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
       });
     });
   }
   private String attribute(String line,String key){int a=line.indexOf(key+"=");if(a<0)return "";int start=a+key.length()+1;if(start<line.length()&&line.charAt(start)=='"')start++;int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
-  private void openVavooSettings(){
-    String[] labels={"France","Allemagne","Espagne","Italie","Royaume-Uni","Tous les pays"};
-    String[] catalogCountries={"France","Germany","Spain","Italy","United Kingdom","*"};
-    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
-    String saved=prefs.getString("vavoo_country_filter","France");
-    int selected=0;
-    for(int i=0;i<labels.length;i++)if(labels[i].equals(saved)){selected=i;break;}
-    new AlertDialog.Builder(this).setTitle("VAVOO · pays du catalogue")
-      .setSingleChoiceItems(labels,selected,(dialog,which)->{
-        prefs.edit().putString("vavoo_country_filter",labels[which]).apply();
-        dialog.dismiss();
-        loadVavooChannels();
-      })
-      .setNegativeButton("Fermer",null).show();
-  }
-  private void loadVavooChannels(){ loadChannels(); }
-  private ArrayList<Channel> mergeChannels(java.util.List<Channel> first,java.util.List<Channel> second){
-    ArrayList<Channel> out=new ArrayList<>();java.util.HashSet<String> seen=new java.util.HashSet<>();
-    if(first!=null)for(Channel ch:first){String key=ch.url==null?ch.name:ch.url;if(key!=null&&seen.add(key))out.add(ch);}
-    if(second!=null)for(Channel ch:second){String key=ch.url==null?ch.name:ch.url;if(key!=null&&seen.add(key))out.add(ch);}
-    return out;
-  }
   private void showChannels(ArrayList<Channel> result){
     if(result!=null){channels.clear();channels.addAll(result);}
     renderChannelsToWeb();
@@ -505,39 +232,14 @@ public class MainActivity extends Activity {
       homeWebView.evaluateJavascript("finishChannels();",null);
     }catch(Exception ignored){}
   }
-  private Channel mediaFavoriteChannel(MediaEntry item){
-    String key=item.url;
-    if(key==null||key.trim().isEmpty())key="series://"+(item.id==null?item.name:item.id);
-    return new Channel(item.name==null?"Média":item.name,key,item.poster==null?"":item.poster,item.group==null?"VOD":item.group);
-  }
-  private void renderMediaToWeb(){
-    if(homeWebView==null||!homeWebReady)return;
-    try{
-      JSONArray m=new JSONArray(),s=new JSONArray();
-      for(MediaEntry x:movies){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);o.put("favorite",isFavorite(mediaFavoriteChannel(x)));m.put(o);}
-      for(MediaEntry x:series){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);o.put("favorite",isFavorite(mediaFavoriteChannel(x)));mSafePut(s,o);}
-      homeWebView.evaluateJavascript("receiveMedia("+JSONObject.quote(m.toString())+","+JSONObject.quote(s.toString())+");",null);
-    }catch(Exception ignored){}
-  }
-  private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
   public final class HomeBridge {
     @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();});}
     @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
-    @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
-    @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
-    @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
-    @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
     @JavascriptInterface public void setCurrentPage(String page){activeSection=page==null?"Accueil":page;}
     @JavascriptInterface public String getCatalogStatus(){return catalogStatus;}
-    @JavascriptInterface public String getQuality(){return getSharedPreferences("player_settings",MODE_PRIVATE).getString("quality","Auto");}
-    @JavascriptInterface public void setQuality(String quality){if(!"Auto".equals(quality)&&!"SD".equals(quality)&&!"HD".equals(quality)&&!"Full HD".equals(quality)&&!"4K".equals(quality))return;runOnUiThread(()->{getSharedPreferences("player_settings",MODE_PRIVATE).edit().putString("quality",quality).apply();if(player!=null)applyQuality(player);Toast.makeText(MainActivity.this,"Qualité par défaut : "+quality,Toast.LENGTH_SHORT).show();});}
-    @JavascriptInterface public void chooseCountry(){runOnUiThread(()->{if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("setPage('Live TV')",null);});}
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
     @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
-    @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);MainActivity.this.play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())MainActivity.this.openSeriesEpisodes(series.get(index));});}
-    @JavascriptInterface public void toggleMediaFavorite(String type,int index){runOnUiThread(()->{ArrayList<MediaEntry> list="Films".equals(type)?movies:series;if(index>=0&&index<list.size()){MainActivity.this.toggleFavorite(mediaFavoriteChannel(list.get(index)));renderMediaToWeb();}});}
   }
-  private void loadLogo(ImageView target,TextView fallback,String address){logoIo.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
   private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}
   private void toggleFavorite(Channel ch){SharedPreferences p=getSharedPreferences("favorites",MODE_PRIVATE);p.edit().putBoolean(ch.url,!p.getBoolean(ch.url,false)).apply();}
   private FrameLayout playerStage;
@@ -556,41 +258,11 @@ public class MainActivity extends Activity {
     playerStage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
     root.addView(playerStage,new LinearLayout.LayoutParams(-1,0,1));
     LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);controls.setPadding(18,8,18,8);controls.setBackgroundColor(0xFF090B10);
-    boolean isVod=ch.group!=null&&(ch.group.startsWith("Films ·")||ch.group.startsWith("Séries ·")||ch.group.startsWith("Cloud ·"));
-    TextView live=text(isVod?"▶  LECTURE VOD":"●  EN DIRECT",11,isVod?0xFF69D6FF:0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
+    TextView live=text("●  EN DIRECT",11,0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
     TextView retry=actionButton("↻ RELANCER",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
     TextView info=actionButton("ⓘ",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=8;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nSource : "+(ch.isVavoo?"VAVOO":"flux externe")+"\n\nLa disponibilité dépend de la source et de ses conditions d’accès.").setPositiveButton("OK",null).show());
     root.addView(controls,new LinearLayout.LayoutParams(-1,-2));
     startPlayback(ch);
-  }
-  private void applyQuality(ExoPlayer target){
-    try{
-      String quality=getSharedPreferences("player_settings",MODE_PRIVATE).getString("quality","Auto");
-      androidx.media3.common.TrackSelectionParameters.Builder params=target.getTrackSelectionParameters().buildUpon();
-      if("SD".equals(quality))params.setMaxVideoSize(854,480);
-      else if("HD".equals(quality))params.setMaxVideoSize(1280,720);
-      else if("Full HD".equals(quality))params.setMaxVideoSize(1920,1080);
-      else if("4K".equals(quality))params.setMaxVideoSize(3840,2160);
-      else params.setMaxVideoSize(Integer.MAX_VALUE,Integer.MAX_VALUE);
-      target.setTrackSelectionParameters(params.build());
-    }catch(Exception ignored){}
-  }
-  private static final int PICK_LOCAL_VIDEO_REQUEST=501;
-  private void openLocalVideoPicker(){
-    try{
-      Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("video/*");
-      startActivityForResult(intent,PICK_LOCAL_VIDEO_REQUEST);
-    }catch(Exception e){Toast.makeText(this,"Impossible d’ouvrir le sélecteur de fichiers.",Toast.LENGTH_LONG).show();}
-  }
-  @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
-    super.onActivityResult(requestCode,resultCode,data);
-    if(requestCode!=PICK_LOCAL_VIDEO_REQUEST||resultCode!=RESULT_OK||data==null||data.getData()==null)return;
-    Uri uri=data.getData();
-    try{getContentResolver().takePersistableUriPermission(uri,data.getFlags()&(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION));}catch(Exception ignored){}
-    String name=uri.getLastPathSegment()==null?"Vidéo locale":uri.getLastPathSegment();
-    Cursor cursor=null;
-    try{cursor=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null);if(cursor!=null&&cursor.moveToFirst()){int col=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(col>=0)name=cursor.getString(col);}}catch(Exception ignored){}finally{if(cursor!=null)cursor.close();}
-    play(new Channel(name,uri.toString(),"","Cloud · fichier local"));
   }
   private void startPlayback(Channel ch){
     if(player!=null){player.release();player=null;}
@@ -601,7 +273,6 @@ public class MainActivity extends Activity {
     ExoPlayer activePlayer=new ExoPlayer.Builder(this)
       .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)).build();
     player=activePlayer;
-    applyQuality(activePlayer);
     playerView.setPlayer(activePlayer);
     activePlayer.addListener(new Player.Listener(){
       @Override public void onPlayerError(PlaybackException e){
@@ -633,5 +304,5 @@ public class MainActivity extends Activity {
   private void returnHome(){if(player!=null){player.release();player=null;}playerStage=null;currentChannel=null;buildHome();showChannels(new ArrayList<>(channels));}
   @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){return super.dispatchKeyEvent(event);}
   @Override public void onBackPressed(){if(player!=null){returnHome();}else if(homeWebView!=null&&homeWebReady&&!"Live TV".equals(activeSection)){homeWebView.evaluateJavascript("setPage('Live TV')",null);activeSection="Live TV";}else super.onBackPressed();}
-  @Override protected void onDestroy(){if(player!=null)player.release();if(homeWebView!=null){try{homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}}io.shutdownNow();logoIo.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(player!=null)player.release();if(homeWebView!=null){try{homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}}io.shutdownNow();super.onDestroy();}
 }

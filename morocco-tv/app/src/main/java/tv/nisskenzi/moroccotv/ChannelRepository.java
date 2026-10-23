@@ -22,10 +22,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Single owner of the multi-source M3U catalogue.
+ * Single owner of the VAVOO + IPTV-org catalogue.
  *
  * Room is the UI source of truth. Network work only replaces one source's rows
- * after that playlist parsed successfully; a broken/offline feed never erases
+ * after that catalogue parsed successfully; a broken/offline feed never erases
  * its last valid local copy.
  */
 public final class ChannelRepository {
@@ -33,6 +33,7 @@ public final class ChannelRepository {
     private static final int MAX_CHANNELS_PER_SOURCE = 20_000;
     private static final String PREFS = "m3u_sources";
     private static final String DB_PREFS = "catalog_database_state";
+    private static final String SOURCE_MIGRATION_KEY = "only_vavoo_iptvorg_migrated";
     private static final String PERIODIC_WORK_NAME = "nisskenzi_m3u_refresh";
 
     public static final class Source {
@@ -136,8 +137,8 @@ public final class ChannelRepository {
 
     /** Called by the ViewModel as soon as the home screen is created. */
     public void initialize() {
-        schedulePeriodicRefresh();
         if (!initialized.compareAndSet(false, true)) return;
+        schedulePeriodicRefresh();
         ioExecutor.execute(() -> {
             cleanupDeprecatedSources();
             refreshStaleSourcesAsync();
@@ -147,8 +148,8 @@ public final class ChannelRepository {
     /** Manual refresh runs entirely off the main/UI thread. */
     public void refreshAllAsync(boolean force) {
         status.postValue(force
-                ? "Actualisation des playlists M3U en arrière-plan…"
-                : "Vérification des playlists M3U…");
+                ? "Actualisation de VAVOO et IPTV-org en arrière-plan…"
+                : "Vérification du cache local et des deux catalogues…");
         for (Source source : SOURCES) {
             ioExecutor.execute(() -> refreshOne(source, force));
         }
@@ -170,7 +171,7 @@ public final class ChannelRepository {
         return successfulOrFresh;
     }
 
-    /** Clear only the Room catalogue rows; the next initialize/refresh seeds them again. */
+    /** Clear Room rows and reload the two supported catalogues from their live sources. */
     public void clearDatabaseAsync() {
         ioExecutor.execute(() -> {
             database.runInTransaction(dao::deleteAll);
@@ -199,7 +200,13 @@ public final class ChannelRepository {
         database.runInTransaction(dao::deleteDeprecatedSources);
         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().clear().apply();
-        statePreferences.edit().clear().apply();
+        if (!statePreferences.getBoolean(SOURCE_MIGRATION_KEY, false)) {
+            statePreferences.edit()
+                    .remove("last_refresh_vavoo")
+                    .remove("last_refresh_iptv-org-fr")
+                    .putBoolean(SOURCE_MIGRATION_KEY, true)
+                    .apply();
+        }
         M3UParser.clearMemoryCache();
     }
 
@@ -247,7 +254,7 @@ public final class ChannelRepository {
                         "", source.defaultUrl, MAX_CHANNELS_PER_SOURCE, this::resolveCountry, force);
             }
             if (parsed.isEmpty()) {
-                status.postValue(source.name + " · playlist vide, cache local conservé");
+                status.postValue(source.name + " · catalogue vide, cache local conservé");
                 return false;
             }
 
@@ -316,13 +323,9 @@ public final class ChannelRepository {
         if (raw.length() == 2 && Character.isLetter(raw.charAt(0))
                 && Character.isLetter(raw.charAt(1))) {
             String code = raw.toUpperCase(java.util.Locale.ROOT);
-            for (String isoCode : java.util.Locale.getISOCountries()) {
-                if (!isoCode.equals(code)) continue;
-                java.util.Locale locale = new java.util.Locale("", code);
-                String french = locale.getDisplayCountry(java.util.Locale.FRENCH);
-                if (french != null && !french.trim().isEmpty() && !french.equals(code)) return french;
-                break;
-            }
+            java.util.Locale locale = new java.util.Locale("", code);
+            String french = locale.getDisplayCountry(java.util.Locale.FRENCH);
+            if (french != null && !french.trim().isEmpty() && !french.equals(code)) return french;
             // Invalid two-letter values fall through to the playlist group-title.
             return "";
         }

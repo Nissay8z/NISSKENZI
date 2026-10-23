@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadCachedImportedChannels(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadCachedImportedChannels(); loadCachedMedia(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -67,6 +67,30 @@ public class MainActivity extends Activity {
     status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
     list=new LinearLayout(this);setContentView(root);
     homeWebView.loadUrl("file:///android_asset/nisskenzi_home.html");
+  }
+  private void loadCachedMedia(){
+    try{
+      SharedPreferences prefs=getSharedPreferences("catalog_cache",MODE_PRIVATE);
+      JSONArray cachedMovies=new JSONArray(prefs.getString("vod_movies","[]"));
+      JSONArray cachedSeries=new JSONArray(prefs.getString("vod_series","[]"));
+      movies.clear();series.clear();
+      for(int i=0;i<cachedMovies.length();i++){
+        JSONObject o=cachedMovies.optJSONObject(i);if(o==null)continue;
+        movies.add(new MediaEntry(o.optString("name","Film"),o.optString("url",""),o.optString("poster",""),o.optString("group","Films"),o.optString("type","movie"),o.optString("id",""),o.optString("extension","mp4")));
+      }
+      for(int i=0;i<cachedSeries.length();i++){
+        JSONObject o=cachedSeries.optJSONObject(i);if(o==null)continue;
+        series.add(new MediaEntry(o.optString("name","Série"),o.optString("url",""),o.optString("poster",""),o.optString("group","Séries"),o.optString("type","series"),o.optString("id",""),o.optString("extension","")));
+      }
+    }catch(Exception ignored){}
+  }
+  private void saveCachedMedia(){
+    try{
+      JSONArray cachedMovies=new JSONArray(),cachedSeries=new JSONArray();
+      for(MediaEntry item:movies){JSONObject o=new JSONObject();o.put("name",item.name);o.put("url",item.url);o.put("poster",item.poster);o.put("group",item.group);o.put("type",item.type);o.put("id",item.id);o.put("extension",item.extension);cachedMovies.put(o);}
+      for(MediaEntry item:series){JSONObject o=new JSONObject();o.put("name",item.name);o.put("url",item.url);o.put("poster",item.poster);o.put("group",item.group);o.put("type",item.type);o.put("id",item.id);o.put("extension",item.extension);cachedSeries.put(o);}
+      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("vod_movies",cachedMovies.toString()).putString("vod_series",cachedSeries.toString()).apply();
+    }catch(Exception ignored){}
   }
   private void loadCachedImportedChannels(){
     try{
@@ -259,9 +283,10 @@ public class MainActivity extends Activity {
       }catch(Exception e){error=e.getMessage()==null?"API Xtream indisponible":e.getMessage();}
       final ArrayList<MediaEntry> m=newMovies,s=newSeries;final String err=error;
       runOnUiThread(()->{
-        movies.clear();movies.addAll(m);series.clear();series.addAll(s);renderMediaToWeb();
-        if(m.isEmpty()&&s.isEmpty()&&!err.isEmpty())status.setText("Catalogues VOD indisponibles : "+err);
-        else status.setText(m.size()+" films · "+s.size()+" séries chargés depuis Xtream");
+        if(!m.isEmpty()||!s.isEmpty()){movies.clear();movies.addAll(m);series.clear();series.addAll(s);saveCachedMedia();}
+        renderMediaToWeb();
+        if(movies.isEmpty()&&series.isEmpty()&&!err.isEmpty())status.setText("Catalogues VOD indisponibles : "+err);
+        else status.setText(movies.size()+" films · "+series.size()+" séries disponibles");
       });
     });
   }

@@ -3,6 +3,10 @@ package tv.nisskenzi.moroccotv;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.Intent;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import android.net.Uri;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Bitmap;
@@ -22,6 +26,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import org.json.JSONArray;
@@ -437,6 +442,7 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
     @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
     @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
+    @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
     @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
@@ -465,7 +471,7 @@ public class MainActivity extends Activity {
     playerStage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
     root.addView(playerStage,new LinearLayout.LayoutParams(-1,0,1));
     LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);controls.setPadding(18,8,18,8);controls.setBackgroundColor(0xFF090B10);
-    boolean isVod=ch.group!=null&&(ch.group.startsWith("Films ·")||ch.group.startsWith("Séries ·"));
+    boolean isVod=ch.group!=null&&(ch.group.startsWith("Films ·")||ch.group.startsWith("Séries ·")||ch.group.startsWith("Cloud ·"));
     TextView live=text(isVod?"▶  LECTURE VOD":"●  EN DIRECT",11,isVod?0xFF69D6FF:0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
     TextView retry=actionButton("↻ RELANCER",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
     TextView info=actionButton("ⓘ",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=8;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nSource : "+(ch.isVavoo?"VAVOO":"flux externe")+"\n\nLa disponibilité dépend de la source et de ses conditions d’accès.").setPositiveButton("OK",null).show());
@@ -508,11 +514,29 @@ public class MainActivity extends Activity {
     TextView row=text(iconText+"   "+title,14,Color.WHITE,true);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(14,14,12,14);row.setSingleLine(true);row.setEllipsize(TextUtils.TruncateAt.END);row.setFocusable(true);row.setBackground(rounded(0xFF1B212C,10));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=6;row.setLayoutParams(p);row.setOnFocusChangeListener((v,focus)->row.setBackground(rounded(focus?0xFF3A4558:0xFF1B212C,10)));return row;
   }
 
+  private static final int PICK_LOCAL_VIDEO_REQUEST=501;
+  private void openLocalVideoPicker(){
+    try{
+      Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("video/*");
+      startActivityForResult(intent,PICK_LOCAL_VIDEO_REQUEST);
+    }catch(Exception e){Toast.makeText(this,"Impossible d’ouvrir le sélecteur de fichiers.",Toast.LENGTH_LONG).show();}
+  }
+  @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+    super.onActivityResult(requestCode,resultCode,data);
+    if(requestCode!=PICK_LOCAL_VIDEO_REQUEST||resultCode!=RESULT_OK||data==null||data.getData()==null)return;
+    Uri uri=data.getData();
+    try{getContentResolver().takePersistableUriPermission(uri,data.getFlags()&(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION));}catch(Exception ignored){}
+    String name=uri.getLastPathSegment()==null?"Vidéo locale":uri.getLastPathSegment();
+    Cursor cursor=null;
+    try{cursor=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null);if(cursor!=null&&cursor.moveToFirst()){int col=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(col>=0)name=cursor.getString(col);}}catch(Exception ignored){}finally{if(cursor!=null)cursor.close();}
+    play(new Channel(name,uri.toString(),"","Cloud · fichier local"));
+  }
   private void startPlayback(Channel ch){
     if(player!=null){player.release();player=null;}
-    DefaultHttpDataSource.Factory dataSourceFactory=new DefaultHttpDataSource.Factory()
-      .setUserAgent(ch.isVavoo?"VAVOO/2.6":"NissayStream/1.5")
+    DefaultHttpDataSource.Factory httpDataSourceFactory=new DefaultHttpDataSource.Factory()
+      .setUserAgent(ch.isVavoo?"VAVOO/2.6":"NISSKENZI+/1.7")
       .setAllowCrossProtocolRedirects(true);
+    DefaultDataSource.Factory dataSourceFactory=new DefaultDataSource.Factory(this,httpDataSourceFactory);
     ExoPlayer activePlayer=new ExoPlayer.Builder(this)
       .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)).build();
     player=activePlayer;

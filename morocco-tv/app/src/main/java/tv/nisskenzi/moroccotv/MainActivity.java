@@ -459,7 +459,8 @@ public class MainActivity extends Activity {
     playerStage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
     root.addView(playerStage,new LinearLayout.LayoutParams(-1,0,1));
     LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);controls.setPadding(18,8,18,8);controls.setBackgroundColor(0xFF090B10);
-    TextView live=text("●  EN DIRECT",11,0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
+    boolean isVod=ch.group!=null&&(ch.group.startsWith("Films ·")||ch.group.startsWith("Séries ·"));
+    TextView live=text(isVod?"▶  LECTURE VOD":"●  EN DIRECT",11,isVod?0xFF69D6FF:0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
     TextView retry=actionButton("↻ RELANCER",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
     TextView info=actionButton("ⓘ",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=8;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nSource : "+(ch.isVavoo?"VAVOO":"flux externe")+"\n\nLa disponibilité dépend de la source et de ses conditions d’accès.").setPositiveButton("OK",null).show());
     root.addView(controls,new LinearLayout.LayoutParams(-1,-2));

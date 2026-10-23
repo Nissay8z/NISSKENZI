@@ -121,19 +121,19 @@ public class MainActivity extends Activity {
         conn.setConnectTimeout(15000);conn.setReadTimeout(35000);
         conn.setRequestProperty("User-Agent","NISSKENZI+/1.6");
         BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));
-        String line,name="Chaîne",logo="",group="Pays non précisé";
+        String line,name="Chaîne",logo="",group="Pays non précisé",country="Pays non précisé";
         while((line=reader.readLine())!=null){
           if(line.startsWith("#EXTINF:")){
             int comma=line.lastIndexOf(',');
             name=comma>=0?line.substring(comma+1).trim():"Chaîne";
-            logo="";group="Pays non précisé";
+            logo="";group="Pays non précisé";country=attribute(line,"tvg-country");if(country.isEmpty())country=attribute(line,"country");if(country.isEmpty())country="Pays non précisé";
             int a=line.indexOf("tvg-logo=\"");
             if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
             int g=line.indexOf("group-title=\"");
             if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
           }else if(line.startsWith("http://")||line.startsWith("https://")){
             String url=line.trim();
-            merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,group));
+            merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,country));
           }
         }
         reader.close();conn.disconnect();
@@ -201,7 +201,7 @@ public class MainActivity extends Activity {
           JSONObject o=vod.optJSONObject(i);if(o==null)continue;
           String id=o.optString("stream_id","");if(id.isEmpty())continue;
           String name=o.optString("name","Film");String ext=o.optString("container_extension","mp4");
-          String cat=movieCategories.getOrDefault(o.optString("category_id",""),"Films");
+          String cat=(movieCategories.containsKey(o.optString("category_id",""))?movieCategories.get(o.optString("category_id","")):"Films");
           String url=host+"/movie/"+android.net.Uri.encode(user)+"/"+android.net.Uri.encode(pass)+"/"+id+"."+(ext.isEmpty()?"mp4":ext);
           newMovies.add(new MediaEntry(name,url,o.optString("stream_icon",""),cat,"movie",id,ext));
         }
@@ -209,7 +209,7 @@ public class MainActivity extends Activity {
         for(int i=0;i<tv.length()&&newSeries.size()<700;i++){
           JSONObject o=tv.optJSONObject(i);if(o==null)continue;
           String id=o.optString("series_id","");if(id.isEmpty())continue;
-          String cat=seriesCategories.getOrDefault(o.optString("category_id",""),"Séries");
+          String cat=(seriesCategories.containsKey(o.optString("category_id",""))?seriesCategories.get(o.optString("category_id","")):"Séries");
           newSeries.add(new MediaEntry(o.optString("name","Série"),"",o.optString("cover",""),cat,"series",id,""));
         }
       }catch(Exception e){error=e.getMessage()==null?"API Xtream indisponible":e.getMessage();}

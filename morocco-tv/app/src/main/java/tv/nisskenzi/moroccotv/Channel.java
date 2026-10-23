@@ -32,7 +32,7 @@ public final class Channel {
         this(name, url, logo, group, isVavoo, sourceUrl, country, epgId, null);
     }
 
-    /** Compatibility constructor used by FastCatalogCache. */
+    /** Compatibility constructor for previously cached channel rows. */
     Channel(String name, String url, String logo, String group, boolean isVavoo,
             String sourceUrl, String country, String epgId, String cachedSearchIndex) {
         this(name, url, logo, group, isVavoo, sourceUrl, country, epgId,

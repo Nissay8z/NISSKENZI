@@ -149,6 +149,33 @@ public class MainActivity extends Activity {
     map.put(countryKey("Kosovo"),"Kosovo");
     return map;
   }
+  private static final java.util.Map<String,String> COUNTRY_CODES=buildCountryCodes();
+  private static java.util.Map<String,String> buildCountryCodes(){
+    java.util.HashMap<String,String> map=new java.util.HashMap<>();
+    for(String code:java.util.Locale.getISOCountries()){
+      java.util.Locale loc=new java.util.Locale("",code);
+      String french=loc.getDisplayCountry(java.util.Locale.FRENCH);
+      String english=loc.getDisplayCountry(java.util.Locale.ENGLISH);
+      map.put(countryKey(code),code);
+      map.put(countryKey(french),code);
+      map.put(countryKey(english),code);
+    }
+    map.put(countryKey("UK"),"GB");map.put(countryKey("Great Britain"),"GB");
+    map.put(countryKey("USA"),"US");map.put(countryKey("United States of America"),"US");
+    map.put(countryKey("South Korea"),"KR");map.put(countryKey("Republic of Korea"),"KR");
+    map.put(countryKey("North Korea"),"KP");map.put(countryKey("Ivory Coast"),"CI");
+    map.put(countryKey("Czech Republic"),"CZ");map.put(countryKey("Russia"),"RU");
+    map.put(countryKey("Moldova"),"MD");map.put(countryKey("Vietnam"),"VN");
+    map.put(countryKey("Turkey"),"TR");map.put(countryKey("Türkiye"),"TR");
+    map.put(countryKey("Taiwan"),"TW");map.put(countryKey("Vatican City"),"VA");
+    map.put(countryKey("Palestine"),"PS");map.put(countryKey("Kosovo"),"XK");
+    return map;
+  }
+  private String countryCode(String country){
+    String canonical=COUNTRY_CODES.get(countryKey(country));
+    if(canonical==null)canonical=COUNTRY_CODES.get(countryKey(normalizeCountry(country)));
+    return canonical==null?"":canonical;
+  }
   private String normalizeCountry(String raw){
     if(raw==null)return "";
     String first=raw.trim().split("[,;]")[0].trim();
@@ -234,7 +261,7 @@ public class MainActivity extends Activity {
           Channel ch=channels.get(i);JSONObject o=new JSONObject();
           o.put("name",ch.name==null?"Chaîne":ch.name);o.put("url",ch.url==null?"":ch.url);
           o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Direct":ch.group);
-          o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?"Pays non précisé":ch.vavooCountry);
+          o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?"Pays non précisé":ch.vavooCountry);o.put("countryCode",countryCode(ch.vavooCountry));
           o.put("isVavoo",ch.isVavoo);o.put("favorite",isFavorite(ch));chunk.put(o);
         }
         homeWebView.evaluateJavascript("appendChannelChunk("+JSONObject.quote(chunk.toString())+");",null);

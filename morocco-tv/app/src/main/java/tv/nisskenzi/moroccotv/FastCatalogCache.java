@@ -12,7 +12,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Compact per-source binary cache for bundled M3U catalogues.
@@ -29,6 +31,18 @@ public final class FastCatalogCache {
     private static final int FORMAT_VERSION = 1;
     private static final long MAX_CACHE_BYTES = 48L * 1024L * 1024L;
     private static final int MAX_STORED_CHANNELS = 30_000;
+    private static final ConcurrentHashMap<String, MemorySnapshot> MEMORY =
+            new ConcurrentHashMap<>();
+
+    private static final class MemorySnapshot {
+        final String revision;
+        final List<Channel> channels;
+
+        MemorySnapshot(String revision, List<Channel> channels) {
+            this.revision = revision;
+            this.channels = Collections.unmodifiableList(new ArrayList<>(channels));
+        }
+    }
 
     private FastCatalogCache() {}
 
@@ -57,6 +71,15 @@ public final class FastCatalogCache {
     public static ArrayList<Channel> read(Context context, String source, String assetName,
                                           int maximum, int minimumValidChannels) {
         String revision = assetRevision(context, assetName);
+        MemorySnapshot memory = MEMORY.get(source);
+        if (memory != null && revision.equals(memory.revision)
+                && memory.channels.size() >= minimumValidChannels) {
+            int end = Math.min(maximum, memory.channels.size());
+            if (end >= minimumValidChannels) {
+                return new ArrayList<>(memory.channels.subList(0, end));
+            }
+        }
+
         File file = cacheFile(context, source);
         if (!file.isFile() || file.length() <= 0 || file.length() > MAX_CACHE_BYTES) {
             return new ArrayList<>();
@@ -98,6 +121,8 @@ public final class FastCatalogCache {
             }
             if (loaded.size() < minimumValidChannels) {
                 loaded.clear();
+            } else {
+                MEMORY.put(source, new MemorySnapshot(revision, loaded));
             }
         } catch (Exception ignored) {
             loaded.clear();
@@ -112,6 +137,7 @@ public final class FastCatalogCache {
         String revision = assetRevision(context, assetName);
         int count = Math.min(Math.min(channels.size(), maximum), MAX_STORED_CHANNELS);
         if (count < minimumValidChannels) return;
+        MEMORY.put(source, new MemorySnapshot(revision, channels.subList(0, count)));
 
         File target = cacheFile(context, source);
         File temporary = new File(context.getFilesDir(), target.getName() + ".tmp");
@@ -154,6 +180,10 @@ public final class FastCatalogCache {
             temporary.delete();
             if (!target.exists() && backup.exists()) backup.renameTo(target);
         }
+    }
+
+    public static void clearMemory() {
+        MEMORY.clear();
     }
 
     private static File cacheFile(Context context, String source) {

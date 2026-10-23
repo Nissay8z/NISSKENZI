@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
     private org.videolan.libvlc.MediaPlayer vlcPlayer;
     private VLCVideoLayout vlcVideoLayout;
     private Channel currentChannel;
-    private volatile String activePage = "Live TV";
+    private volatile String activePage = "Accueil";
     private volatile String catalogStatus = "Chargement des catalogues VAVOO + IPTV-ORG…";
     private boolean loadingCatalog = false;
     private String activeCountry = "Tous les pays";
@@ -199,6 +199,9 @@ public class MainActivity extends Activity {
 
         liveTab = buttonText("▶  Live TV", "Live TV".equals(activePage));
         settingsTab = buttonText("⚙  Paramètres", "Paramètres".equals(activePage));
+        boolean onHome = "Accueil".equals(activePage);
+        liveTab.setVisibility(onHome ? View.GONE : View.VISIBLE);
+        settingsTab.setVisibility(onHome ? View.GONE : View.VISIBLE);
         LinearLayout.LayoutParams navp = lp(-2, 42);
         navp.leftMargin = dp(5);
         header.addView(liveTab, navp);
@@ -226,10 +229,14 @@ public class MainActivity extends Activity {
         activePage = p;
         if (liveTab != null) {
             boolean live = "Live TV".equals(p);
+            boolean settings = "Paramètres".equals(p);
+            boolean home = "Accueil".equals(p);
+            liveTab.setVisibility(home ? View.GONE : View.VISIBLE);
+            settingsTab.setVisibility(home ? View.GONE : View.VISIBLE);
             liveTab.setTextColor(live ? Color.WHITE : MUTED);
             liveTab.setBackground(rounded(live ? 0xFF25204A : PANEL2, 10));
-            settingsTab.setTextColor(live ? MUTED : Color.WHITE);
-            settingsTab.setBackground(rounded(live ? PANEL2 : 0xFF25204A, 10));
+            settingsTab.setTextColor(settings ? Color.WHITE : MUTED);
+            settingsTab.setBackground(rounded(settings ? 0xFF25204A : PANEL2, 10));
         }
         renderPage();
     }
@@ -237,8 +244,97 @@ public class MainActivity extends Activity {
     private void renderPage() {
         if (contentHost == null) return;
         contentHost.removeAllViews();
-        if ("Paramètres".equals(activePage)) renderSettings();
+        if ("Accueil".equals(activePage)) renderHomeMenu();
+        else if ("Paramètres".equals(activePage)) renderSettings();
         else renderLivePage();
+    }
+
+    private void renderHomeMenu() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout page = vertical();
+        page.setPadding(dp(18), dp(20), dp(18), dp(22));
+        scroll.addView(page);
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+        TextView eyebrow = label("NISSKENZI+  /  LIVE TV", 9, CYAN, true);
+        eyebrow.setLetterSpacing(0.16f);
+        page.addView(eyebrow);
+
+        TextView title = label("Tout le direct,\nau même endroit.", 26, TEXT, true);
+        title.setLineSpacing(dp(1), 1f);
+        LinearLayout.LayoutParams tp = lp(-1, -2); tp.topMargin = dp(8);
+        page.addView(title, tp);
+
+        TextView subtitle = label("Choisis une section pour commencer.", 12, MUTED, false);
+        LinearLayout.LayoutParams stp = lp(-1, -2); stp.topMargin = dp(7); stp.bottomMargin = dp(20);
+        page.addView(subtitle, stp);
+
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        LinearLayout tiles = new LinearLayout(this);
+        tiles.setOrientation(landscape ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        tiles.setGravity(Gravity.CENTER);
+        page.addView(tiles, lp(-1, -2));
+
+        View live = homeTile("LIVE TV", "Chaînes classées par pays", "▣",
+            new int[]{0xFF124E78, 0xFF0B182B}, CYAN, v -> setPage("Live TV"));
+        View settings = homeTile("PARAMÈTRES", "Lecteurs vidéo et connexions", "⚙",
+            new int[]{0xFF3D2B75, 0xFF12162A}, 0xFFC7AEFF, v -> setPage("Paramètres"));
+
+        LinearLayout.LayoutParams livep;
+        LinearLayout.LayoutParams settingsp;
+        if (landscape) {
+            livep = new LinearLayout.LayoutParams(0, dp(242), 1f);
+            settingsp = new LinearLayout.LayoutParams(0, dp(242), 1f);
+            livep.rightMargin = dp(10); settingsp.leftMargin = dp(10);
+        } else {
+            livep = lp(-1, 185); settingsp = lp(-1, 185);
+            livep.bottomMargin = dp(12);
+        }
+        tiles.addView(live, livep);
+        tiles.addView(settings, settingsp);
+
+        TextView footer = label("VAVOO  ·  IPTV-ORG  ·  LECTEUR MEDIA3 / VLC", 9, MUTED, true);
+        footer.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams fp = lp(-1, -2); fp.topMargin = dp(18);
+        page.addView(footer, fp);
+    }
+
+    private View homeTile(String title, String description, String symbol, int[] colors,
+                          int accent, View.OnClickListener click) {
+        LinearLayout card = vertical();
+        card.setPadding(dp(20), dp(17), dp(20), dp(16));
+        GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.TL_BR, colors);
+        background.setCornerRadius(dp(18));
+        background.setStroke(dp(1), 0xFF29445F);
+        card.setBackground(background);
+        card.setFocusable(true);
+        card.setClickable(true);
+        card.setOnClickListener(click);
+
+        TextView top = label("NISSKENZI+", 9, 0xFFC8D8EF, true);
+        top.setLetterSpacing(0.12f);
+        card.addView(top);
+
+        TextView icon = label(symbol, 42, accent, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(rounded(0x332F8EFF, 14));
+        LinearLayout.LayoutParams iconp = lp(66, 66); iconp.topMargin = dp(16);
+        card.addView(icon, iconp);
+
+        TextView heading = label(title, 19, TEXT, true);
+        LinearLayout.LayoutParams hdp = lp(-1, -2); hdp.topMargin = dp(11);
+        card.addView(heading, hdp);
+
+        TextView details = label(description, 11, 0xFFB5C5DC, false);
+        LinearLayout.LayoutParams ddp = lp(-1, -2); ddp.topMargin = dp(5);
+        card.addView(details, ddp);
+
+        TextView open = label("OUVRIR  →", 9, accent, true);
+        open.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams op = lp(-1, -2); op.topMargin = dp(14);
+        card.addView(open, op);
+        return card;
     }
 
     private void renderLivePage() {
@@ -1001,7 +1097,7 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if(player!=null||vlcPlayer!=null){returnHome();}
-        else if(!"Live TV".equals(activePage)){setPage("Live TV");}
+        else if("Paramètres".equals(activePage)||"Live TV".equals(activePage)){setPage("Accueil");}
         else super.onBackPressed();
     }
 

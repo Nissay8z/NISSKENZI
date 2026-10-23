@@ -78,6 +78,7 @@ public class MainActivity extends Activity {
     private static final int YELLOW = 0xFFF5CE6B;
     private static final int CHANNELS_PER_BATCH = 72;
     private static final int MAX_CACHED_CHANNELS = 1200;
+    private static final int MAX_CATALOG_CHANNELS = 12000;
     private static final int MAX_LOGO_CACHE = 160;
 
     private LinearLayout root;
@@ -893,16 +894,17 @@ public class MainActivity extends Activity {
                             String lg=attribute(line,"tvg-logo");if(!lg.isEmpty())logo=lg;
                             String grouped=attribute(line,"group-title");
                             if(!grouped.isEmpty())group=grouped;
-                            String cn=normalizeCountry(group);
-                            if(!cn.isEmpty()&&!"Pays non précisé".equalsIgnoreCase(cn))country=cn;
-                            else {
-                                country=normalizeCountry(attribute(line,"tvg-country"));
-                                if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));
-                                if(country.isEmpty())country="Pays non précisé";
-                            }
+                            // Country metadata is authoritative; group-title often describes genres/categories.
+                            String rawCountry=attribute(line,"tvg-country");
+                            if(rawCountry.isEmpty()) rawCountry=attribute(line,"country");
+                            String cn=normalizeCountry(rawCountry);
+                            if(cn.isEmpty() || "Pays non précisé".equalsIgnoreCase(cn)) cn=normalizeCountry(group);
+                            country=cn.isEmpty() || "default".equalsIgnoreCase(cn) ? "Pays non précisé" : cn;
                         } else if(line.startsWith("http://")||line.startsWith("https://")){
-                            merged.add(new Channel(name,line.trim(),logo,"IPTV-ORG · "+group,false,null,country));
-                            iptvCount++;
+                            if (merged.size() < MAX_CATALOG_CHANNELS) {
+                                merged.add(new Channel(name,line.trim(),logo,"IPTV-ORG · "+group,false,null,country));
+                                iptvCount++;
+                            }
                         }
                     }
                 }
@@ -964,8 +966,8 @@ public class MainActivity extends Activity {
             if(fr==null||fr.trim().isEmpty())continue;
             map.put(countryKey(code),fr);map.put(countryKey(fr),fr);map.put(countryKey(en),fr);
         }
-        map.put(countryKey("UK"),"Royaume-Uni");map.put(countryKey("Great Britain"),"Royaume-Uni");
-        map.put(countryKey("USA"),"États-Unis");map.put(countryKey("United States of America"),"États-Unis");
+        map.put(countryKey("UK"),"Royaume-Uni");map.put(countryKey("GB"),"Royaume-Uni");map.put(countryKey("Great Britain"),"Royaume-Uni");
+        map.put(countryKey("USA"),"États-Unis");map.put(countryKey("US"),"États-Unis");map.put(countryKey("United States of America"),"États-Unis");
         map.put(countryKey("South Korea"),"Corée du Sud");map.put(countryKey("Republic of Korea"),"Corée du Sud");
         map.put(countryKey("North Korea"),"Corée du Nord");map.put(countryKey("Ivory Coast"),"Côte d’Ivoire");
         map.put(countryKey("Czech Republic"),"Tchéquie");map.put(countryKey("Russia"),"Russie");

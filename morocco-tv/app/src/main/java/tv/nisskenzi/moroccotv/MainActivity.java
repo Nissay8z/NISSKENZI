@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
-  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
+  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String activeSection="Accueil"; private String searchQuery="";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
@@ -51,8 +51,11 @@ public class MainActivity extends Activity {
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
     titles.addView(text("NISSKENZI+",20,Color.WHITE,true));titles.addView(text("TOUT LE DIVERTISSEMENT. EN UNE SEULE APP.",8,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("＋ SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView direct=actionButton("DIRECT",red);direct.setOnClickListener(v->loadChannels());header.addView(direct);
+    TextView importBtn=actionButton("＋ SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView direct=actionButton("DIRECT",red);direct.setOnClickListener(v->{activeSection="Live TV";loadChannels();});header.addView(direct);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
+    HorizontalScrollView navScroll=new HorizontalScrollView(this);navScroll.setHorizontalScrollBarEnabled(false);LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setPadding(0,14,0,2);
+    for(String section:new String[]{"Accueil","Live TV","Films","Séries","Animés","Sport","Favoris","Cloud"}){TextView tab=actionButton(section,section.equals(activeSection)?0xFF3720A5:panel);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,40);tp.rightMargin=7;nav.addView(tab,tp);tab.setOnClickListener(v->{activeSection=section;if(section.equals("Accueil")||section.equals("Live TV")){activeFilter="TOUT";showChannels(new ArrayList<>(channels));}else if(section.equals("Favoris")){activeFilter="FAVORIS";showChannels(new ArrayList<>(channels));}else if(section.equals("Cloud")){openCloudInfo();}else showSectionInfo(section);});}
+    navScroll.addView(nav);root.addView(navScroll);
     searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
@@ -155,6 +158,19 @@ public class MainActivity extends Activity {
       });
     });
   }
+  private void showSectionInfo(String section){
+    list.removeAllViews();
+    LinearLayout panelBox=new LinearLayout(this);panelBox.setOrientation(LinearLayout.VERTICAL);panelBox.setPadding(24,26,24,26);panelBox.setBackground(rounded(0xFF111827,20));
+    TextView icon=text(section.equals("Films")?"▶":section.equals("Séries")?"▤":section.equals("Animés")?"✦":section.equals("Sport")?"⚽":"☁",32,0xFF6D5BFF,true);panelBox.addView(icon);
+    TextView title=text(section,26,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=10;panelBox.addView(title,titleP);
+    TextView desc=text("Cette rubrique est prête à accueillir son catalogue, mais aucune source de "+section.toLowerCase(java.util.Locale.ROOT)+" n’est connectée pour le moment. Connecte une playlist ou un service que tu es autorisé à utiliser.",14,0xFFB7C0CF,false);desc.setLineSpacing(3,1f);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=8;panelBox.addView(desc,descP);
+    TextView connect=actionButton("＋ CONNECTER UNE SOURCE",0xFF3921A8);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=18;panelBox.addView(connect,cp);connect.setOnClickListener(v->openSourceMenu());
+    TextView live=actionButton("RETOUR AU DIRECT",red);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=8;panelBox.addView(live,lp);live.setOnClickListener(v->{activeSection="Live TV";activeFilter="TOUT";showChannels(new ArrayList<>(channels));});
+    list.addView(panelBox);status.setText("Rubrique "+section+" · source nécessaire");
+  }
+  private void openCloudInfo(){
+    new AlertDialog.Builder(this).setTitle("NISSKENZI+ · Cloud").setMessage("La rubrique Cloud pourra afficher les fichiers locaux et les sources cloud compatibles après connexion. Aucune connexion cloud n’est configurée dans cette version.").setPositiveButton("OK",null).setNegativeButton("Connecter une playlist",(d,w)->openSourceMenu()).show();
+  }
   private void openSourceMenu(){
     new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","VXParser VAVOO","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else if(which==2)openVxParser();else openMacPortal();}).setNegativeButton("Annuler",null).show();
   }
@@ -239,6 +255,7 @@ public class MainActivity extends Activity {
     if(result!=null&&!result.isEmpty()){channels.clear();channels.addAll(result);}list.removeAllViews();
     ArrayList<Channel> visible=new ArrayList<>();
     for(Channel ch:channels){if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;String q=searchQuery==null?"":searchQuery.trim().toLowerCase(java.util.Locale.ROOT);if(!q.isEmpty()&&!((ch.name+" "+ch.group).toLowerCase(java.util.Locale.ROOT).contains(q)))continue;visible.add(ch);}
+    if(!activeSection.equals("Accueil")&&!activeSection.equals("Live TV")&&!activeSection.equals("Favoris")){showSectionInfo(activeSection);return;}
     if(visible.isEmpty()){status.setText("Aucun contenu dans "+activeFilter+". Importe une playlist ou ajoute des favoris.");return;}
     status.setText(visible.size()+" contenus disponibles · sélectionne une carte pour regarder");
     java.util.LinkedHashMap<String,ArrayList<Channel>> sections=new java.util.LinkedHashMap<>();

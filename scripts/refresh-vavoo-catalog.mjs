@@ -188,6 +188,8 @@ async function refreshIptvOrgCatalog() {
     .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
   if (!sources.length) throw new Error('Aucune source mondiale configurée.');
 
+  const normalizeSearch = value => String(value || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const blocked = new Set((manifest.blockedTerms || [])
     .map(value => normalizeSearch(value)).filter(Boolean));
   const maxChannels = Math.max(1000, Math.min(30000, Number(manifest.maxChannels || 20000)));
@@ -197,7 +199,7 @@ async function refreshIptvOrgCatalog() {
 
   const attribute = (line, key) => {
     const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = line.match(new RegExp('(?:^|\\s)' + escaped + '\\s*=\\s*(?:"([^"]*)"|\\'([^\\']*)\\'|([^\\s,]+))', 'i'));
+    const match = line.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s,]+))`, 'i'));
     return match ? String(match[1] ?? match[2] ?? match[3] ?? '').trim() : '';
   };
   const titleOf = line => {
@@ -212,8 +214,6 @@ async function refreshIptvOrgCatalog() {
     }
     return '';
   };
-  const normalizeSearch = value => String(value || '').normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const safe = value => String(value || '').replace(/[\r\n"]/g, ' ').replace(/\s+/g, ' ').trim();
   const parseRows = (raw, source, enforceMinimum = true) => {
     if (Buffer.byteLength(raw, 'utf8') > maxBytes) throw new Error(source.id + ' dépasse la taille maximale.');

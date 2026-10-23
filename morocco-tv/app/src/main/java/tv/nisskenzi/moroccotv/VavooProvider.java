@@ -153,7 +153,9 @@ public final class VavooProvider {
         ArrayList<VavooChannel> channels = new ArrayList<>();
         Object cursor = JSONObject.NULL;
         int pages = 0;
-        while (pages++ < 300) {
+        boolean finished = false;
+        while (pages < 300) {
+            pages++;
             JSONObject payload = new JSONObject();
             payload.put("language", LANGUAGE);
             payload.put("region", REGION);
@@ -191,10 +193,13 @@ public final class VavooProvider {
             // before the entire remote catalogue finishes loading.
             notifyCatalogListener(listener, channels);
             Object next = body.opt("nextCursor");
-            if (next == null || next == JSONObject.NULL || String.valueOf(next).trim().isEmpty()) break;
+            if (next == null || next == JSONObject.NULL || String.valueOf(next).trim().isEmpty()) {
+                finished = true;
+                break;
+            }
             cursor = next;
         }
-        if (pages >= 300) throw new IOException("Le catalogue VAVOO dépasse la limite de pagination.");
+        if (!finished) throw new IOException("Le catalogue VAVOO dépasse la limite de pagination.");
         return channels;
     }
 

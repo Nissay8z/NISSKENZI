@@ -3,10 +3,7 @@
   "maxChannels": 20000,
   "maxPlaylistBytes": 41943040,
   "minimumMergedChannels": 1000,
-  "blockedTerms": [
-    "pluto tv",
-    "samsung tv plus"
-  ],
+  "blockedTerms": [],
   "sources": [
     {
       "id": "iptv-org",

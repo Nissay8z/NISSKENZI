@@ -37,12 +37,12 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
   private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private String activeFilter="TOUT"; private String activeSection="Accueil"; private String searchQuery="";
-  private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
+  private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ArrayList<Channel> baseChannels=new ArrayList<>(); private final ArrayList<Channel> importedChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog(); String savedPlaylist=getSharedPreferences("sources",MODE_PRIVATE).getString("last_imported_playlist",""); if(!savedPlaylist.isEmpty())loadImportedPlaylist(savedPlaylist);}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
       }
       if(!cached.isEmpty()){
         channels.clear();channels.addAll(cached);
+        baseChannels.clear();baseChannels.addAll(cached);
         allVavooChannels.clear();allVavooChannels.addAll(cached);
         showChannels(new ArrayList<>(cached));
         status.setText(cached.size()+" chaînes en cache · actualisation en arrière-plan…");
@@ -142,12 +143,14 @@ public class MainActivity extends Activity {
       final ArrayList<Channel> vAll=new ArrayList<>(vavooAll);
       final String ve=vavooError,ie=iptvError;
       runOnUiThread(()->{
-        allVavooChannels.clear();allVavooChannels.addAll(all);
-        channels.clear();channels.addAll(all);
-        if(!all.isEmpty())saveCachedChannels(all);
+        baseChannels.clear();baseChannels.addAll(all);
+        ArrayList<Channel> combined=mergeChannels(baseChannels,importedChannels);
+        allVavooChannels.clear();allVavooChannels.addAll(combined);
+        channels.clear();channels.addAll(combined);
+        if(!combined.isEmpty())saveCachedChannels(combined);
         activeFilter="TOUT";
-        showChannels(new ArrayList<>(all));
-        String msg=all.size()+" chaînes réunies";
+        showChannels(new ArrayList<>(combined));
+        String msg=combined.size()+" chaînes réunies";
         if(!ve.isEmpty())msg+=" · VAVOO indisponible";
         if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
         status.setText(msg);
@@ -305,7 +308,17 @@ public class MainActivity extends Activity {
         r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
       }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
       final ArrayList<Channel> result=found;final String err=error;
-      runOnUiThread(()->{if(result.isEmpty())status.setText("Import impossible : "+err);else status.setText(result.size()+" chaînes importées");showChannels(result);});
+      runOnUiThread(()->{
+        if(result.isEmpty()){status.setText("Import impossible : "+err);return;}
+        importedChannels.clear();importedChannels.addAll(result);
+        getSharedPreferences("sources",MODE_PRIVATE).edit().putString("last_imported_playlist",playlist).apply();
+        ArrayList<Channel> base=new ArrayList<>(baseChannels.isEmpty()?allVavooChannels:baseChannels);
+        ArrayList<Channel> combined=mergeChannels(base,importedChannels);
+        allVavooChannels.clear();allVavooChannels.addAll(combined);
+        channels.clear();channels.addAll(combined);saveCachedChannels(combined);
+        status.setText(result.size()+" chaînes importées · "+combined.size()+" au total");
+        showChannels(new ArrayList<>(combined));
+      });
     });
   }
   private String attribute(String line,String key){int a=line.indexOf(key+"=");if(a<0)return "";int start=a+key.length()+1;if(start<line.length()&&line.charAt(start)=='"')start++;int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
@@ -325,6 +338,12 @@ public class MainActivity extends Activity {
       .setNegativeButton("Fermer",null).show();
   }
   private void loadVavooChannels(){ loadChannels(); }
+  private ArrayList<Channel> mergeChannels(java.util.List<Channel> first,java.util.List<Channel> second){
+    ArrayList<Channel> out=new ArrayList<>();java.util.HashSet<String> seen=new java.util.HashSet<>();
+    if(first!=null)for(Channel ch:first){String key=ch.url==null?ch.name:ch.url;if(key!=null&&seen.add(key))out.add(ch);}
+    if(second!=null)for(Channel ch:second){String key=ch.url==null?ch.name:ch.url;if(key!=null&&seen.add(key))out.add(ch);}
+    return out;
+  }
   private void showChannels(ArrayList<Channel> result){
     if(result!=null){channels.clear();channels.addAll(result);}
     renderChannelsToWeb();

@@ -268,7 +268,7 @@ public class MainActivity extends Activity {
       if(countriesList.isEmpty())for(String country:new String[]{"France","Germany","Spain","Italy","United Kingdom","Tous les pays"})countriesList.add(country);
       for(String country:countriesList){
         TextView row=drawerRow(country,"⌖");
-        row.setOnClickListener(v->{String filter=country.equalsIgnoreCase("Germany")?"Allemagne":country.equalsIgnoreCase("Spain")?"Espagne":country.equalsIgnoreCase("Italy")?"Italie":country.equalsIgnoreCase("United Kingdom")?"Royaume-Uni":country;getSharedPreferences("sources",MODE_PRIVATE).edit().putString("vavoo_country_filter",filter).apply();if(channelDrawer!=null)playerStage.removeView(channelDrawer);channelDrawer=null;loadVavooChannels();});
+        row.setOnClickListener(v->{String filter=country;getSharedPreferences("sources",MODE_PRIVATE).edit().putString("vavoo_country_filter",filter).apply();channels.clear();if(filter.equalsIgnoreCase("Tous les pays"))channels.addAll(allVavooChannels);else for(Channel item:allVavooChannels){String itemCountry=item.vavooCountry==null?"":item.vavooCountry;if(itemCountry.equalsIgnoreCase(filter)||item.group.equalsIgnoreCase("IPTV-ORG · "+filter))channels.add(item);}if(channelDrawer!=null)playerStage.removeView(channelDrawer);channelDrawer=null;showChannels(new ArrayList<>(channels));});
         rows.addView(row);
       }
     }else{

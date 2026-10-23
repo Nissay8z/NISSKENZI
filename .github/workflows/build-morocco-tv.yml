@@ -1,4 +1,5 @@
 name: Build Morocco TV APK
+# Re-run build after the NISSKENZI+ catalog fix.
 on:
   push:
     paths:

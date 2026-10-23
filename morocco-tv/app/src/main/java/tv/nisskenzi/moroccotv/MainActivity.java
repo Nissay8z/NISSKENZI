@@ -40,10 +40,6 @@ import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -882,7 +878,6 @@ public class MainActivity extends Activity {
         final int currentGen = loadGeneration.incrementAndGet();
 
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
-        final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
             // Parse both caches away from the UI thread. The quick cache appears first,
             // then the complete per-source cache can replace it without waiting for network.
@@ -915,50 +910,14 @@ public class MainActivity extends Activity {
                     error = e.getMessage() == null ? "catalogue VAVOO indisponible" : e.getMessage();
                 }
             } else {
-                HttpURLConnection conn = null;
                 try {
-                    URL u = new URL("https://iptv-org.github.io/iptv/index.country.m3u");
-                    conn = (HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(20000);
-                    conn.setRequestProperty("User-Agent", "NISSKENZI+/2.0 (Android TV)");
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
-                        String line;
-                        String name = "Chaîne", logo = "", group = "Pays non précisé", country = "Pays non précisé";
-                        while ((line = reader.readLine()) != null) {
-                            if (line.startsWith("#EXTINF:")) {
-                                int comma = line.lastIndexOf(',');
-                                name = comma >= 0 ? line.substring(comma + 1).trim() : "Chaîne";
-                                logo = "";
-                                group = "Pays non précisé";
-                                country = "Pays non précisé";
-                                String lg = attribute(line, "tvg-logo");
-                                if (!lg.isEmpty()) logo = lg;
-                                String grouped = attribute(line, "group-title");
-                                if (!grouped.isEmpty()) group = grouped;
-                                String rawCountry = attribute(line, "tvg-country");
-                                if (rawCountry.isEmpty()) rawCountry = attribute(line, "country");
-                                String resolvedCountry = knownCountry(rawCountry);
-                                if (resolvedCountry.isEmpty()) resolvedCountry = knownCountry(group);
-                                country = resolvedCountry.isEmpty() ? "Pays non précisé" : resolvedCountry;
-                            } else if (line.startsWith("http://") || line.startsWith("https://")) {
-                                if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
-                                loaded.add(new Channel(name, line.trim(), logo,
-                                        "IPTV-ORG · " + group, false, null, country));
-                                int previouslyPublished = lastIptvPublished.get();
-                                if (loaded.size() - previouslyPublished >= 1500
-                                        && lastIptvPublished.compareAndSet(previouslyPublished, loaded.size())) {
-                                    publishCatalogSnapshot(new ArrayList<>(loaded), requestedSource,
-                                            currentGen);
-                                }
-                            }
-                        }
-                    }
+                    loaded.addAll(IptvOrgProvider.loadChannels(MAX_CATALOG_CHANNELS,
+                            this::knownCountry,
+                            partial -> publishCatalogSnapshot(new ArrayList<>(partial),
+                                    requestedSource, currentGen)));
                 } catch (Exception e) {
-                    error = e.getMessage() == null ? "playlist IPTV-ORG indisponible" : e.getMessage();
-                } finally {
-                    if (conn != null) conn.disconnect();
+                    error = e.getMessage() == null
+                            ? "playlist IPTV-ORG indisponible" : e.getMessage();
                 }
             }
 
@@ -1074,16 +1033,6 @@ public class MainActivity extends Activity {
 
     private void updateStatus() {
         if (statusView != null) statusView.setText(catalogStatus);
-    }
-
-    private String attribute(String line, String key) {
-        int a = line.indexOf(key + "=");
-        if (a < 0) return "";
-        int start = a + key.length() + 1;
-        if (start < line.length() && line.charAt(start) == '"') start++;
-        int end = line.indexOf('"', start);
-        if (end < 0) end = line.indexOf(' ', start);
-        return end > start ? line.substring(start, end < 0 ? line.length() : end) : "";
     }
 
     private static String countryKey(String value) {

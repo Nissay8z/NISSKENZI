@@ -358,8 +358,64 @@ public class MainActivity extends Activity {
         channelListHost = null;
         channelEmptyView = null;
         contentHost.removeAllViews();
-        if ("Paramètres".equals(activePage)) renderSettings();
+        if (sourceChooserVisible) renderSourceChooser();
+        else if ("Paramètres".equals(activePage)) renderSettings();
         else renderLivePage();
+    }
+
+    /** Native source-selection screen shown when the user backs out of the live player. */
+    private void renderSourceChooser() {
+        LinearLayout page = vertical();
+        page.setGravity(Gravity.CENTER);
+        page.setPadding(dp(28), dp(22), dp(28), dp(22));
+        contentHost.addView(page, new FrameLayout.LayoutParams(-1, -1));
+
+        TextView eyebrow = label("NISSKENZI+", 11, CYAN, true);
+        eyebrow.setGravity(Gravity.CENTER);
+        page.addView(eyebrow, lp(-1, -2));
+
+        TextView title = label("Choisis ton catalogue", isTelevision() ? 30 : 24, TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = lp(-1, -2);
+        titleParams.topMargin = dp(8);
+        page.addView(title, titleParams);
+
+        TextView subtitle = label(
+                "Sélectionne une source pour afficher ses chaînes. Les flux ne sont ouverts qu'au moment où tu choisis une chaîne.",
+                isTelevision() ? 15 : 12, MUTED, false);
+        subtitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subtitleParams = lp(-1, -2);
+        subtitleParams.topMargin = dp(10);
+        subtitleParams.bottomMargin = dp(24);
+        page.addView(subtitle, subtitleParams);
+
+        LinearLayout choices = horizontal();
+        choices.setGravity(Gravity.CENTER);
+        page.addView(choices, lp(-1, -2));
+
+        TextView vavooChoice = buttonText("VAVOO\nCatalogue international", true);
+        vavooChoice.setSingleLine(false);
+        vavooChoice.setGravity(Gravity.CENTER);
+        vavooChoice.setTextSize(isTelevision() ? 18 : 15);
+        vavooChoice.setPadding(dp(20), dp(20), dp(20), dp(20));
+        vavooChoice.setBackground(outlined(0xFF142A3A, 18, CYAN));
+        choices.addView(vavooChoice, new LinearLayout.LayoutParams(0, dp(isTelevision() ? 116 : 92), 1f));
+
+        TextView iptvChoice = buttonText("IPTV-ORG\nPlaylist mondiale", true);
+        iptvChoice.setSingleLine(false);
+        iptvChoice.setGravity(Gravity.CENTER);
+        iptvChoice.setTextSize(isTelevision() ? 18 : 15);
+        iptvChoice.setPadding(dp(20), dp(20), dp(20), dp(20));
+        iptvChoice.setBackground(outlined(0xFF211D3A, 18, PURPLE));
+        LinearLayout.LayoutParams iptvChoiceParams =
+                new LinearLayout.LayoutParams(0, dp(isTelevision() ? 116 : 92), 1f);
+        iptvChoiceParams.leftMargin = dp(16);
+        choices.addView(iptvChoice, iptvChoiceParams);
+
+        vavooChoice.setOnClickListener(v -> switchSource("VAVOO"));
+        iptvChoice.setOnClickListener(v -> switchSource("IPTV-ORG"));
+        TextView initial = "VAVOO".equals(sourceFilter) ? vavooChoice : iptvChoice;
+        initial.post(initial::requestFocus);
     }
 
     private void renderLivePage() {
@@ -867,7 +923,9 @@ public class MainActivity extends Activity {
 
     private void switchSource(String source) {
         boolean changed = !source.equals(sourceFilter);
-        if (!changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
+        boolean leavingChooser = sourceChooserVisible;
+        if (!leavingChooser && !changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
+        sourceChooserVisible = false;
         loadGeneration.incrementAndGet();
         releaseMediaEngine();
         currentChannel = null;
@@ -898,7 +956,9 @@ public class MainActivity extends Activity {
 
         if (requestVavoo) loadingVavoo = true; else loadingIptv = true;
         loadingCatalog = loadingVavoo || loadingIptv;
-        catalogStatus = requestedSource + " · chargement en arrière-plan…";
+        catalogStatus = forceRefresh
+                ? requestedSource + " · actualisation du catalogue…"
+                : requestedSource + " · catalogue local en ouverture…";
         updateStatus();
 
         if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
@@ -1352,7 +1412,15 @@ public class MainActivity extends Activity {
         playerStageOriginalIndex = -1;
         if (headerView != null) headerView.setVisibility(View.VISIBLE);
         if (statusView != null) statusView.setVisibility(View.VISIBLE);
-        if (channelResults != null) channelResults.requestFocus();
+
+        // The final Back leaves fullscreen, releases the decoder and opens a native
+        // VAVOO/IPTV-org source chooser instead of returning to an awkward preview state.
+        releaseMediaEngine();
+        currentChannel = null;
+        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
+        playerStage = null;
+        sourceChooserVisible = true;
+        renderPage();
     }
 
     private void play(Channel ch) {

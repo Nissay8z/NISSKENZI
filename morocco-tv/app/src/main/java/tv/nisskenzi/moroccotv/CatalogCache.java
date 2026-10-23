@@ -19,7 +19,7 @@ import java.util.List;
  * called from a worker thread; the quick cache is kept small for fast recovery. */
 public final class CatalogCache {
     private static final String PREFS = "catalog_cache";
-    private static final long MAX_FILE_BYTES = 12L * 1024L * 1024L;
+    private static final long MAX_FILE_BYTES = 32L * 1024L * 1024L;
     private static final int MAX_QUICK_BYTES = 1_500_000;
 
     private CatalogCache() {}

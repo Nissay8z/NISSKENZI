@@ -3,7 +3,6 @@ package tv.nisskenzi.moroccotv;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
@@ -17,21 +16,14 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import android.util.LruCache;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * RecyclerView adapter for the live-channel list.
@@ -39,31 +31,27 @@ import java.util.concurrent.Executors;
  * Reuses row views, loads logos away from the UI thread, bounds the logo cache,
  * and keeps selection/focus styling compatible with an Android TV D-pad.
  */
-public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, ChannelAdapter.ChannelViewHolder> {
+public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.ChannelViewHolder> {
 
     public interface OnChannelClickListener {
-        void onChannelClick(MainActivity.Channel channel);
+        void onChannelClick(Channel channel);
     }
 
     public interface FavoriteChecker {
-        boolean isFavorite(MainActivity.Channel channel);
+        boolean isFavorite(Channel channel);
     }
 
-    private static final int LOGO_CACHE_KB = 8 * 1024;
-    private static final int MAX_LOGO_BYTES = 2 * 1024 * 1024;
-    private static final int LOGO_MAX_EDGE = 192;
-
-    private static final DiffUtil.ItemCallback<MainActivity.Channel> DIFF_CALLBACK =
-            new DiffUtil.ItemCallback<MainActivity.Channel>() {
+    private static final DiffUtil.ItemCallback<Channel> DIFF_CALLBACK =
+            new DiffUtil.ItemCallback<Channel>() {
                 @Override
-                public boolean areItemsTheSame(@NonNull MainActivity.Channel oldItem,
-                                               @NonNull MainActivity.Channel newItem) {
+                public boolean areItemsTheSame(@NonNull Channel oldItem,
+                                               @NonNull Channel newItem) {
                     return TextUtils.equals(safe(oldItem.url), safe(newItem.url));
                 }
 
                 @Override
-                public boolean areContentsTheSame(@NonNull MainActivity.Channel oldItem,
-                                                  @NonNull MainActivity.Channel newItem) {
+                public boolean areContentsTheSame(@NonNull Channel oldItem,
+                                                  @NonNull Channel newItem) {
                     return TextUtils.equals(safe(oldItem.name), safe(newItem.name))
                             && TextUtils.equals(safe(oldItem.logo), safe(newItem.logo))
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
@@ -77,18 +65,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
 
     private final OnChannelClickListener listener;
     private final FavoriteChecker favoriteChecker;
-    private final ExecutorService imageExecutor = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "Nisskenzi-logo");
-        thread.setDaemon(true);
-        return thread;
-    });
-    private final LruCache<String, Bitmap> logoCache = new LruCache<String, Bitmap>(LOGO_CACHE_KB) {
-        @Override
-        protected int sizeOf(@NonNull String key, @NonNull Bitmap value) {
-            return Math.max(1, value.getByteCount() / 1024);
-        }
-    };
-
+    private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
     private volatile boolean shutDown;
 
@@ -112,9 +89,10 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         if (newPosition >= 0 && newPosition != oldPosition) notifyItemChanged(newPosition);
     }
 
-    /** Refreshes favorite stars after the preference value changes. */
+    /** The favorite toggle is attached to the selected channel; refresh only that row. */
     public void refreshDecorations() {
-        if (getItemCount() > 0) notifyItemRangeChanged(0, getItemCount(), "decoration");
+        int position = findPosition(selectedUrl);
+        if (position >= 0) notifyItemChanged(position, "decoration");
     }
 
     private int findPosition(String url) {
@@ -215,9 +193,9 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
 
     @Override
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
-        MainActivity.Channel channel = getItem(position);
+        Channel channel = getItem(position);
         holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
-                listener, favoriteChecker, logoCache, this);
+                listener, favoriteChecker, logoLoader, this);
     }
 
     @Override
@@ -228,82 +206,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
 
     public void shutdown() {
         shutDown = true;
-        imageExecutor.shutdownNow();
-    }
-
-    private void loadLogo(String address, ImageView image, TextView initials) {
-        if (address == null || address.trim().isEmpty() || shutDown) return;
-
-        Bitmap cached = logoCache.get(address);
-        if (cached != null) {
-            image.setImageBitmap(cached);
-            image.setVisibility(View.VISIBLE);
-            initials.setVisibility(View.GONE);
-            return;
-        }
-
-        try {
-            imageExecutor.execute(() -> {
-                Bitmap bitmap = downloadBitmap(address);
-                if (bitmap == null || shutDown) return;
-                logoCache.put(address, bitmap);
-                image.post(() -> {
-                    if (shutDown || !address.equals(image.getTag())) return;
-                    image.setImageBitmap(bitmap);
-                    image.setVisibility(View.VISIBLE);
-                    initials.setVisibility(View.GONE);
-                });
-            });
-        } catch (RuntimeException ignored) {
-            // The executor may already be stopping while the page is replaced.
-        }
-    }
-
-    @Nullable
-    private Bitmap downloadBitmap(String address) {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(address).openConnection();
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(7000);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", "NISSKENZI+/2.0 (Android TV)");
-
-            try (InputStream input = connection.getInputStream();
-                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int total = 0;
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    total += read;
-                    if (total > MAX_LOGO_BYTES) return null;
-                    output.write(buffer, 0, read);
-                }
-
-                byte[] bytes = output.toByteArray();
-                if (bytes.length == 0) return null;
-
-                BitmapFactory.Options bounds = new BitmapFactory.Options();
-                bounds.inJustDecodeBounds = true;
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
-                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
-
-                int sample = 1;
-                while (bounds.outWidth / sample > LOGO_MAX_EDGE
-                        || bounds.outHeight / sample > LOGO_MAX_EDGE) {
-                    sample *= 2;
-                }
-
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inSampleSize = sample;
-                options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-            }
-        } catch (Exception ignored) {
-            return null;
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
+        logoLoader.close();
     }
 
     static final class ChannelViewHolder extends RecyclerView.ViewHolder {
@@ -315,6 +218,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         final TextView meta;
         final TextView favorite;
         private String boundUrl = "";
+        private ChannelLogoLoader.Request logoRequest;
 
         ChannelViewHolder(LinearLayout card, TextView number, ImageView image,
                           TextView initials, TextView name, TextView meta, TextView favorite) {
@@ -328,9 +232,13 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
             this.favorite = favorite;
         }
 
-        void bind(MainActivity.Channel channel, int index, boolean selected,
+        void bind(Channel channel, int index, boolean selected,
                   OnChannelClickListener listener, FavoriteChecker favoriteChecker,
-                  LruCache<String, Bitmap> cache, ChannelAdapter owner) {
+                  ChannelLogoLoader loader, ChannelAdapter owner) {
+            if (logoRequest != null) {
+                logoRequest.cancel();
+                logoRequest = null;
+            }
             boundUrl = safe(channel.url);
             number.setText(String.valueOf(index + 1));
             name.setText(emptyFallback(channel.name, "Chaîne"));
@@ -352,13 +260,20 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
             initials.setText(makeInitials(channel.name));
             initials.setVisibility(View.VISIBLE);
 
-            Bitmap cached = cache.get(safe(channel.logo));
-            if (channel.logo != null && !channel.logo.trim().isEmpty() && cached != null) {
+            String logoUrl = safe(channel.logo);
+            Bitmap cached = loader.getCached(logoUrl);
+            if (!logoUrl.isEmpty() && cached != null) {
                 image.setImageBitmap(cached);
                 initials.setVisibility(View.GONE);
+            } else if (!logoUrl.isEmpty()) {
+                logoRequest = loader.load(logoUrl, bitmap -> image.post(() -> {
+                    if (loader.isClosed() || !logoUrl.equals(image.getTag())) return;
+                    image.setImageBitmap(bitmap);
+                    image.setVisibility(View.VISIBLE);
+                    initials.setVisibility(View.GONE);
+                }));
             } else {
                 image.setImageDrawable(null);
-                owner.loadLogo(channel.logo, image, initials);
             }
 
             card.setOnFocusChangeListener((view, hasFocus) -> applyState(hasFocus, owner.isSelected(boundUrl)));
@@ -369,6 +284,10 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         }
 
         void reset() {
+            if (logoRequest != null) {
+                logoRequest.cancel();
+                logoRequest = null;
+            }
             boundUrl = "";
             image.setTag(null);
             image.setImageDrawable(null);

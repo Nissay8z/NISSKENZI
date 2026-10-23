@@ -9,6 +9,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -38,17 +40,6 @@ import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,8 +47,13 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -74,7 +70,6 @@ public class MainActivity extends Activity {
     private static final int YELLOW = 0xFFFFFF00;
     private static final int MAX_CACHED_CHANNELS = 400;
     private static final int MAX_CATALOG_CHANNELS = 9000;
-    private static final long MAX_CATALOG_CACHE_FILE_BYTES = 12L * 1024L * 1024L;
 
     private LinearLayout root;
     private View headerView;
@@ -116,6 +111,19 @@ public class MainActivity extends Activity {
     private volatile boolean activityDestroyed = false;
 
     private final AtomicInteger loadGeneration = new AtomicInteger(0);
+    private final AtomicInteger filterGeneration = new AtomicInteger(0);
+    private final ThreadPoolExecutor filterExecutor = new ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1),
+            Executors.defaultThreadFactory(), new ThreadPoolExecutor.DiscardOldestPolicy());
+    private Future<?> filterJob;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingSearchFilter;
+    private FavoritesStore favoritesStore;
+    private RecentChannelsStore recentStore;
+    private int catalogVersion = 0;
+    private int countryStatsVersion = -1;
+    private final Map<String, Integer> countryCountCache = new HashMap<>();
+    private final Map<String, String> countryCodeCache = new HashMap<>();
 
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "VAVOO";
@@ -128,20 +136,13 @@ public class MainActivity extends Activity {
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newFixedThreadPool(2);
 
-    static class Channel {
-        String name, url, logo, group, vavooSourceUrl, country;
-        boolean isVavoo;
-        Channel(String n, String u, String l, String g, boolean v, String source, String countryName) {
-            name=n; url=u; logo=l; group=g; isVavoo=v; vavooSourceUrl=source; country=countryName;
-        }
-    }
-
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        favoritesStore = new FavoritesStore(getSharedPreferences("favorites", MODE_PRIVATE));
+        recentStore = new RecentChannelsStore(getSharedPreferences("recent", MODE_PRIVATE));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
-        loadCachedChannels();
         loadChannels();
     }
 
@@ -283,7 +284,7 @@ public class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 searchText = s == null ? "" : s.toString();
-                updateChannelResults();
+                scheduleSearchFilter();
             }
             @Override public void afterTextChanged(Editable e) {}
         });
@@ -336,6 +337,12 @@ public class MainActivity extends Activity {
 
     private void renderPage() {
         if (contentHost == null) return;
+        filterGeneration.incrementAndGet();
+        if (filterJob != null) {
+            filterJob.cancel(true);
+            filterJob = null;
+            filterExecutor.purge();
+        }
         // Keep the live layout and its active player stage mounted while video is fullscreen.
         if (fullscreenPlayback) {
             renderCountryChoices();
@@ -555,20 +562,26 @@ public class MainActivity extends Activity {
         divP.bottomMargin = dp(8);
         countryChoices.addView(divider, divP);
 
-        Map<String, Integer> counts = new HashMap<>();
-        Map<String, String> codes = new HashMap<>();
-        for (Channel ch : channels) {
-            String country = safeCountry(ch.country);
-            counts.put(country, counts.containsKey(country) ? counts.get(country) + 1 : 1);
-            if (!codes.containsKey(country) || codes.get(country).isEmpty()) codes.put(country, countryCode(country));
+        if (countryStatsVersion != catalogVersion) {
+            countryCountCache.clear();
+            countryCodeCache.clear();
+            for (Channel ch : channels) {
+                String country = safeCountry(ch.country);
+                Integer oldCount = countryCountCache.get(country);
+                countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
+                if (!countryCodeCache.containsKey(country) || countryCodeCache.get(country).isEmpty()) {
+                    countryCodeCache.put(country, countryCode(country));
+                }
+            }
+            countryStatsVersion = catalogVersion;
         }
-        ArrayList<String> names = new ArrayList<>(counts.keySet());
+        ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
         Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
         String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
         for (String country : names) {
             if (!query.isEmpty() && !country.toLowerCase(Locale.ROOT).contains(query)) continue;
-            String title = flag(country, codes.get(country)) + "  " + country;
-            addCategoryRow(title, counts.get(country),
+            String title = flag(country, countryCodeCache.get(country)) + "  " + country;
+            addCategoryRow(title, countryCountCache.get(country),
                     country.equals(activeCountry) && !favoritesOnly && !recentOnly,
                     v -> {
                         activeCountry = country;
@@ -578,6 +591,11 @@ public class MainActivity extends Activity {
                         updateChannelResults();
                     });
         }
+    }
+
+    private void markCatalogChanged() {
+        catalogVersion++;
+        countryStatsVersion = -1;
     }
 
     private void addCategoryRow(String title, int count, boolean selected, View.OnClickListener click) {
@@ -610,113 +628,116 @@ public class MainActivity extends Activity {
     }
 
     private ArrayList<String> readRecentUrls() {
-        ArrayList<String> result = new ArrayList<>();
-        String raw = getSharedPreferences("recent", MODE_PRIVATE).getString("urls", "");
-        if (!raw.isEmpty()) {
-            for (String item : raw.split("\n")) {
-                String url = item.trim();
-                if (!url.isEmpty() && !result.contains(url)) result.add(url);
-            }
-        }
-        return result;
+        return recentStore == null ? new ArrayList<>() : new ArrayList<>(recentStore.orderedUrls());
     }
 
     private void rememberRecentlyViewed(Channel ch) {
-        if (ch == null || safe(ch.url).isEmpty()) return;
-        ArrayList<String> recent = readRecentUrls();
-        recent.remove(ch.url);
-        recent.add(0, ch.url);
-        while (recent.size() > 100) recent.remove(recent.size() - 1);
-        getSharedPreferences("recent", MODE_PRIVATE).edit()
-                .putString("urls", TextUtils.join("\n", recent)).apply();
+        if (ch != null && recentStore != null) recentStore.remember(ch.url);
     }
 
     private int countFavoriteChannels() {
-        int count = 0;
-        for (Channel ch : channels) if (isFavorite(ch)) count++;
-        return count;
+        return favoritesStore == null ? 0 : favoritesStore.countIn(channels);
     }
 
     private int countRecentChannels() {
-        ArrayList<String> recent = readRecentUrls();
+        if (recentStore == null) return 0;
+        Set<String> recent = recentStore.snapshotUrls();
         int count = 0;
         for (Channel ch : channels) if (recent.contains(ch.url)) count++;
         return count;
     }
 
-    private ArrayList<Channel> filteredChannels() {
-        String q = searchText == null ? "" : searchText.trim().toLowerCase(Locale.ROOT);
-        ArrayList<String> recent = recentOnly ? readRecentUrls() : new ArrayList<>();
-        ArrayList<Channel> result = new ArrayList<>();
-        for (Channel ch : channels) {
-            String country = safeCountry(ch.country);
-            String src = ch.isVavoo ? "VAVOO" : "IPTV-ORG";
-            if (!sourceFilter.equals(src)) continue;
-            if (!"Tous les pays".equals(activeCountry) && !activeCountry.equals(country)) continue;
-            if (favoritesOnly && !isFavorite(ch)) continue;
-            if (recentOnly && !recent.contains(ch.url)) continue;
-            if (!q.isEmpty() && !(safe(ch.name) + " " + safe(ch.group) + " " + country)
-                    .toLowerCase(Locale.ROOT).contains(q)) continue;
-            result.add(ch);
-        }
-        return result;
+    private void scheduleSearchFilter() {
+        if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
+        pendingSearchFilter = () -> {
+            pendingSearchFilter = null;
+            updateChannelResults();
+        };
+        uiHandler.postDelayed(pendingSearchFilter, 120L);
     }
 
     private void updateChannelResults() {
         if (channelResults == null || channelAdapter == null || !"Live TV".equals(activePage)) return;
 
-        ArrayList<Channel> filtered = filteredChannels();
-        if (countView != null) countView.setText(filtered.size() + " chaînes");
+        final int requestId = filterGeneration.incrementAndGet();
+        if (filterJob != null) filterJob.cancel(true);
+        filterExecutor.purge();
 
-        String filterKey = sourceFilter + "|" + activeCountry + "|" + safe(searchText)
-                + "|" + favoritesOnly + "|" + recentOnly;
-        boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
+        final RecyclerView targetRecycler = channelResults;
+        final ChannelAdapter targetAdapter = channelAdapter;
+        final String requestedSource = sourceFilter;
+        final String requestedCountry = activeCountry;
+        final String requestedSearch = searchText;
+        final boolean requestedFavorites = favoritesOnly;
+        final boolean requestedRecent = recentOnly;
+        final String filterKey = requestedSource + "|" + requestedCountry + "|" + safe(requestedSearch)
+                + "|" + requestedFavorites + "|" + requestedRecent;
+        final boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
         lastRenderedFilterKey = filterKey;
 
-        if (filtered.isEmpty()) {
-            channelAdapter.submitList(new ArrayList<>());
-            channelResults.setVisibility(View.GONE);
-            channelEmptyView.setVisibility(View.VISIBLE);
-            channelEmptyView.removeAllViews();
+        // Only copy the stable inputs on the UI thread. The full scan and search matching
+        // now happen on a worker and stale requests are cancelled when the D-pad/search changes.
+        final ArrayList<Channel> channelSnapshot = new ArrayList<>(channels);
+        final Set<String> favoriteSnapshot = favoritesStore == null
+                ? Collections.emptySet() : favoritesStore.snapshotUrls();
+        final Set<String> recentSnapshot = recentStore == null
+                ? Collections.emptySet() : recentStore.snapshotUrls();
 
-            LinearLayout empty = vertical();
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(14), dp(22), dp(14), dp(22));
-            empty.setBackground(rounded(0xFF151D28, 12));
+        filterJob = filterExecutor.submit(() -> {
+            ArrayList<Channel> filtered = ChannelFilter.filter(channelSnapshot, requestedSource,
+                    requestedCountry, requestedSearch, requestedFavorites, requestedRecent,
+                    favoriteSnapshot, recentSnapshot);
 
-            String source = sourceFilter;
-            TextView heading = label(channels.isEmpty()
-                    ? (loadingCatalog ? "Connexion au catalogue…" : "Catalogue prêt à charger")
-                    : "Aucune chaîne trouvée", isTelevision() ? 18 : 14, Color.WHITE, true);
-            heading.setGravity(Gravity.CENTER);
-            empty.addView(heading, lp(-1, -2));
+            runOnUiThread(() -> {
+                if (activityDestroyed || requestId != filterGeneration.get()
+                        || targetRecycler != channelResults || targetAdapter != channelAdapter
+                        || !requestedSource.equals(sourceFilter)
+                        || !"Live TV".equals(activePage)) return;
 
-            TextView msg = label(channels.isEmpty()
-                    ? source + " se charge en arrière-plan. Vous pouvez naviguer ou actualiser."
-                    : "Essayez une autre catégorie ou modifiez votre recherche.",
-                    isTelevision() ? 12 : 10, 0xEEFFFFFF, false);
-            msg.setGravity(Gravity.CENTER);
-            msg.setPadding(0, dp(8), 0, dp(12));
-            empty.addView(msg, lp(-1, -2));
+                if (countView != null) countView.setText(filtered.size() + " chaînes");
+                if (filtered.isEmpty()) {
+                    targetAdapter.submitList(Collections.emptyList());
+                    targetRecycler.setVisibility(View.GONE);
+                    channelEmptyView.setVisibility(View.VISIBLE);
+                    channelEmptyView.removeAllViews();
 
-            TextView retry = buttonText(loadingCatalog ? "Chargement…" : "↻ Actualiser " + source, true);
-            empty.addView(retry, lp(-2, isTelevision() ? 46 : 38));
-            retry.setOnClickListener(v -> loadChannels());
-            channelEmptyView.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-            return;
-        }
+                    LinearLayout empty = vertical();
+                    empty.setGravity(Gravity.CENTER);
+                    empty.setPadding(dp(14), dp(22), dp(14), dp(22));
+                    empty.setBackground(rounded(0xFF151D28, 12));
 
-        channelEmptyView.setVisibility(View.GONE);
-        channelResults.setVisibility(View.VISIBLE);
-        ChannelAdapter adapter = channelAdapter;
-        RecyclerView recycler = channelResults;
-        adapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-        adapter.submitList(new ArrayList<>(filtered), () -> {
-            if (adapter != channelAdapter || recycler != channelResults) return;
-            adapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-            if (filtersChanged && recycler.getAdapter() == adapter && adapter.getItemCount() > 0) {
-                recycler.scrollToPosition(0);
-            }
+                    TextView heading = label(channelSnapshot.isEmpty()
+                            ? (loadingCatalog ? "Connexion au catalogue…" : "Catalogue prêt à charger")
+                            : "Aucune chaîne trouvée", isTelevision() ? 18 : 14, Color.WHITE, true);
+                    heading.setGravity(Gravity.CENTER);
+                    empty.addView(heading, lp(-1, -2));
+
+                    TextView msg = label(channelSnapshot.isEmpty()
+                            ? requestedSource + " se charge en arrière-plan. Vous pouvez naviguer ou actualiser."
+                            : "Essayez une autre catégorie ou modifiez votre recherche.",
+                            isTelevision() ? 12 : 10, 0xEEFFFFFF, false);
+                    msg.setGravity(Gravity.CENTER);
+                    msg.setPadding(0, dp(8), 0, dp(12));
+                    empty.addView(msg, lp(-1, -2));
+
+                    TextView retry = buttonText(loadingCatalog ? "Chargement…" : "↻ Actualiser " + requestedSource, true);
+                    empty.addView(retry, lp(-2, isTelevision() ? 46 : 38));
+                    retry.setOnClickListener(v -> loadChannels());
+                    channelEmptyView.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+                    return;
+                }
+
+                channelEmptyView.setVisibility(View.GONE);
+                targetRecycler.setVisibility(View.VISIBLE);
+                targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+                targetAdapter.submitList(filtered, () -> {
+                    if (requestId != filterGeneration.get()
+                            || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
+                    if (filtersChanged && targetAdapter.getItemCount() > 0) {
+                        targetRecycler.scrollToPosition(0);
+                    }
+                });
+            });
         });
     }
 
@@ -772,12 +793,13 @@ public class MainActivity extends Activity {
             .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Vos favoris sont conservés.")
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
-                getSharedPreferences("catalog_cache", MODE_PRIVATE).edit().clear().apply();
-                deleteFullCatalogCache("VAVOO");
-                deleteFullCatalogCache("IPTV-ORG");
-                VavooProvider.invalidateCatalogCache();
+                CatalogCache.clear(MainActivity.this);
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
-                channels.clear(); activeCountry = "Tous les pays"; renderPage();
+                channels.clear();
+                markCatalogChanged();
+                activeCountry = "Tous les pays";
+                lastRenderedFilterKey = "";
+                renderPage();
             }).show());
 
         TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
@@ -816,79 +838,6 @@ public class MainActivity extends Activity {
         return "pas encore chargé";
     }
 
-    private void loadCachedChannels() {
-        try {
-            SharedPreferences prefs = getSharedPreferences("catalog_cache", MODE_PRIVATE);
-            String key = "VAVOO".equals(sourceFilter) ? "vavoo_channels" : "iptv_org_channels";
-            String raw = prefs.getString(key, "");
-            if (raw.isEmpty()) return;
-            if (raw.length() > 1_500_000) {
-                prefs.edit().remove(key).apply();
-                return;
-            }
-            JSONArray arr = new JSONArray(raw);
-            ArrayList<Channel> cached = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null || cached.size() >= MAX_CACHED_CHANNELS) continue;
-                String url = o.optString("url", "");
-                if (url.isEmpty()) continue;
-                boolean isVavoo = o.optBoolean("isVavoo", false);
-                if (isVavoo != "VAVOO".equals(sourceFilter)) continue;
-                String group = o.optString("group", "Direct");
-                String country = knownCountry(o.optString("country", ""));
-                if (country.isEmpty()) {
-                    String prefix = isVavoo ? "VAVOO · " : "IPTV-ORG · ";
-                    country = knownCountry(group.startsWith(prefix) ? group.substring(prefix.length()) : group);
-                }
-                if (country.isEmpty()) country = "Pays non précisé";
-                cached.add(new Channel(o.optString("name", "Chaîne"), url,
-                        o.optString("logo", ""), group, isVavoo,
-                        o.optString("sourceUrl", ""), country));
-            }
-            if (!cached.isEmpty()) {
-                channels.clear();
-                channels.addAll(cached);
-                catalogStatus = sourceFilter + " · " + cached.size() + " chaînes en cache, actualisation…";
-                updateStatus();
-                renderPage();
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private void saveCachedChannels(ArrayList<Channel> items, String source) {
-        try {
-            JSONArray arr = new JSONArray();
-            int limit = 0;
-            for (Channel ch : items) {
-                if (limit++ >= MAX_CACHED_CHANNELS) break;
-                JSONObject o = new JSONObject();
-                o.put("name", safe(ch.name));
-                o.put("url", safe(ch.url));
-                o.put("logo", safe(ch.logo));
-                o.put("group", safe(ch.group));
-                o.put("isVavoo", ch.isVavoo);
-                o.put("sourceUrl", safe(ch.vavooSourceUrl));
-                o.put("country", safe(ch.country));
-                arr.put(o);
-            }
-            String key = "VAVOO".equals(source) ? "vavoo_channels" : "iptv_org_channels";
-            getSharedPreferences("catalog_cache", MODE_PRIVATE).edit()
-                    .putString(key, arr.toString())
-                    .putLong(key + "_updated_at", System.currentTimeMillis())
-                    .apply();
-        } catch (Exception ignored) {}
-    }
-
-    private ArrayList<Channel> cacheableChannels(ArrayList<Channel> items) {
-        ArrayList<Channel> cached = new ArrayList<>(Math.min(items.size(), MAX_CACHED_CHANNELS));
-        for (Channel ch : items) {
-            if (cached.size() >= MAX_CACHED_CHANNELS) break;
-            cached.add(ch);
-        }
-        return cached;
-    }
-
     private void switchSource(String source) {
         boolean changed = !source.equals(sourceFilter);
         if (!changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
@@ -900,6 +849,7 @@ public class MainActivity extends Activity {
         sourceFilter = source;
         if (changed) {
             channels.clear();
+            markCatalogChanged();
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
@@ -908,7 +858,6 @@ public class MainActivity extends Activity {
             if (searchInput != null) searchInput.setText("");
         }
         updateHeaderTabs();
-        if (changed) loadCachedChannels();
         renderPage();
         if (changed || channels.isEmpty()) loadChannels();
     }
@@ -929,28 +878,16 @@ public class MainActivity extends Activity {
         final int currentGen = loadGeneration.incrementAndGet();
 
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
-        final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // A full on-disk catalogue is restored in the background first. The small
-            // SharedPreferences cache still supplies an immediate first paint on startup.
-            ArrayList<Channel> diskCached = readFullCatalogCache(requestedSource);
-            if (!diskCached.isEmpty()) {
-                final ArrayList<Channel> diskSnapshot = diskCached;
-                runOnUiThread(() -> {
-                    if (activityDestroyed || currentGen != loadGeneration.get()
-                            || !requestedSource.equals(sourceFilter)) return;
-                    if (channels.size() < diskSnapshot.size()) {
-                        channels.clear();
-                        channels.addAll(diskSnapshot);
-                        catalogStatus = requestedSource + " · " + diskSnapshot.size()
-                                + " chaînes en cache, actualisation…";
-                        updateStatus();
-                        updateHeaderTabs();
-                        renderCountryChoices();
-                        updateChannelResults();
-                    }
-                });
-            }
+            // Parse both caches away from the UI thread. The quick cache appears first,
+            // then the complete per-source cache can replace it without waiting for network.
+            ArrayList<Channel> quickCached = CatalogCache.readQuick(
+                    MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
+            showCachedSnapshot(quickCached, requestedSource, currentGen);
+
+            ArrayList<Channel> diskCached = CatalogCache.readFull(
+                    MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS);
+            showCachedSnapshot(diskCached, requestedSource, currentGen);
 
             ArrayList<Channel> loaded = new ArrayList<>();
             String error = "";
@@ -959,7 +896,7 @@ public class MainActivity extends Activity {
                     List<VavooProvider.VavooChannel> sourceChannels = VavooProvider.loadChannels(partial -> {
                         int size = partial == null ? 0 : partial.size();
                         int previous = lastVavooPublished.get();
-                        if (size <= 0 || (previous > 0 && size - previous < 400)
+                        if (size <= 0 || (previous > 0 && size - previous < 1500)
                                 || !lastVavooPublished.compareAndSet(previous, size)) return;
                         publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
                                 currentGen);
@@ -973,57 +910,22 @@ public class MainActivity extends Activity {
                     error = e.getMessage() == null ? "catalogue VAVOO indisponible" : e.getMessage();
                 }
             } else {
-                HttpURLConnection conn = null;
                 try {
-                    URL u = new URL("https://iptv-org.github.io/iptv/index.country.m3u");
-                    conn = (HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(20000);
-                    conn.setRequestProperty("User-Agent", "NISSKENZI+/2.0 (Android TV)");
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
-                        String line;
-                        String name = "Chaîne", logo = "", group = "Pays non précisé", country = "Pays non précisé";
-                        while ((line = reader.readLine()) != null) {
-                            if (line.startsWith("#EXTINF:")) {
-                                int comma = line.lastIndexOf(',');
-                                name = comma >= 0 ? line.substring(comma + 1).trim() : "Chaîne";
-                                logo = "";
-                                group = "Pays non précisé";
-                                country = "Pays non précisé";
-                                String lg = attribute(line, "tvg-logo");
-                                if (!lg.isEmpty()) logo = lg;
-                                String grouped = attribute(line, "group-title");
-                                if (!grouped.isEmpty()) group = grouped;
-                                String rawCountry = attribute(line, "tvg-country");
-                                if (rawCountry.isEmpty()) rawCountry = attribute(line, "country");
-                                String resolvedCountry = knownCountry(rawCountry);
-                                if (resolvedCountry.isEmpty()) resolvedCountry = knownCountry(group);
-                                country = resolvedCountry.isEmpty() ? "Pays non précisé" : resolvedCountry;
-                            } else if (line.startsWith("http://") || line.startsWith("https://")) {
-                                if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
-                                loaded.add(new Channel(name, line.trim(), logo,
-                                        "IPTV-ORG · " + group, false, null, country));
-                                int previouslyPublished = lastIptvPublished.get();
-                                if (loaded.size() - previouslyPublished >= 500
-                                        && lastIptvPublished.compareAndSet(previouslyPublished, loaded.size())) {
-                                    publishCatalogSnapshot(new ArrayList<>(loaded), requestedSource,
-                                            currentGen);
-                                }
-                            }
-                        }
-                    }
+                    loaded.addAll(IptvOrgProvider.loadChannels(MAX_CATALOG_CHANNELS,
+                            this::knownCountry,
+                            partial -> publishCatalogSnapshot(new ArrayList<>(partial),
+                                    requestedSource, currentGen)));
                 } catch (Exception e) {
-                    error = e.getMessage() == null ? "playlist IPTV-ORG indisponible" : e.getMessage();
-                } finally {
-                    if (conn != null) conn.disconnect();
+                    error = e.getMessage() == null
+                            ? "playlist IPTV-ORG indisponible" : e.getMessage();
                 }
             }
 
             final ArrayList<Channel> result = loaded;
             final String loadError = error;
-            final ArrayList<Channel> cacheSnapshot = cacheableChannels(result);
-            if (!cacheSnapshot.isEmpty()) saveCachedChannels(cacheSnapshot, requestedSource);
+            if (!result.isEmpty()) {
+                CatalogCache.saveQuick(MainActivity.this, result, requestedSource, MAX_CACHED_CHANNELS);
+            }
             runOnUiThread(() -> {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
@@ -1040,6 +942,7 @@ public class MainActivity extends Activity {
                     if (!result.isEmpty()) {
                         channels.clear();
                         channels.addAll(result);
+                        markCatalogChanged();
                         catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
                     } else if (!channels.isEmpty()) {
                         catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
@@ -1067,7 +970,7 @@ public class MainActivity extends Activity {
 
             // Saving the complete catalogue happens off the UI thread; subsequent launches
             // can restore all countries/channels without waiting for remote pagination.
-            if (!result.isEmpty()) saveFullCatalogCache(result, requestedSource);
+            if (!result.isEmpty()) CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
         });
     }
 
@@ -1099,6 +1002,7 @@ public class MainActivity extends Activity {
                     || copy.size() <= channels.size()) return;
             channels.clear();
             channels.addAll(copy);
+            markCatalogChanged();
             catalogStatus = requestedSource + " · " + copy.size()
                     + " chaînes reçues, catalogue en chargement…";
             updateStatus();
@@ -1108,111 +1012,27 @@ public class MainActivity extends Activity {
         });
     }
 
-    private File fullCatalogCacheFile(String source) {
-        String suffix = "VAVOO".equals(source) ? "vavoo" : "iptv_org";
-        return new File(getFilesDir(), "nisskenzi_catalog_" + suffix + "_v1.json");
-    }
-
-    private ArrayList<Channel> readFullCatalogCache(String source) {
-        ArrayList<Channel> cached = new ArrayList<>();
-        File file = fullCatalogCacheFile(source);
-        if (!file.isFile() || file.length() <= 0) return cached;
-        if (file.length() > MAX_CATALOG_CACHE_FILE_BYTES) {
-            file.delete();
-            return cached;
-        }
-
-        StringBuilder raw = new StringBuilder((int) Math.min(file.length(), 1024 * 1024));
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
-            char[] buffer = new char[8192];
-            int count;
-            while ((count = reader.read(buffer)) != -1) {
-                if (raw.length() + count > MAX_CATALOG_CACHE_FILE_BYTES) return new ArrayList<>();
-                raw.append(buffer, 0, count);
-            }
-
-            JSONArray array = new JSONArray(raw.toString());
-            boolean wantVavoo = "VAVOO".equals(source);
-            for (int i = 0; i < array.length() && cached.size() < MAX_CATALOG_CHANNELS; i++) {
-                JSONObject object = array.optJSONObject(i);
-                if (object == null) continue;
-                String url = object.optString("url", "").trim();
-                if (url.isEmpty()) continue;
-                boolean isVavoo = object.optBoolean("isVavoo", false);
-                if (isVavoo != wantVavoo) continue;
-                String group = object.optString("group", "Direct");
-                String country = knownCountry(object.optString("country", ""));
-                if (country.isEmpty()) {
-                    String prefix = isVavoo ? "VAVOO · " : "IPTV-ORG · ";
-                    country = knownCountry(group.startsWith(prefix) ? group.substring(prefix.length()) : group);
-                }
-                if (country.isEmpty()) country = "Pays non précisé";
-                cached.add(new Channel(object.optString("name", "Chaîne"), url,
-                        object.optString("logo", ""), group, isVavoo,
-                        object.optString("sourceUrl", ""), country));
-            }
-        } catch (Exception ignored) {
-            cached.clear();
-        }
-        return cached;
-    }
-
-    private void saveFullCatalogCache(ArrayList<Channel> items, String source) {
-        if (items == null || items.isEmpty()) return;
-        File target = fullCatalogCacheFile(source);
-        File temporary = new File(getFilesDir(), target.getName() + ".tmp");
-        try {
-            JSONArray array = new JSONArray();
-            int count = 0;
-            for (Channel channel : items) {
-                if (count++ >= MAX_CATALOG_CHANNELS) break;
-                JSONObject object = new JSONObject();
-                object.put("name", safe(channel.name));
-                object.put("url", safe(channel.url));
-                object.put("logo", safe(channel.logo));
-                object.put("group", safe(channel.group));
-                object.put("isVavoo", channel.isVavoo);
-                object.put("sourceUrl", safe(channel.vavooSourceUrl));
-                object.put("country", safe(channel.country));
-                array.put(object);
-            }
-            try (OutputStreamWriter writer = new OutputStreamWriter(
-                    new FileOutputStream(temporary), "UTF-8")) {
-                writer.write(array.toString());
-                writer.flush();
-            }
-            if (target.exists() && !target.delete()) {
-                temporary.delete();
-                return;
-            }
-            if (!temporary.renameTo(target)) {
-                temporary.delete();
-            }
-        } catch (Exception ignored) {
-            temporary.delete();
-        }
-    }
-
-    private void deleteFullCatalogCache(String source) {
-        File file = fullCatalogCacheFile(source);
-        if (file.exists()) file.delete();
-        File temporary = new File(getFilesDir(), file.getName() + ".tmp");
-        if (temporary.exists()) temporary.delete();
+    private void showCachedSnapshot(ArrayList<Channel> cacheSnapshot, String requestedSource,
+                                    int generation) {
+        if (cacheSnapshot == null || cacheSnapshot.isEmpty()) return;
+        final ArrayList<Channel> snapshot = new ArrayList<>(cacheSnapshot);
+        runOnUiThread(() -> {
+            if (activityDestroyed || generation != loadGeneration.get()
+                    || !requestedSource.equals(sourceFilter) || snapshot.size() <= channels.size()) return;
+            channels.clear();
+            channels.addAll(snapshot);
+            markCatalogChanged();
+            catalogStatus = requestedSource + " · " + snapshot.size()
+                    + " chaînes en cache, actualisation…";
+            updateStatus();
+            updateHeaderTabs();
+            renderCountryChoices();
+            updateChannelResults();
+        });
     }
 
     private void updateStatus() {
         if (statusView != null) statusView.setText(catalogStatus);
-    }
-
-    private String attribute(String line, String key) {
-        int a = line.indexOf(key + "=");
-        if (a < 0) return "";
-        int start = a + key.length() + 1;
-        if (start < line.length() && line.charAt(start) == '"') start++;
-        int end = line.indexOf('"', start);
-        if (end < 0) end = line.indexOf(' ', start);
-        return end > start ? line.substring(start, end < 0 ? line.length() : end) : "";
     }
 
     private static String countryKey(String value) {
@@ -1316,12 +1136,19 @@ public class MainActivity extends Activity {
     private String safe(String value) { return value == null ? "" : value.trim(); }
 
     private boolean isFavorite(Channel ch) {
-        return getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(ch.url, false);
+        return ch != null && (favoritesStore != null
+                ? favoritesStore.contains(ch.url)
+                : getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(ch.url, false));
     }
 
     private void toggleFavorite(Channel ch) {
-        SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
-        p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
+        if (ch == null) return;
+        if (favoritesStore != null) {
+            favoritesStore.toggle(ch.url);
+        } else {
+            SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
+            p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
+        }
     }
 
     private boolean useVlcPlayer() {
@@ -1598,6 +1425,10 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         activityDestroyed = true;
         loadGeneration.incrementAndGet();
+        filterGeneration.incrementAndGet();
+        if (filterJob != null) filterJob.cancel(true);
+        filterExecutor.shutdownNow();
+        if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();

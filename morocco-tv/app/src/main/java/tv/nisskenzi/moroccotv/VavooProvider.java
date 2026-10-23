@@ -135,7 +135,10 @@ public final class VavooProvider {
                 payload.put("url", catalogUrl);
                 payload.put("clientVersion", CLIENT_VERSION);
 
-                String response = postJson(base + "/mediahubmx-resolve.json", payload, signature, true);
+                // Resolving the one selected channel uses shorter per-mirror timeouts.
+                // If a mirror is slow, fail over rather than leaving the TV spinner hanging.
+                String response = postJson(base + "/mediahubmx-resolve.json",
+                        payload, signature, true, 5_000, 8_000);
                 String stream = extractResolvedUrl(response);
                 if (stream != null && (stream.startsWith("http://") || stream.startsWith("https://"))) {
                     return stream;
@@ -290,12 +293,17 @@ public final class VavooProvider {
 
     private static String postJson(String address, JSONObject payload, String signature, boolean mediaHub)
             throws IOException {
+        return postJson(address, payload, signature, mediaHub, 15_000, 30_000);
+    }
+
+    private static String postJson(String address, JSONObject payload, String signature, boolean mediaHub,
+                                   int connectTimeoutMs, int readTimeoutMs) throws IOException {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(address).openConnection();
             connection.setRequestMethod("POST");
-            connection.setConnectTimeout(15000);
-            connection.setReadTimeout(30000);
+            connection.setConnectTimeout(connectTimeoutMs);
+            connection.setReadTimeout(readTimeoutMs);
             connection.setInstanceFollowRedirects(true);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");

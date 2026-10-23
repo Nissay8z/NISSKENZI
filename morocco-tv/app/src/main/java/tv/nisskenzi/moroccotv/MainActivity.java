@@ -9,6 +9,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -118,6 +120,8 @@ public class MainActivity extends Activity {
             1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1),
             Executors.defaultThreadFactory(), new ThreadPoolExecutor.DiscardOldestPolicy());
     private Future<?> filterJob;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingSearchFilter;
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
     private int catalogVersion = 0;
@@ -284,7 +288,7 @@ public class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 searchText = s == null ? "" : s.toString();
-                updateChannelResults();
+                scheduleSearchFilter();
             }
             @Override public void afterTextChanged(Editable e) {}
         });
@@ -645,6 +649,15 @@ public class MainActivity extends Activity {
         int count = 0;
         for (Channel ch : channels) if (recent.contains(ch.url)) count++;
         return count;
+    }
+
+    private void scheduleSearchFilter() {
+        if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
+        pendingSearchFilter = () -> {
+            pendingSearchFilter = null;
+            updateChannelResults();
+        };
+        uiHandler.postDelayed(pendingSearchFilter, 120L);
     }
 
     private void updateChannelResults() {
@@ -1030,6 +1043,7 @@ public class MainActivity extends Activity {
                     || copy.size() <= channels.size()) return;
             channels.clear();
             channels.addAll(copy);
+            markCatalogChanged();
             catalogStatus = requestedSource + " · " + copy.size()
                     + " chaînes reçues, catalogue en chargement…";
             updateStatus();
@@ -1465,6 +1479,7 @@ public class MainActivity extends Activity {
         filterGeneration.incrementAndGet();
         if (filterJob != null) filterJob.cancel(true);
         filterExecutor.shutdownNow();
+        if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();

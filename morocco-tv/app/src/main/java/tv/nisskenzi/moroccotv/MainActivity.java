@@ -7,7 +7,6 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -30,10 +29,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
-
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.util.VLCVideoLayout;
 
 import java.text.Normalizer;
 import java.text.SimpleDateFormat;
@@ -116,9 +111,6 @@ public class MainActivity extends Activity {
     private View playerStagePlaceholder;
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
     private int playerStageOriginalIndex = -1;
-    private LibVLC libVLC;
-    private org.videolan.libvlc.MediaPlayer vlcPlayer;
-    private VLCVideoLayout vlcVideoLayout;
     private Channel currentChannel;
     private volatile String activePage = "Live TV";
     private volatile String catalogStatus = "Préparation du catalogue…";
@@ -908,22 +900,16 @@ public class MainActivity extends Activity {
         contentHost.addView(scroll, new FrameLayout.LayoutParams(-1,-1));
 
         page.addView(label("Paramètres", 26, TEXT, true));
-        TextView intro = label("Gestion des moteurs de catalogues et des lecteurs multimédias.", 11, MUTED, false);
+        TextView intro = label("Gestion des catalogues et de la lecture vidéo.", 11, MUTED, false);
         LinearLayout.LayoutParams ip = lp(-1,-2); ip.topMargin=dp(6); ip.bottomMargin=dp(20); page.addView(intro,ip);
 
         TextView playerHeading = label("LECTEUR VIDÉO", 9, MUTED, true);
         page.addView(playerHeading);
-
-        TextView playerMode = buttonText("Lecteur préféré : " + preferredPlayerLabel(), true);
+        TextView playerMode = buttonText("Lecteur unique : Media3", false);
+        playerMode.setFocusable(false);
         LinearLayout.LayoutParams pmp = lp(-1, 48); pmp.topMargin = dp(8); page.addView(playerMode, pmp);
-        
-        TextView playerHelp = label("Media3 est léger. VLC apporte un moteur alternatif pour les flux complexes.", 10, MUTED, false);
+        TextView playerHelp = label("Un seul lecteur intégré, sans fenêtre proposant de changer de moteur.", 10, MUTED, false);
         LinearLayout.LayoutParams php = lp(-1,-2); php.topMargin = dp(6); php.bottomMargin = dp(18); page.addView(playerHelp, php);
-        playerMode.setOnClickListener(v -> {
-            setVlcPreference(!useVlcPlayer());
-            renderSettings();
-            Toast.makeText(this, "Lecteur préféré : " + preferredPlayerLabel(), Toast.LENGTH_SHORT).show();
-        });
 
         page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
@@ -1500,18 +1486,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean useVlcPlayer() {
-        return getSharedPreferences("settings", MODE_PRIVATE).getBoolean("use_vlc_player", false);
-    }
-
-    private void setVlcPreference(boolean enabled) {
-        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("use_vlc_player", enabled).apply();
-    }
-
-    private String preferredPlayerLabel() {
-        return useVlcPlayer() ? "VLC (compatibilité étendue)" : "Media3 (léger)";
-    }
-
     private void enterFullscreenPlayback() {
         if (fullscreenPlayback || playerStage == null || contentHost == null
                 || !"Live TV".equals(activePage)) return;
@@ -1606,7 +1580,18 @@ public class MainActivity extends Activity {
                     });
                 } catch (Exception e) {
                     String message = e.getMessage() == null ? "Résolution VAVOO impossible" : e.getMessage();
-                    runOnUiThread(() -> { if (currentChannel == ch) Toast.makeText(MainActivity.this, "VAVOO : " + message, Toast.LENGTH_LONG).show(); });
+                    runOnUiThread(() -> {
+                        if (currentChannel != ch) return;
+                        if (previewStatus != null) previewStatus.setText("Flux VAVOO indisponible");
+                        if (previewDetail != null) previewDetail.setText(message);
+                        if (playerStage != null) {
+                            playerStage.removeAllViews();
+                            TextView error = label("Flux VAVOO indisponible", 15, MUTED, true);
+                            error.setGravity(Gravity.CENTER);
+                            error.setBackgroundColor(Color.BLACK);
+                            playerStage.addView(error, new FrameLayout.LayoutParams(-1, -1));
+                        }
+                    });
                 }
             });
         } else {
@@ -1616,8 +1601,7 @@ public class MainActivity extends Activity {
 
     private void startResolvedPlayback(Channel ch, String streamUrl) {
         if (playerStage == null || currentChannel != ch) return;
-        if (useVlcPlayer()) startVlcPlayback(ch, streamUrl);
-        else startMedia3Playback(ch, streamUrl);
+        startMedia3Playback(ch, streamUrl);
     }
 
     private void startMedia3Playback(Channel ch, String streamUrl) {
@@ -1658,23 +1642,11 @@ public class MainActivity extends Activity {
 
                 @Override public void onPlayerError(PlaybackException e) {
                     if (currentChannel == ch && playerView == nativeView) {
-                        nativeView.setErrorMessage("Flux indisponible · un autre lecteur peut être nécessaire");
-                        if (previewStatus != null) {
-                            previewStatus.setText("Flux indisponible · essayez l’autre lecteur");
+                        nativeView.setErrorMessage("Flux indisponible");
+                        if (previewStatus != null) previewStatus.setText("Flux indisponible");
+                        if (previewDetail != null) {
+                            previewDetail.setText("Ce flux ne répond pas avec le lecteur intégré.");
                         }
-                    }
-                    Toast.makeText(MainActivity.this,
-                            "Media3 : lecture impossible (" + e.getErrorCodeName() + ").",
-                            Toast.LENGTH_LONG).show();
-                    if (!useVlcPlayer()) {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Essayer un autre lecteur ?")
-                            .setMessage("Ce flux semble nécessiter un moteur vidéo plus compatible. VLC est disponible en option.")
-                            .setNegativeButton("Pas maintenant", null)
-                            .setPositiveButton("Essayer VLC", (dialog, which) -> {
-                                setVlcPreference(true);
-                                startPlayback(ch);
-                            }).show();
                     }
                 }
             });
@@ -1685,8 +1657,8 @@ public class MainActivity extends Activity {
             if (nativeView != null) {
                 nativeView.setErrorMessage("Démarrage impossible");
             }
-            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
-                    Toast.LENGTH_LONG).show();
+            if (previewStatus != null) previewStatus.setText("Démarrage de la lecture impossible");
+            if (previewDetail != null) previewDetail.setText("Vérifiez que le flux est toujours disponible.");
         }
     }
 
@@ -1732,49 +1704,6 @@ public class MainActivity extends Activity {
         liveDateView.setText(new SimpleDateFormat("EEEE d MMM", Locale.FRANCE).format(now));
     }
 
-    private void startVlcPlayback(Channel ch, String streamUrl) {
-        try {
-            ArrayList<String> options = new ArrayList<>();
-            options.add("--network-caching=1500");
-            options.add("--no-drop-late-frames");
-            options.add("--no-skip-frames");
-            libVLC = new LibVLC(this, options);
-            org.videolan.libvlc.MediaPlayer active = new org.videolan.libvlc.MediaPlayer(libVLC);
-            vlcPlayer = active;
-            vlcVideoLayout = new VLCVideoLayout(this);
-            playerStage.addView(vlcVideoLayout, new FrameLayout.LayoutParams(-1, -1));
-            active.attachViews(vlcVideoLayout, null, false, false);
-            active.setEventListener(event -> {
-                if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                    runOnUiThread(() -> {
-                        if (vlcPlayer != active || currentChannel != ch) return;
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("VLC n’a pas pu lire le flux")
-                            .setMessage("Le flux est peut-être indisponible. Souhaitez-vous tenter le lecteur Media3 ?")
-                            .setNegativeButton("Fermer", null)
-                            .setPositiveButton("Essayer Media3", (dialog, which) -> {
-                                setVlcPreference(false);
-                                startPlayback(ch);
-                            }).show();
-                    });
-                }
-            });
-            Media media = new Media(libVLC, Uri.parse(streamUrl));
-            media.setHWDecoderEnabled(true, false);
-            media.addOption(":network-caching=1500");
-            active.setMedia(media);
-            media.release();
-            active.play();
-        } catch (Exception e) {
-            releaseMediaEngine();
-            Toast.makeText(this, "Impossible de démarrer VLC : " + safe(e.getMessage()), Toast.LENGTH_LONG).show();
-            if (currentChannel == ch && playerStage != null) {
-                setVlcPreference(false);
-                startMedia3Playback(ch, streamUrl);
-            }
-        }
-    }
-
     private void releaseMediaEngine() {
         if (player != null) {
             try { player.stop(); player.clearMediaItems(); player.release(); } catch (Exception ignored) {}
@@ -1783,18 +1712,6 @@ public class MainActivity extends Activity {
         if (playerView != null) {
             try { playerView.setPlayer(null); if (playerStage != null) playerStage.removeView(playerView); } catch (Exception ignored) {}
             playerView = null;
-        }
-        if (vlcPlayer != null) {
-            try { vlcPlayer.stop(); vlcPlayer.detachViews(); vlcPlayer.release(); } catch (Exception ignored) {}
-            vlcPlayer = null;
-        }
-        if (libVLC != null) {
-            try { libVLC.release(); } catch (Exception ignored) {}
-            libVLC = null;
-        }
-        if (vlcVideoLayout != null) {
-            try { if (playerStage != null) playerStage.removeView(vlcVideoLayout); } catch (Exception ignored) {}
-            vlcVideoLayout = null;
         }
     }
 

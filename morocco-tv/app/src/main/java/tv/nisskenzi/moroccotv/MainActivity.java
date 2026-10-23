@@ -120,6 +120,12 @@ public class MainActivity extends Activity {
     private int countryStatsVersion = -1;
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
+    private int favoriteCountCache = 0;
+    private int favoriteCountCatalogVersion = -1;
+    private long favoriteCountStoreRevision = -1L;
+    private int recentCountCache = 0;
+    private int recentCountCatalogVersion = -1;
+    private long recentCountStoreRevision = -1L;
 
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "VAVOO";
@@ -561,13 +567,22 @@ public class MainActivity extends Activity {
         if (countryStatsVersion != catalogVersion) {
             countryCountCache.clear();
             countryCodeCache.clear();
+            // Thousands of channels share the same handful of countries. Normalize
+            // each distinct country only once; do not run Unicode normalization/regex
+            // for every row on the UI thread whenever the category panel is built.
+            HashMap<String, String> normalizedCountries = new HashMap<>();
             for (Channel ch : channels) {
-                String country = safeCountry(ch.country);
+                String rawCountry = safe(ch.country);
+                String country = normalizedCountries.get(rawCountry);
+                if (country == null) {
+                    country = safeCountry(rawCountry);
+                    normalizedCountries.put(rawCountry, country);
+                }
                 Integer oldCount = countryCountCache.get(country);
                 countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
-                if (!countryCodeCache.containsKey(country) || countryCodeCache.get(country).isEmpty()) {
-                    countryCodeCache.put(country, countryCode(country));
-                }
+            }
+            for (String country : countryCountCache.keySet()) {
+                countryCodeCache.put(country, countryCode(country));
             }
             countryStatsVersion = catalogVersion;
         }
@@ -632,15 +647,28 @@ public class MainActivity extends Activity {
     }
 
     private int countFavoriteChannels() {
-        return favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+        long revision = favoritesStore == null ? 0L : favoritesStore.revision();
+        if (favoriteCountCatalogVersion != catalogVersion || favoriteCountStoreRevision != revision) {
+            favoriteCountCache = favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+            favoriteCountCatalogVersion = catalogVersion;
+            favoriteCountStoreRevision = revision;
+        }
+        return favoriteCountCache;
     }
 
     private int countRecentChannels() {
-        if (recentStore == null) return 0;
-        Set<String> recent = recentStore.snapshotUrls();
-        int count = 0;
-        for (Channel ch : channels) if (recent.contains(ch.url)) count++;
-        return count;
+        long revision = recentStore == null ? 0L : recentStore.revision();
+        if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
+            int count = 0;
+            if (recentStore != null) {
+                Set<String> recent = recentStore.snapshotUrls();
+                for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+            }
+            recentCountCache = count;
+            recentCountCatalogVersion = catalogVersion;
+            recentCountStoreRevision = revision;
+        }
+        return recentCountCache;
     }
 
     private void scheduleSearchFilter() {

@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     TextView b=text(label,13,Color.WHITE,true);b.setGravity(Gravity.CENTER);b.setPadding(18,12,18,12);b.setBackground(rounded(color,10));b.setFocusable(true);return b;
   }
   private void buildHome(){
-    homeWebReady=false;
+    activeSection="Accueil";homeWebReady=false;
     root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);
     homeWebView=new WebView(this);homeWebView.setBackgroundColor(bg);
     WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);webSettings.setAllowFileAccessFromFileURLs(false);webSettings.setAllowUniversalAccessFromFileURLs(false);webSettings.setSupportZoom(false);
@@ -445,6 +445,7 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
     @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
+    @JavascriptInterface public void setCurrentPage(String page){runOnUiThread(()->activeSection=page==null?"Accueil":page);}
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
     @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
     @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);MainActivity.this.play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())MainActivity.this.openSeriesEpisodes(series.get(index));});}
@@ -580,6 +581,6 @@ public class MainActivity extends Activity {
     }
     return super.dispatchKeyEvent(event);
   }
-  @Override public void onBackPressed(){if(channelDrawer!=null&&playerStage!=null){playerStage.removeView(channelDrawer);channelDrawer=null;countryDrawerOpen=false;}else if(player!=null){returnHome();}else super.onBackPressed();}
+  @Override public void onBackPressed(){if(channelDrawer!=null&&playerStage!=null){playerStage.removeView(channelDrawer);channelDrawer=null;countryDrawerOpen=false;}else if(player!=null){returnHome();}else if(homeWebView!=null&&homeWebReady&&!"Accueil".equals(activeSection)){homeWebView.evaluateJavascript("setPage('Accueil')",null);activeSection="Accueil";}else super.onBackPressed();}
   @Override protected void onDestroy(){if(player!=null)player.release();if(homeWebView!=null){try{homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}}io.shutdownNow();logoIo.shutdownNow();super.onDestroy();}
 }

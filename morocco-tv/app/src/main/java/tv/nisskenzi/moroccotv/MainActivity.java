@@ -195,8 +195,8 @@ public class MainActivity extends Activity {
                 b.setScaleY(1.035f);
             } else {
                 boolean active = b == liveTab ? "Live TV".equals(activePage)
-                        : b == vavooTab ? "VAVOO".equals(sourceFilter)
-                        : b == iptvTab ? "IPTV-ORG".equals(sourceFilter)
+                        : b == vavooTab ? ("Live TV".equals(activePage) && "VAVOO".equals(sourceFilter))
+                        : b == iptvTab ? ("Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
                 b.setBackground(rounded(active ? 0xAA08653F : 0x44FFFFFF, 22));
                 b.setTextColor(active ? YELLOW : Color.WHITE);
@@ -1107,6 +1107,7 @@ public class MainActivity extends Activity {
         loadingCatalog = loadingVavoo || loadingIptv;
         catalogStatus = requestedSource + " · chargement en arrière-plan…";
         updateStatus();
+        if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
         if ("Paramètres".equals(activePage)) renderSettings();
         io.execute(() -> {
             ArrayList<Channel> loaded = new ArrayList<>();

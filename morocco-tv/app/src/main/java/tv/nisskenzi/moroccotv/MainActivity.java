@@ -38,14 +38,7 @@ import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -56,8 +49,13 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -74,7 +72,6 @@ public class MainActivity extends Activity {
     private static final int YELLOW = 0xFFFFFF00;
     private static final int MAX_CACHED_CHANNELS = 400;
     private static final int MAX_CATALOG_CHANNELS = 9000;
-    private static final long MAX_CATALOG_CACHE_FILE_BYTES = 12L * 1024L * 1024L;
 
     private LinearLayout root;
     private View headerView;
@@ -116,6 +113,17 @@ public class MainActivity extends Activity {
     private volatile boolean activityDestroyed = false;
 
     private final AtomicInteger loadGeneration = new AtomicInteger(0);
+    private final AtomicInteger filterGeneration = new AtomicInteger(0);
+    private final ThreadPoolExecutor filterExecutor = new ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1),
+            Executors.defaultThreadFactory(), new ThreadPoolExecutor.DiscardOldestPolicy());
+    private Future<?> filterJob;
+    private FavoritesStore favoritesStore;
+    private RecentChannelsStore recentStore;
+    private int catalogVersion = 0;
+    private int countryStatsVersion = -1;
+    private final Map<String, Integer> countryCountCache = new HashMap<>();
+    private final Map<String, String> countryCodeCache = new HashMap<>();
 
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "VAVOO";
@@ -128,20 +136,13 @@ public class MainActivity extends Activity {
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newFixedThreadPool(2);
 
-    static class Channel {
-        String name, url, logo, group, vavooSourceUrl, country;
-        boolean isVavoo;
-        Channel(String n, String u, String l, String g, boolean v, String source, String countryName) {
-            name=n; url=u; logo=l; group=g; isVavoo=v; vavooSourceUrl=source; country=countryName;
-        }
-    }
-
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        favoritesStore = new FavoritesStore(getSharedPreferences("favorites", MODE_PRIVATE));
+        recentStore = new RecentChannelsStore(getSharedPreferences("recent", MODE_PRIVATE));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
-        loadCachedChannels();
         loadChannels();
     }
 
@@ -336,6 +337,12 @@ public class MainActivity extends Activity {
 
     private void renderPage() {
         if (contentHost == null) return;
+        filterGeneration.incrementAndGet();
+        if (filterJob != null) {
+            filterJob.cancel(true);
+            filterJob = null;
+            filterExecutor.purge();
+        }
         // Keep the live layout and its active player stage mounted while video is fullscreen.
         if (fullscreenPlayback) {
             renderCountryChoices();

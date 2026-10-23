@@ -155,16 +155,52 @@ public class MainActivity extends Activity {
       getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("merged_channels",arr.toString()).putLong("updated_at",System.currentTimeMillis()).apply();
     }catch(Exception ignored){}
   }
+  private static String countryKey(String value){
+    if(value==null)return "";
+    String normalized=java.text.Normalizer.normalize(value.trim(),java.text.Normalizer.Form.NFD);
+    normalized=normalized.replaceAll("\\p{M}+","").toLowerCase(java.util.Locale.ROOT);
+    return normalized.replaceAll("[^a-z0-9]+"," ").trim();
+  }
+  private static final java.util.Map<String,String> COUNTRY_ALIASES=buildCountryAliases();
+  private static java.util.Map<String,String> buildCountryAliases(){
+    java.util.HashMap<String,String> map=new java.util.HashMap<>();
+    for(String code:java.util.Locale.getISOCountries()){
+      java.util.Locale loc=new java.util.Locale("",code);
+      String french=loc.getDisplayCountry(java.util.Locale.FRENCH);
+      String english=loc.getDisplayCountry(java.util.Locale.ENGLISH);
+      if(french==null||french.trim().isEmpty())continue;
+      map.put(countryKey(code),french);
+      map.put(countryKey(french),french);
+      map.put(countryKey(english),french);
+    }
+    map.put(countryKey("UK"),"Royaume-Uni");
+    map.put(countryKey("Great Britain"),"Royaume-Uni");
+    map.put(countryKey("USA"),"États-Unis");
+    map.put(countryKey("United States of America"),"États-Unis");
+    map.put(countryKey("South Korea"),"Corée du Sud");
+    map.put(countryKey("Republic of Korea"),"Corée du Sud");
+    map.put(countryKey("North Korea"),"Corée du Nord");
+    map.put(countryKey("Ivory Coast"),"Côte d’Ivoire");
+    map.put(countryKey("Czech Republic"),"Tchéquie");
+    map.put(countryKey("Russia"),"Russie");
+    map.put(countryKey("Syria"),"Syrie");
+    map.put(countryKey("Iran"),"Iran");
+    map.put(countryKey("Moldova"),"Moldavie");
+    map.put(countryKey("Vietnam"),"Viêt Nam");
+    map.put(countryKey("Turkey"),"Turquie");
+    map.put(countryKey("Türkiye"),"Turquie");
+    map.put(countryKey("Taiwan"),"Taïwan");
+    map.put(countryKey("Vatican City"),"Vatican");
+    map.put(countryKey("Palestine"),"Palestine");
+    map.put(countryKey("Kosovo"),"Kosovo");
+    return map;
+  }
   private String normalizeCountry(String raw){
     if(raw==null)return "";
-    String value=raw.trim();
-    if(value.isEmpty())return "";
-    String first=value.split("[,;]")[0].trim();
-    if(first.matches("(?i)[a-z]{2}")){
-      String display=new java.util.Locale("",first.toUpperCase(java.util.Locale.ROOT)).getDisplayCountry(java.util.Locale.FRENCH);
-      if(display!=null&&!display.trim().isEmpty())return display;
-    }
-    return first;
+    String first=raw.trim().split("[,;]")[0].trim();
+    if(first.isEmpty())return "";
+    String canonical=COUNTRY_ALIASES.get(countryKey(first));
+    return canonical==null?first:canonical;
   }
   private void loadChannels(){
     status.setText("Chargement des catalogues VAVOO + IPTV-ORG…");

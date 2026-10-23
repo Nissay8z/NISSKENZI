@@ -446,6 +446,9 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
     @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
     @JavascriptInterface public void setCurrentPage(String page){activeSection=page==null?"Accueil":page;}
+    @JavascriptInterface public String getQuality(){return getSharedPreferences("player_settings",MODE_PRIVATE).getString("quality","Auto");}
+    @JavascriptInterface public void setQuality(String quality){if(!"Auto".equals(quality)&&!"SD".equals(quality)&&!"HD".equals(quality)&&!"Full HD".equals(quality)&&!"4K".equals(quality))return;runOnUiThread(()->{getSharedPreferences("player_settings",MODE_PRIVATE).edit().putString("quality",quality).apply();if(player!=null)applyQuality(player);Toast.makeText(MainActivity.this,"Qualité par défaut : "+quality,Toast.LENGTH_SHORT).show();});}
+    @JavascriptInterface public void chooseCountry(){runOnUiThread(()->openVavooSettings());}
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
     @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
     @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);MainActivity.this.play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())MainActivity.this.openSeriesEpisodes(series.get(index));});}
@@ -515,6 +518,18 @@ public class MainActivity extends Activity {
     TextView row=text(iconText+"   "+title,14,Color.WHITE,true);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(14,14,12,14);row.setSingleLine(true);row.setEllipsize(TextUtils.TruncateAt.END);row.setFocusable(true);row.setBackground(rounded(0xFF1B212C,10));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=6;row.setLayoutParams(p);row.setOnFocusChangeListener((v,focus)->row.setBackground(rounded(focus?0xFF3A4558:0xFF1B212C,10)));return row;
   }
 
+  private void applyQuality(ExoPlayer target){
+    try{
+      String quality=getSharedPreferences("player_settings",MODE_PRIVATE).getString("quality","Auto");
+      androidx.media3.common.TrackSelectionParameters.Builder params=target.getTrackSelectionParameters().buildUpon();
+      if("SD".equals(quality))params.setMaxVideoSize(854,480);
+      else if("HD".equals(quality))params.setMaxVideoSize(1280,720);
+      else if("Full HD".equals(quality))params.setMaxVideoSize(1920,1080);
+      else if("4K".equals(quality))params.setMaxVideoSize(3840,2160);
+      else params.setMaxVideoSize(Integer.MAX_VALUE,Integer.MAX_VALUE);
+      target.setTrackSelectionParameters(params.build());
+    }catch(Exception ignored){}
+  }
   private static final int PICK_LOCAL_VIDEO_REQUEST=501;
   private void openLocalVideoPicker(){
     try{
@@ -541,6 +556,7 @@ public class MainActivity extends Activity {
     ExoPlayer activePlayer=new ExoPlayer.Builder(this)
       .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)).build();
     player=activePlayer;
+    applyQuality(activePlayer);
     playerView.setPlayer(activePlayer);
     activePlayer.addListener(new Player.Listener(){
       @Override public void onPlayerError(PlaybackException e){

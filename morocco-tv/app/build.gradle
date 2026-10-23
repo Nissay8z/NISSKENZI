@@ -7,8 +7,8 @@ android {
         applicationId 'tv.nisskenzi.moroccotv'
         minSdk 23
         targetSdk 28
-        versionCode 15
-        versionName '2.0.0'
+        versionCode 16
+        versionName '2.1.0'
         ndk {
             // ARM architectures cover typical Android phones and TV boxes; avoid bundling Intel VLC binaries.
             abiFilters 'arm64-v8a', 'armeabi-v7a'
@@ -24,9 +24,11 @@ android {
 
 dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    implementation 'androidx.media3:media3-exoplayer:1.5.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
-    implementation 'androidx.media3:media3-ui:1.5.1'
+    // Keep every Media3 component on the same stable release.
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.11.1'
+    implementation 'androidx.media3:media3-ui:1.11.1'
     // Official VideoLAN LibVLC engine (independent of BOB's bundled binaries).
     implementation 'org.videolan.android:libvlc-all:3.7.7'
 }

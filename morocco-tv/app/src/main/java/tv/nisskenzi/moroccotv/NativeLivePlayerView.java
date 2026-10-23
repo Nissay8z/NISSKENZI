@@ -279,12 +279,12 @@ public final class NativeLivePlayerView extends FrameLayout {
     }
 
     /** The player drawer uses the existing source catalogue and only virtualizes visible rows. */
-    public void setDrawerChannels(List<Channel> channels, String selectedUrl,
+    public void setDrawerChannels(List<Channel> channels, int catalogVersion, String selectedUrl,
                                   PlayerChannelDrawerAdapter.OnChannelSelected onSelected,
                                   Runnable onOpen) {
         channelSelectionAction = onSelected;
         drawerOpenAction = onOpen;
-        drawerAdapter.setChannels(channels, selectedUrl);
+        drawerAdapter.setChannels(channels, selectedUrl, catalogVersion);
     }
 
     public void setBackAction(Runnable action) {

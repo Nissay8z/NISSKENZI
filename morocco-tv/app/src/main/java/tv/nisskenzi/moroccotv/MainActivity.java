@@ -938,109 +938,46 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void switchSource(String source) {
-        boolean changed = !source.equals(sourceFilter);
-        if (!changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
-        loadGeneration.incrementAndGet();
+        String nextSource = ChannelRepository.canonicalSourceId(source);
+        boolean changed = !nextSource.equals(sourceFilter);
+        if (!changed && "Live TV".equals(activePage) && channels.size() > 0) {
+            renderCountryChoices();
+            updateChannelResults();
+            return;
+        }
+
         releaseMediaEngine();
         currentChannel = null;
         playerStage = null;
         activePage = "Live TV";
-        sourceFilter = source;
+        sourceFilter = nextSource;
+
         if (changed) {
-            channels.clear();
-            markCatalogChanged();
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
             categorySearch = "";
-            searchText = "";
-            if (searchInput != null) searchInput.setText("");
+            countryStatsSourceFilter = "";
         }
         updateHeaderTabs();
         renderPage();
-        if (changed || channels.isEmpty()) loadChannels();
+        // Switching source only filters the already cached Room rows. It never
+        // starts a catalogue download. The ViewModel owns refresh scheduling.
     }
 
-    private void loadChannels() { loadChannels(false); }
+    private void loadChannels() {
+        loadChannels(false);
+    }
 
     private void loadChannels(boolean forceRefresh) {
-        final String requestedSource = "IPTV-ORG".equals(sourceFilter) ? "IPTV-ORG" : "VAVOO";
-        final boolean requestVavoo = "VAVOO".equals(requestedSource);
-        if (requestVavoo ? loadingVavoo : loadingIptv) return;
-
-        if (requestVavoo) loadingVavoo = true; else loadingIptv = true;
-        loadingCatalog = loadingVavoo || loadingIptv;
-        final String assetName = requestVavoo ? "vavoo_catalog.m3u" : "iptv_org_catalog.m3u";
-        final SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
-        final String playlistUrl = safe(m3uPrefs.getString(
-                requestVavoo ? "vavoo_url" : "iptv_org_url", ""));
+        if (channelViewModel == null) return;
+        loadingCatalog = true;
         catalogStatus = forceRefresh
-                ? requestedSource + " · actualisation de la playlist M3U…"
-                : requestedSource + " · ouverture de la playlist M3U…";
+                ? "Actualisation des playlists M3U en arrière-plan…"
+                : "Vérification du cache local et des playlists…";
         updateStatus();
-
-        if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
-        if ("Paramètres".equals(activePage)) renderSettings();
-
-        final int currentGen = loadGeneration.incrementAndGet();
-        io.execute(() -> {
-            ArrayList<Channel> loaded = new ArrayList<>();
-            String error = "";
-            try {
-                loaded = M3UParser.load(MainActivity.this, requestedSource, assetName,
-                        playlistUrl, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry,
-                        forceRefresh);
-            } catch (Exception e) {
-                error = e.getMessage() == null ? "impossible de lire la playlist M3U" : e.getMessage();
-            }
-
-            final ArrayList<Channel> result = loaded;
-            final String loadError = error;
-            runOnUiThread(() -> {
-                if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
-                loadingCatalog = loadingVavoo || loadingIptv;
-                if (activityDestroyed) return;
-
-                if (currentGen != loadGeneration.get()) {
-                    if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
-                    else updateStatus();
-                    return;
-                }
-                if (!requestedSource.equals(sourceFilter)) {
-                    updateStatus();
-                    return;
-                }
-
-                if (!result.isEmpty()) {
-                    channels.clear();
-                    channels.addAll(result);
-                    markCatalogChanged();
-                    String origin = playlistUrl.isEmpty() ? "M3U local" : "M3U distant";
-                    catalogStatus = requestedSource + " · " + result.size()
-                            + " chaînes · " + origin + " · sans chargement du catalogue API";
-                } else if (!channels.isEmpty()) {
-                    catalogStatus = requestedSource + " · playlist inaccessible, chaînes précédentes conservées";
-                } else {
-                    catalogStatus = requestedSource + " · playlist M3U vide ou inaccessible"
-                            + (loadError.isEmpty() ? "" : " · " + loadError);
-                }
-                updateStatus();
-                updateHeaderTabs();
-                if (fullscreenPlayback) {
-                    renderCountryChoices();
-                    updateChannelResults();
-                } else if ("Paramètres".equals(activePage)) {
-                    renderSettings();
-                } else {
-                    renderPage();
-                }
-                if (result.isEmpty() && channels.isEmpty()) {
-                    Toast.makeText(MainActivity.this,
-                            requestedSource + " : impossible de lire la playlist M3U.",
-                            Toast.LENGTH_LONG).show();
-                }
-            });
-        });
+        if (forceRefresh) channelViewModel.refreshAllSources();
+        else channelViewModel.refreshIfNeeded();
     }
 
     private void updateStatus() {

@@ -289,7 +289,7 @@ public class MainActivity extends Activity {
         settingsTab.setOnClickListener(v -> setPage("Paramètres"));
         TextView mark = label("N+", isTelevision() ? 23 : 19, Color.WHITE, true);
         mark.setGravity(Gravity.CENTER);
-        mark.setBackground(rounded(0x443FFFFFF, 15));
+        mark.setBackground(rounded(0x44FFFFFF, 15));
         LinearLayout.LayoutParams markP = lp(isTelevision() ? 52 : 42, isTelevision() ? 46 : 38);
         markP.leftMargin = dp(9);
         header.addView(mark, markP);
@@ -945,7 +945,7 @@ public class MainActivity extends Activity {
         details.setPadding(0,dp(9),0,dp(4));
         statusCard.addView(details);
 
-        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser les deux catalogues", true);
+        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser " + sourceFilter, true);
         LinearLayout.LayoutParams rp=lp(-1,46);rp.topMargin=dp(14);page.addView(refresh,rp);
         refresh.setOnClickListener(v -> loadChannels());
         if (loadingCatalog) refresh.setAlpha(0.65f);
@@ -1389,7 +1389,21 @@ public class MainActivity extends Activity {
             playerStage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
             playerView.setPlayer(active);
             active.addListener(new Player.Listener(){
+                @Override public void onPlaybackStateChanged(int playbackState) {
+                    if (currentChannel != ch || previewStatus == null) return;
+                    if (playbackState == Player.STATE_READY) {
+                        previewStatus.setText("● EN DIRECT");
+                    } else if (playbackState == Player.STATE_BUFFERING) {
+                        previewStatus.setText("Mise en mémoire tampon…");
+                    } else {
+                        previewStatus.setText("Connexion au flux…");
+                    }
+                }
+
                 @Override public void onPlayerError(PlaybackException e){
+                    if (currentChannel == ch && previewStatus != null) {
+                        previewStatus.setText("Flux indisponible · essaie un autre lecteur");
+                    }
                     Toast.makeText(MainActivity.this,"Media3 : lecture impossible ("+e.getErrorCodeName()+").",Toast.LENGTH_LONG).show();
                     if(!useVlcPlayer()){
                         new AlertDialog.Builder(MainActivity.this)

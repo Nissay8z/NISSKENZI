@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
     homeWebReady=false;
     root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);
     homeWebView=new WebView(this);homeWebView.setBackgroundColor(bg);
-    WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);
+    WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);webSettings.setAllowFileAccessFromFileURLs(false);webSettings.setAllowUniversalAccessFromFileURLs(false);webSettings.setSupportZoom(false);
     homeWebView.addJavascriptInterface(new HomeBridge(),"NisskenziBridge");
     homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();}});
     root.addView(homeWebView,new LinearLayout.LayoutParams(-1,0,1));
@@ -154,7 +154,7 @@ public class MainActivity extends Activity {
         if(!ve.isEmpty())msg+=" · VAVOO indisponible";
         if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
         status.setText(msg);
-        if(all.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
+        if(combined.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
       });
     });
   }
@@ -372,7 +372,7 @@ public class MainActivity extends Activity {
     }catch(Exception ignored){}
   }
   private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
-  private final class HomeBridge {
+  public final class HomeBridge {
     @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
     @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
     @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}

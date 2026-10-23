@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadCachedImportedChannels(); loadCachedMedia(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
     homeWebView=new WebView(this);homeWebView.setBackgroundColor(bg);
     WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);webSettings.setAllowFileAccessFromFileURLs(false);webSettings.setAllowUniversalAccessFromFileURLs(false);webSettings.setSupportZoom(false);
     homeWebView.addJavascriptInterface(new HomeBridge(),"NisskenziBridge");
-    homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();}});
+    homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();}});
     root.addView(homeWebView,new LinearLayout.LayoutParams(-1,0,1));
     status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
     list=new LinearLayout(this);setContentView(root);
@@ -209,7 +209,7 @@ public class MainActivity extends Activity {
       final String ve=vavooError,ie=iptvError;
       runOnUiThread(()->{
         baseChannels.clear();baseChannels.addAll(all);
-        ArrayList<Channel> combined=mergeChannels(baseChannels,importedChannels);
+        ArrayList<Channel> combined=new ArrayList<>(baseChannels);
         allVavooChannels.clear();allVavooChannels.addAll(combined);
         channels.clear();channels.addAll(combined);
         if(!combined.isEmpty())saveCachedChannels(combined);
@@ -470,7 +470,7 @@ public class MainActivity extends Activity {
   private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
   public final class HomeBridge {
     @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
-    @JavascriptInterface public void refresh(){runOnUiThread(()->{loadChannels();loadXtreamCatalog();});}
+    @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
     @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
     @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}

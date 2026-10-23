@@ -21,7 +21,7 @@ class EmbeddedPlaylistTests(unittest.TestCase):
             "#EXTM3U",
             '#EXTINF:-1 tvg-logo="https://logos.example/logo?a=1,b=2" group-title="France",Journal, France',
             "https://stream.example/fr.m3u8",
-            '#EXTINF:-1 tvg-name="ARD" tvg-country="DE",ARD",
+            '#EXTINF:-1 tvg-name="ARD" tvg-country="DE",ARD',
             "https://stream.example/de.m3u8",
             '#EXTINF:-1 group-title="Germany",Duplicate URL',
             "https://stream.example/de.m3u8",

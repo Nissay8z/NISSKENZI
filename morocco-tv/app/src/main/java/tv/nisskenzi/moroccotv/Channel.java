@@ -16,7 +16,7 @@ public final class Channel {
     public final boolean isVavoo;
     /** Original XMLTV identifier from tvg-id, when supplied by the playlist. */
     public final String epgId;
-    /** Stable catalogue identity such as vavoo, iptv-org-fr, pluto-tv-fr. */
+    /** Stable catalogue identity: vavoo or iptv-org-fr. */
     public final String catalogSource;
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern PUNCTUATION_AND_SPACE = Pattern.compile("[\\p{Punct}\\s]+");

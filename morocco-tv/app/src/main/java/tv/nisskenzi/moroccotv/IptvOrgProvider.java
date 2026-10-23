@@ -44,6 +44,7 @@ public final class IptvOrgProvider {
                 String logo = "";
                 String group = "Pays non précisé";
                 String country = "Pays non précisé";
+                String epgId = "";
                 int lastPublished = 0;
 
                 while ((line = reader.readLine()) != null) {
@@ -54,6 +55,7 @@ public final class IptvOrgProvider {
                         logo = "";
                         group = "Pays non précisé";
                         country = "Pays non précisé";
+                        epgId = attribute(line, "tvg-id");
 
                         String logoValue = attribute(line, "tvg-logo");
                         if (!logoValue.isEmpty()) logo = logoValue;
@@ -71,7 +73,7 @@ public final class IptvOrgProvider {
                     } else if (line.startsWith("http://") || line.startsWith("https://")) {
                         if (loaded.size() >= maximum) break;
                         loaded.add(new Channel(name, line.trim(), logo,
-                                "IPTV-ORG · " + group, false, null, country));
+                                "IPTV-ORG · " + group, false, null, country, epgId));
 
                         if (listener != null && loaded.size() - lastPublished >= PUBLISH_INTERVAL) {
                             lastPublished = loaded.size();

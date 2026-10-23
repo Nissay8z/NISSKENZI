@@ -51,37 +51,72 @@ public class MainActivity extends Activity {
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
     titles.addView(text("NISSKENZI+",20,Color.WHITE,true));titles.addView(text("TOUT LE DIVERTISSEMENT. EN UNE SEULE APP.",8,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("LIVE TV",red);vavoo.setOnClickListener(v->loadVavooChannels());vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("＋ SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView direct=actionButton("DIRECT",red);direct.setOnClickListener(v->loadChannels());header.addView(direct);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
     searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
-    TextView eyebrow=text("À LA UNE  •  DIRECT",10,0xFFFF5964,true);hero.addView(eyebrow);
-    TextView title=text("Le direct.\nEn grand.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
+    TextView eyebrow=text("VAVOO  ×  IPTV-ORG  •  MULTI-SOURCES",10,0xFF55D9FF,true);hero.addView(eyebrow);
+    TextView title=text("Tout le direct.\nAu même endroit.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
     TextView desc=text("Live TV • Films • Séries • Animés • Sport • Favoris",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
-    status=text("Chargement des chaînes…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
+    status=text("Chargement des catalogues VAVOO + IPTV-ORG…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
     LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
     TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
   }
-  private void loadChannels(){status.setText("Mise à jour de la liste…");io.execute(()->{ArrayList<Channel> found=new ArrayList<>();try{
-    URL u=new URL("https://iptv-org.github.io/iptv/countries/ma.m3u");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(12000);c.setReadTimeout(18000);c.setRequestProperty("User-Agent","MoroccoTV/1.0");
-    BufferedReader r=new BufferedReader(new InputStreamReader(c.getInputStream(),"UTF-8"));String line,name="Chaîne marocaine",logo="",group="Maroc";
-    while((line=r.readLine())!=null){if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne marocaine";logo="";group="Maroc";int a=line.indexOf("tvg-logo=\"");if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}int g=line.indexOf("group-title=\"");if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}}else if(line.startsWith("http://")||line.startsWith("https://")){found.add(new Channel(name,line.trim(),logo,group));}}
-    r.close();c.disconnect();
-  }catch(Exception e){}
-    // Additional broadcaster streams, used as fallbacks when the community playlist omits them.
-    Channel[] extras = new Channel[] {
-      new Channel("Al Aoula — الأولى","https://streaming.snrtlive.ma/live/slaalaoula/slaalaoula.m3u8","","SNRT · officiel"),
-      new Channel("2M Monde","https://cdnamd-hls-globecast.akamaized.net/live/ramdisk/2m/2m.m3u8","","Diffuseur · flux public"),
-      new Channel("Arryadia — الرياضية","https://streaming.snrtlive.ma/live/slaarryadia/slaarryadia.m3u8","","SNRT · officiel"),
-      new Channel("Tamazight TV","https://streaming.snrtlive.ma/live/slataamazight/slataamazight.m3u8","","SNRT · officiel"),
-      new Channel("Assadissa — السادسة","https://streaming.snrtlive.ma/live/slaassadissa/slaassadissa.m3u8","","SNRT · officiel"),
-      new Channel("Al Maghribia — المغربية","https://streaming.snrtlive.ma/live/slamaghribia/slamaghribia.m3u8","","SNRT · officiel"),
-      new Channel("Medi1 TV","https://streaming.medi1tv.com/live/smil:medi1tv.smil/playlist.m3u8","","Medi1 · flux public"),
-      new Channel("Chada TV","https://chadatv.vedge.infomaniak.com/livecast/chadatv/playlist.m3u8","","Flux public à vérifier")
-    };
-    for(Channel extra:extras){boolean exists=false;for(Channel current:found){if(current.name.equalsIgnoreCase(extra.name)||current.url.equals(extra.url)){exists=true;break;}}if(!exists)found.add(extra);}
-    final ArrayList<Channel> result=found;runOnUiThread(()->showChannels(result));});}
+  private void loadChannels(){
+    status.setText("Chargement des catalogues VAVOO + IPTV-ORG…");
+    io.execute(()->{
+      ArrayList<Channel> merged=new ArrayList<>();
+      ArrayList<Channel> vavooAll=new ArrayList<>();
+      String vavooError="",iptvError="";
+      try{
+        for(VavooProvider.VavooChannel item:VavooProvider.loadChannels()){
+          Channel ch=new Channel(item.name,"vavoo://"+item.id,item.logo,
+            "VAVOO · "+(item.group==null||item.group.trim().isEmpty()?"Direct":item.group),
+            true,item.sourceUrl,item.country);
+          vavooAll.add(ch);
+          merged.add(ch);
+        }
+      }catch(Exception e){vavooError=e.getMessage()==null?"catalogue VAVOO indisponible":e.getMessage();}
+      try{
+        URL u=new URL("https://iptv-org.github.io/iptv/index.country.m3u");
+        HttpURLConnection conn=(HttpURLConnection)u.openConnection();
+        conn.setConnectTimeout(15000);conn.setReadTimeout(35000);
+        conn.setRequestProperty("User-Agent","NISSKENZI+/1.6");
+        BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));
+        String line,name="Chaîne",logo="",group="Pays non précisé";
+        while((line=reader.readLine())!=null){
+          if(line.startsWith("#EXTINF:")){
+            int comma=line.lastIndexOf(',');
+            name=comma>=0?line.substring(comma+1).trim():"Chaîne";
+            logo="";group="Pays non précisé";
+            int a=line.indexOf("tvg-logo=\"");
+            if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
+            int g=line.indexOf("group-title=\"");
+            if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
+          }else if(line.startsWith("http://")||line.startsWith("https://")){
+            String url=line.trim();
+            merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,group));
+          }
+        }
+        reader.close();conn.disconnect();
+      }catch(Exception e){iptvError=e.getMessage()==null?"playlist IPTV-ORG indisponible":e.getMessage();}
+      final ArrayList<Channel> all=new ArrayList<>(merged);
+      final ArrayList<Channel> vAll=new ArrayList<>(vavooAll);
+      final String ve=vavooError,ie=iptvError;
+      runOnUiThread(()->{
+        allVavooChannels.clear();allVavooChannels.addAll(all);
+        channels.clear();channels.addAll(all);
+        activeFilter="TOUT";
+        showChannels(new ArrayList<>(all));
+        String msg=all.size()+" chaînes réunies";
+        if(!ve.isEmpty())msg+=" · VAVOO indisponible";
+        if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
+        status.setText(msg);
+        if(all.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
+      });
+    });
+  }
   private void openSourceMenu(){
     new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","VXParser VAVOO","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else if(which==2)openVxParser();else openMacPortal();}).setNegativeButton("Annuler",null).show();
   }
@@ -161,46 +196,7 @@ public class MainActivity extends Activity {
       })
       .setNegativeButton("Fermer",null).show();
   }
-  private void loadVavooChannels(){
-    status.setText("Connexion native à VAVOO…");
-    io.execute(()->{
-      ArrayList<Channel> found=new ArrayList<>();
-      ArrayList<Channel> all=new ArrayList<>();
-      String error="";
-      try{
-        java.util.List<VavooProvider.VavooChannel> remote=VavooProvider.loadChannels();
-        String wanted=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_country_filter","France");
-        for(VavooProvider.VavooChannel item:remote){
-          all.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl,item.country));
-          boolean matches="Tous les pays".equals(wanted) ||
-              ("France".equals(wanted)&&item.country.equalsIgnoreCase("France")) ||
-              ("Allemagne".equals(wanted)&&item.country.equalsIgnoreCase("Germany")) ||
-              ("Espagne".equals(wanted)&&item.country.equalsIgnoreCase("Spain")) ||
-              ("Italie".equals(wanted)&&item.country.equalsIgnoreCase("Italy")) ||
-              ("Royaume-Uni".equals(wanted)&&item.country.equalsIgnoreCase("United Kingdom"));
-          if(!matches)continue;
-          found.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl,item.country));
-        }
-        if(found.isEmpty())error="Aucune chaîne trouvée pour « "+wanted+" ». Maintiens VAVOO appuyé pour changer le pays.";
-      }catch(Exception e){
-        error=e.getMessage()==null?"Erreur de connexion au catalogue":e.getMessage();
-      }
-      final ArrayList<Channel> result=found;final ArrayList<Channel> allResult=new ArrayList<>(all);final String err=error;
-      runOnUiThread(()->{
-        allVavooChannels.clear();allVavooChannels.addAll(allResult);
-        if(result.isEmpty()){
-          status.setText("VAVOO : "+err);
-          list.removeAllViews();
-          Toast.makeText(this,err,Toast.LENGTH_LONG).show();
-        }else{
-          channels.clear();channels.addAll(result);activeFilter="TOUT";
-          showChannels(new ArrayList<>(result));
-          status.setText(result.size()+" chaînes VAVOO · catalogue natif chargé");
-          if(player!=null&&playerStage!=null){showChannelDrawer(false);}
-        }
-      });
-    });
-  }
+  private void loadVavooChannels(){ loadChannels(); }
   private void showChannels(ArrayList<Channel> result){
     if(result!=null&&!result.isEmpty()){channels.clear();channels.addAll(result);}list.removeAllViews();
     ArrayList<Channel> visible=new ArrayList<>();
@@ -267,7 +263,7 @@ public class MainActivity extends Activity {
     ScrollView scroll=new ScrollView(this);LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(0,12,0,8);scroll.addView(rows);channelDrawer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
     if(countries){
       java.util.LinkedHashSet<String> countriesList=new java.util.LinkedHashSet<>();
-      for(Channel item:allVavooChannels){if(item.isVavoo&&item.vavooCountry!=null&&!item.vavooCountry.trim().isEmpty())countriesList.add(item.vavooCountry);}
+      for(Channel item:allVavooChannels){String country=item.vavooCountry;if(country!=null&&!country.trim().isEmpty())countriesList.add(country);}
       countriesList.add("Tous les pays");
       if(countriesList.isEmpty())for(String country:new String[]{"France","Germany","Spain","Italy","United Kingdom","Tous les pays"})countriesList.add(country);
       for(String country:countriesList){

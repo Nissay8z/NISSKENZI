@@ -12,6 +12,8 @@ import crypto from 'node:crypto';
 
 const ROOT = process.cwd();
 const OUT = path.join(ROOT, 'morocco-tv/app/src/main/assets/vavoo_catalog.m3u');
+const IPTV_OUT = path.join(ROOT, 'morocco-tv/app/src/main/assets/iptv_org_catalog.m3u');
+const IPTV_PLAYLIST_URL = 'https://iptv-org.github.io/iptv/index.country.m3u';
 const LANGUAGE = 'fr';
 const REGION = 'US'; // Broad/global VAVOO catalog; do not hard-filter to France.
 const CLIENT_VERSION = '3.0.2';
@@ -178,8 +180,37 @@ async function loadCatalogFromBase(base, signature) {
   throw new Error(`Le catalogue dépasse ${MAX_PAGES} pages; la sauvegarde est refusée.`);
 }
 
+async function refreshIptvOrgCatalog() {
+  const response = await fetch(IPTV_PLAYLIST_URL, {
+    headers: { 'User-Agent': 'NISSKENZI+ catalog snapshot updater', 'Accept': 'audio/x-mpegurl, application/vnd.apple.mpegurl, */*' },
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!response.ok) throw new Error(`IPTV-org playlist HTTP ${response.status}`);
+  const raw = await response.text();
+  const playlist = raw.endsWith('\n') ? raw : raw + '\n';
+  const channelCount = (playlist.match(/^#EXTINF:/gm) || []).length;
+  if (!playlist.trimStart().startsWith('#EXTM3U') || channelCount < 1000) {
+    throw new Error(`IPTV-org playlist invalide/incomplète: ${channelCount} entrées détectées.`);
+  }
+
+  let existing = '';
+  try { existing = fs.readFileSync(IPTV_OUT, 'utf8'); } catch {}
+  if (existing === playlist) {
+    console.log(`Catalogue IPTV-org inchangé: ${channelCount} entrées M3U.`);
+    return;
+  }
+  fs.writeFileSync(IPTV_OUT, playlist, 'utf8');
+  console.log(`Catalogue IPTV-org actualisé: ${channelCount} entrées M3U. Fichier: ${IPTV_OUT}`);
+}
+
 async function main() {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  // Update the direct IPTV-org playlist independently; keep the last good asset if its CDN is down.
+  try {
+    await refreshIptvOrgCatalog();
+  } catch (error) {
+    console.warn(`IPTV-org catalogue inchangé (actualisation en échec): ${error.message}`);
+  }
   const signature = await getAddonSignature();
   let channels = [];
   let lastError;
@@ -225,12 +256,11 @@ async function main() {
     '#NISSKENZI-CATALOG'
   ).trim();
   if (existing && stripGeneratedHeader(existing) === stripGeneratedHeader(m3u)) {
-    console.log(`Catalogue M3U inchangé: ${channels.length} chaînes de ${countries.length} pays.`);
-    return;
+    console.log(`Catalogue VAVOO M3U inchangé: ${channels.length} chaînes de ${countries.length} pays.`);
+  } else {
+    fs.writeFileSync(OUT, m3u, 'utf8');
+    console.log(`Catalogue VAVOO M3U actualisé: ${channels.length} chaînes de ${countries.length} pays. Fichier: ${OUT}`);
   }
-
-  fs.writeFileSync(OUT, m3u, 'utf8');
-  console.log(`Catalogue M3U actualisé: ${channels.length} chaînes de ${countries.length} pays. Fichier: ${OUT}`);
 }
 
 main().catch(error => {

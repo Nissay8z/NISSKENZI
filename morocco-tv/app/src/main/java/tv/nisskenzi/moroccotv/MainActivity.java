@@ -101,6 +101,17 @@ public class MainActivity extends Activity {
       getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("merged_channels",arr.toString()).putLong("updated_at",System.currentTimeMillis()).apply();
     }catch(Exception ignored){}
   }
+  private String normalizeCountry(String raw){
+    if(raw==null)return "";
+    String value=raw.trim();
+    if(value.isEmpty())return "";
+    String first=value.split("[,;]")[0].trim();
+    if(first.matches("(?i)[a-z]{2}")){
+      String display=new java.util.Locale("",first.toUpperCase(java.util.Locale.ROOT)).getDisplayCountry(java.util.Locale.FRENCH);
+      if(display!=null&&!display.trim().isEmpty())return display;
+    }
+    return first;
+  }
   private void loadChannels(){
     status.setText("Chargement des catalogues VAVOO + IPTV-ORG…");
     io.execute(()->{
@@ -127,7 +138,7 @@ public class MainActivity extends Activity {
           if(line.startsWith("#EXTINF:")){
             int comma=line.lastIndexOf(',');
             name=comma>=0?line.substring(comma+1).trim():"Chaîne";
-            logo="";group="Pays non précisé";country=attribute(line,"tvg-country");if(country.isEmpty())country=attribute(line,"country");if(country.isEmpty())country="Pays non précisé";
+            logo="";group="Pays non précisé";country=normalizeCountry(attribute(line,"tvg-country"));if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));if(country.isEmpty())country="Pays non précisé";
             int a=line.indexOf("tvg-logo=\"");
             if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
             int g=line.indexOf("group-title=\"");

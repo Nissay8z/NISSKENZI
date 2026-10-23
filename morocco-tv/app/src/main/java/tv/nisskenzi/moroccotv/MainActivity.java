@@ -64,7 +64,8 @@ public class MainActivity extends Activity {
     private static final int GREEN = 0xFF4CC9F0;
     private static final int YELLOW = 0xFFFFFF00;
     private static final int MAX_CACHED_CHANNELS = 400;
-    private static final int MAX_CATALOG_CHANNELS = 9000;
+    // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
+    private static final int MAX_CATALOG_CHANNELS = 20000;
 
     private LinearLayout root;
     private View headerView;
@@ -876,8 +877,19 @@ public class MainActivity extends Activity {
 
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // Parse both caches away from the UI thread. The quick cache appears first,
-            // then the complete per-source cache can replace it without waiting for network.
+            // First paint VAVOO's bundled all-country snapshot: there is no network wait
+            // for the full channel list on a fresh installation. Actual stream resolution
+            // remains delegated to VavooProvider when a channel is selected.
+            if (requestVavoo) {
+                ArrayList<Channel> bundled = VavooSnapshotProvider.readBundled(
+                        MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
+                if (bundled.size() >= 500) {
+                    showCachedSnapshot(bundled, requestedSource, currentGen);
+                }
+            }
+
+            // Parse both on-device caches off the UI thread. The quick cache is a
+            // fallback; the complete disk snapshot wins whenever it contains more entries.
             ArrayList<Channel> quickCached = CatalogCache.readQuick(
                     MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
             showCachedSnapshot(quickCached, requestedSource, currentGen);

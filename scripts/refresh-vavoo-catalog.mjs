@@ -386,7 +386,12 @@ async function refreshIptvOrgCatalog() {
 
 async function main() {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  // Update the direct IPTV-org playlist independently; keep the last good asset if its CDN is down.
+  // Android CI may refresh only the merged public playlist without calling VAVOO.
+  if (process.argv.includes('--world-only')) {
+    await refreshIptvOrgCatalog();
+    return;
+  }
+  // Update the worldwide public playlist independently; keep the last good asset if an upstream is down.
   try {
     await refreshIptvOrgCatalog();
   } catch (error) {

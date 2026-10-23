@@ -23,7 +23,7 @@ public final class IptvOrgProvider {
         void onChannelsUpdated(List<Channel> snapshot);
     }
 
-    private static final String PLAYLIST_URL = "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u";
+    private static final String PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.country.m3u";
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 20_000;
     private static final int PUBLISH_INTERVAL = 1_500;

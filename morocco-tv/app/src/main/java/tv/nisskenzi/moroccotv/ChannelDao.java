@@ -22,6 +22,10 @@ public interface ChannelDao {
     @Query("DELETE FROM channels WHERE sourceId = :sourceId")
     void deleteSource(String sourceId);
 
+    /** Keep only the two supported catalogues when migrating an older local database. */
+    @Query("DELETE FROM channels WHERE sourceId NOT IN ('vavoo', 'iptv-org-fr')")
+    void deleteDeprecatedSources();
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertAll(List<ChannelEntity> rows);
 

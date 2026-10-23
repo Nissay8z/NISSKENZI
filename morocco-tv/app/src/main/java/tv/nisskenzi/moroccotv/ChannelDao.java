@@ -22,6 +22,11 @@ public interface ChannelDao {
     @Query("DELETE FROM channels WHERE sourceId = :sourceId")
     void deleteSource(String sourceId);
 
+    /** Replaces the public master bouquet without touching the native VAVOO catalogue. */
+    @Query("DELETE FROM channels WHERE sourceId != 'vavoo'")
+    void deleteAllPublicSources();
+
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertAll(List<ChannelEntity> rows);
 

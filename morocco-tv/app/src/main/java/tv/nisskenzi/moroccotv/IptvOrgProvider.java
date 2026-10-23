@@ -4,7 +4,6 @@ import android.content.Context;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -25,32 +24,21 @@ public final class IptvOrgProvider {
     }
 
     private static final String PLAYLIST_URL = "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u";
-    private static final String BUNDLED_ASSET = "iptv_org_catalog.m3u";
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 20_000;
     private static final int PUBLISH_INTERVAL = 1_500;
-    private static final int MIN_VALID_BUNDLED_CHANNELS = 1_000;
 
     private IptvOrgProvider() {}
 
-    /** Reads the preloaded M3U only; returns empty for a missing or partial asset. */
+    /**
+     * Backwards-compatible name for callers from older versions. There is no
+     * packaged playlist anymore; the Room repository owns the local cache.
+     */
+    @Deprecated
     public static ArrayList<Channel> loadBundledChannels(Context context, int maximum,
             CountryResolver countryResolver) {
-        if (context == null) return new ArrayList<>();
-
-        ArrayList<Channel> cached = FastCatalogCache.read(
-                context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_VALID_BUNDLED_CHANNELS);
-        if (!cached.isEmpty()) return cached;
-
-        try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-            ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-            if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) {
-                FastCatalogCache.write(context, "IPTV-ORG", BUNDLED_ASSET,
-                        bundled, maximum, MIN_VALID_BUNDLED_CHANNELS);
-                return bundled;
-            }
-            return new ArrayList<>();
+        try {
+            return loadChannels(maximum, countryResolver, null);
         } catch (IOException ignored) {
             return new ArrayList<>();
         }

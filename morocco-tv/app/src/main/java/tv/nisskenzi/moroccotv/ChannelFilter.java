@@ -50,13 +50,9 @@ public final class ChannelFilter {
         if ("vavoo".equals(source)) return "vavoo";
         if ("iptv-org".equals(source) || "iptv org".equals(source)
                 || "iptv-org-fr".equals(source)) return "iptv-org-fr";
-        if ("pluto tv".equals(source) || "pluto".equals(source)
-                || "pluto-tv-fr".equals(source)) return "pluto-tv-fr";
-        if ("samsung".equals(source) || "samsung tv".equals(source)
-                || "samsung-tv-plus".equals(source) || "samsung-tv-fr".equals(source)) return "samsung-tv-fr";
-        if ("free-tv".equals(source) || "free-tv-world".equals(source)) return "free-tv-world";
-        if ("all".equals(source) || "toutes".equals(source) || "toutes les sources".equals(source)) return "all";
-        return source;
+        if ("all".equals(source) || "toutes".equals(source)
+                || "toutes les sources".equals(source) || source.isEmpty()) return "all";
+        return "all";
     }
 
     private static String safeCountry(String value) {

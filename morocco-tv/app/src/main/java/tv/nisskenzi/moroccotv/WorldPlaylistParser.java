@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Locale;
 
 /** Streaming M3U parser shared by source refresh and recovery from the embedded M3U. */
 public final class WorldPlaylistParser {
@@ -84,7 +85,7 @@ public final class WorldPlaylistParser {
                 String group = attribute(extinf, "group-title");
                 String rawCountry = attribute(extinf, "tvg-country");
                 if (rawCountry.isEmpty()) rawCountry = attribute(extinf, "country");
-                String country = resolveCountry(rawCountry, group, source, countryResolver);
+                String country = resolveCountry(rawCountry, group, epgId, source, countryResolver);
                 if (group.isEmpty()) group = "Direct";
                 String visibleGroup = source.name + " · " + group;
 
@@ -170,7 +171,7 @@ public final class WorldPlaylistParser {
         return comma < 0 ? "" : extinf.substring(comma + 1).trim();
     }
 
-    private static String resolveCountry(String rawCountry, String group,
+    private static String resolveCountry(String rawCountry, String group, String tvgId,
                                          WorldPlaylistSource source,
                                          CountryResolver resolver) {
         String raw = safe(rawCountry);
@@ -178,11 +179,36 @@ public final class WorldPlaylistParser {
             String normalized = resolver == null ? "" : safe(resolver.resolve(raw));
             return normalized.isEmpty() ? raw : normalized;
         }
-        if (source.countryFromGroup && !safe(group).isEmpty() && resolver != null) {
-            String normalized = safe(resolver.resolve(group));
+
+        // Some free/public lists use a category as group-title, but still carry
+        // a country suffix in tvg-id (e.g. channel.us@HD). Prefer an actual
+        // country group when the resolver recognizes it, then use that suffix.
+        String groupText = safe(group);
+        if (!groupText.isEmpty() && resolver != null) {
+            String normalized = safe(resolver.resolve(groupText));
             if (!normalized.isEmpty()) return normalized;
         }
+        if (source.countryFromGroup && !groupText.isEmpty()) return groupText;
+
+        String code = countryCodeFromTvgId(tvgId);
+        if (!code.isEmpty()) {
+            if ("XK".equals(code)) return "Kosovo";
+            String display = new Locale("", code).getDisplayCountry(Locale.FRENCH);
+            if (display != null && !display.trim().isEmpty()
+                    && !display.equalsIgnoreCase(code)) return display;
+            return code;
+        }
         return "Pays non précisé";
+    }
+
+    public static String countryCodeFromTvgId(String tvgId) {
+        String value = safe(tvgId);
+        int at = value.lastIndexOf('@');
+        if (at >= 0) value = value.substring(0, at);
+        int dot = value.lastIndexOf('.');
+        if (dot < 0 || dot + 1 >= value.length()) return "";
+        String candidate = value.substring(dot + 1).trim().toUpperCase(Locale.ROOT);
+        return candidate.matches("[A-Z]{2}") ? candidate : "";
     }
 
     private static String identityKey(Channel channel) {

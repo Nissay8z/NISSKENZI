@@ -370,6 +370,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerLayer.setAlpha(1f);
         if (controlsVisibleBeforeDrawer) {
             showControls();
+            playPauseButton.requestFocus();
         } else {
             controlsVisible = false;
             controlsLayer.animate().cancel();

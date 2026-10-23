@@ -90,22 +90,11 @@ public final class M3UParser {
 
         if (asset.isEmpty()) throw new IOException("Aucune URL M3U ni aucun asset local configuré.");
 
-        // The existing VAVOO asset has its own compact binary cache, avoiding a
-        // full M3U parse on repeated app starts. The Room database is the UI cache.
-        if (!forceRefresh && "vavoo".equals(id)) {
-            ArrayList<Channel> cached = FastCatalogCache.read(context, "VAVOO",
-                    asset, maximum, 1);
-            if (!cached.isEmpty()) return cached;
-        }
-
-        ArrayList<Channel> channels;
+        // Asset loading remains for compatibility with caller-supplied assets.
+        // VAVOO itself is handled exclusively by VavooProvider in ChannelRepository.
         try (InputStream input = context.getAssets().open(asset)) {
-            channels = parse(input, null, id, name, maximum, resolver);
+            return parse(input, null, id, name, maximum, resolver);
         }
-        if (!channels.isEmpty() && "vavoo".equals(id)) {
-            FastCatalogCache.write(context, "VAVOO", asset, channels, maximum, 1);
-        }
-        return channels;
     }
 
     public static void clearMemoryCache() {

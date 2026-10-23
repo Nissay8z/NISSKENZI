@@ -275,7 +275,7 @@ public final class VavooProvider {
         IOException lastError = null;
         for (String pingUrl : PING_URLS) {
             try {
-                String response = postJson(pingUrl, payload, null, false);
+                String response = postJson(pingUrl, payload, null, false, 5_000, 8_000);
                 JSONObject json = new JSONObject(response);
                 String signature = json.optString("addonSig", "").trim();
                 if (!signature.isEmpty()) {

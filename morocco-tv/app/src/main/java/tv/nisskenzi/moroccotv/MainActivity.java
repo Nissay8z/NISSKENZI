@@ -406,15 +406,21 @@ public class MainActivity extends Activity {
   private void renderChannelsToWeb(){
     if(homeWebView==null||!homeWebReady)return;
     try{
-      JSONArray arr=new JSONArray();
-      for(int i=0;i<channels.size();i++){
-        Channel ch=channels.get(i);JSONObject o=new JSONObject();
-        o.put("name",ch.name==null?"Chaîne":ch.name);o.put("url",ch.url==null?"":ch.url);
-        o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Direct":ch.group);
-        o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?(ch.group==null?"":ch.group):ch.vavooCountry);
-        o.put("isVavoo",ch.isVavoo);o.put("favorite",isFavorite(ch));arr.put(o);
+      homeWebView.evaluateJavascript("beginChannels();",null);
+      final int chunkSize=300;
+      for(int start=0;start<channels.size();start+=chunkSize){
+        JSONArray chunk=new JSONArray();
+        int end=Math.min(channels.size(),start+chunkSize);
+        for(int i=start;i<end;i++){
+          Channel ch=channels.get(i);JSONObject o=new JSONObject();
+          o.put("name",ch.name==null?"Chaîne":ch.name);o.put("url",ch.url==null?"":ch.url);
+          o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Direct":ch.group);
+          o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?"Pays non précisé":ch.vavooCountry);
+          o.put("isVavoo",ch.isVavoo);o.put("favorite",isFavorite(ch));chunk.put(o);
+        }
+        homeWebView.evaluateJavascript("appendChannelChunk("+JSONObject.quote(chunk.toString())+");",null);
       }
-      homeWebView.evaluateJavascript("receiveChannels("+JSONObject.quote(arr.toString())+");",null);
+      homeWebView.evaluateJavascript("finishChannels();",null);
     }catch(Exception ignored){}
   }
   private void renderMediaToWeb(){
@@ -434,7 +440,7 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
     @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
-    @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));renderChannelsToWeb();}});}
+    @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
     @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);MainActivity.this.play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())MainActivity.this.openSeriesEpisodes(series.get(index));});}
   }
   private void loadLogo(ImageView target,TextView fallback,String address){logoIo.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}

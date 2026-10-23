@@ -3,6 +3,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'tv.nisskenzi.moroccotv'
     compileSdk 36
+
     defaultConfig {
         applicationId 'tv.nisskenzi.moroccotv'
         minSdk 23
@@ -10,12 +11,12 @@ android {
         versionCode 22
         versionName '2.5.2'
     }
-    }
 }
 
 dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    // Keep every Media3 component on the same stable release.
+
+    // Single native player: Media3 (ExoPlayer), with HLS and DASH support.
     implementation 'androidx.media3:media3-exoplayer:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-dash:1.11.1'

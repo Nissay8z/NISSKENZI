@@ -12,6 +12,10 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.*;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebSettings;
+import android.webkit.JavascriptInterface;
 import android.text.TextUtils;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -32,9 +36,12 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
-  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String activeSection="Accueil"; private String searchQuery="";
+  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private String activeFilter="TOUT"; private String activeSection="Accueil"; private String searchQuery="";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
+  private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
+  private final ArrayList<MediaEntry> movies=new ArrayList<>();
+  private final ArrayList<MediaEntry> series=new ArrayList<>();
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
@@ -45,26 +52,16 @@ public class MainActivity extends Activity {
     TextView b=text(label,13,Color.WHITE,true);b.setGravity(Gravity.CENTER);b.setPadding(18,12,18,12);b.setBackground(rounded(color,10));b.setFocusable(true);return b;
   }
   private void buildHome(){
-    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(20,14,20,10);setContentView(root);
-    LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
-    TextView brand=text("N",28,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(0xFF182A54,14));brand.setTextColor(0xFF55D9FF);header.addView(brand,new LinearLayout.LayoutParams(44,44));
-    LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
-    titles.addView(text("NISSKENZI+",20,Color.WHITE,true));titles.addView(text("TOUT LE DIVERTISSEMENT. EN UNE SEULE APP.",8,0xFFADB4C2,true));
-    header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("＋ SOURCES",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView direct=actionButton("DIRECT",red);direct.setOnClickListener(v->{activeSection="Live TV";loadChannels();});header.addView(direct);
-    TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
-    HorizontalScrollView navScroll=new HorizontalScrollView(this);navScroll.setHorizontalScrollBarEnabled(false);LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setPadding(0,14,0,2);
-    for(String section:new String[]{"Accueil","Live TV","Films","Séries","Animés","Sport","Favoris","Cloud"}){TextView tab=actionButton(section,section.equals(activeSection)?0xFF3720A5:panel);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,40);tp.rightMargin=7;nav.addView(tab,tp);tab.setOnClickListener(v->{activeSection=section;if(section.equals("Accueil")||section.equals("Live TV")){activeFilter="TOUT";showChannels(new ArrayList<>(channels));}else if(section.equals("Favoris")){activeFilter="FAVORIS";showChannels(new ArrayList<>(channels));}else if(section.equals("Cloud")){openCloudInfo();}else showSectionInfo(section);});}
-    navScroll.addView(nav);root.addView(navScroll);
-    searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
-    LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
-    LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
-    TextView eyebrow=text("VAVOO  ×  IPTV-ORG  •  MULTI-SOURCES",10,0xFF55D9FF,true);hero.addView(eyebrow);
-    TextView title=text("Tout le direct.\nAu même endroit.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
-    TextView desc=text("Live TV • Films • Séries • Animés • Sport • Favoris",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
-    status=text("Chargement des catalogues VAVOO + IPTV-ORG…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
-    LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
-    TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
+    homeWebReady=false;
+    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);
+    homeWebView=new WebView(this);homeWebView.setBackgroundColor(bg);
+    WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);
+    homeWebView.addJavascriptInterface(new HomeBridge(),"NisskenziBridge");
+    homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();}});
+    root.addView(homeWebView,new LinearLayout.LayoutParams(-1,0,1));
+    status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
+    list=new LinearLayout(this);setContentView(root);
+    homeWebView.loadUrl("file:///android_asset/nisskenzi_home.html");
   }
   private void loadCachedChannels(){
     try{
@@ -252,34 +249,42 @@ public class MainActivity extends Activity {
   }
   private void loadVavooChannels(){ loadChannels(); }
   private void showChannels(ArrayList<Channel> result){
-    if(result!=null&&!result.isEmpty()){channels.clear();channels.addAll(result);}list.removeAllViews();
-    ArrayList<Channel> visible=new ArrayList<>();
-    for(Channel ch:channels){if("FAVORIS".equals(activeFilter)&&!isFavorite(ch))continue;String q=searchQuery==null?"":searchQuery.trim().toLowerCase(java.util.Locale.ROOT);if(!q.isEmpty()&&!((ch.name+" "+ch.group).toLowerCase(java.util.Locale.ROOT).contains(q)))continue;visible.add(ch);}
-    if(!activeSection.equals("Accueil")&&!activeSection.equals("Live TV")&&!activeSection.equals("Favoris")){showSectionInfo(activeSection);return;}
-    if(visible.isEmpty()){status.setText("Aucun contenu dans "+activeFilter+". Importe une playlist ou ajoute des favoris.");return;}
-    status.setText(visible.size()+" contenus disponibles · sélectionne une carte pour regarder");
-    java.util.LinkedHashMap<String,ArrayList<Channel>> sections=new java.util.LinkedHashMap<>();
-    for(Channel ch:visible){String group=(ch.group==null||ch.group.trim().isEmpty())?"En direct":ch.group.trim();if(!sections.containsKey(group))sections.put(group,new ArrayList<>());sections.get(group).add(ch);}
-    int count=0;
-    for(java.util.Map.Entry<String,ArrayList<Channel>> section:sections.entrySet()){
-      LinearLayout sectionBox=new LinearLayout(this);sectionBox.setOrientation(LinearLayout.VERTICAL);
-      TextView heading=text(section.getKey().toUpperCase(java.util.Locale.ROOT),14,Color.WHITE,true);
-      LinearLayout.LayoutParams headingP=new LinearLayout.LayoutParams(-1,-2);headingP.topMargin=12;headingP.bottomMargin=8;sectionBox.addView(heading,headingP);
-      HorizontalScrollView rail=new HorizontalScrollView(this);rail.setHorizontalScrollBarEnabled(false);
-      LinearLayout cards=new LinearLayout(this);cards.setOrientation(LinearLayout.HORIZONTAL);
-      for(Channel ch:section.getValue()){
-        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(10,10,10,12);card.setBackground(rounded(panel,12));card.setFocusable(true);card.setClickable(true);
-        LinearLayout.LayoutParams cardP=new LinearLayout.LayoutParams(154,154);cardP.rightMargin=10;cards.addView(card,cardP);
-        FrameLayout posterBox=new FrameLayout(this);posterBox.setBackground(rounded(count%3==0?0xFF55232B:(count%3==1?0xFF1D493D:0xFF303A50),10));LinearLayout.LayoutParams posterP=new LinearLayout.LayoutParams(-1,82);card.addView(posterBox,posterP);
-        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.FIT_CENTER);poster.setPadding(14,10,14,10);posterBox.addView(poster,new FrameLayout.LayoutParams(-1,-1));TextView placeholder=text("▶",24,0xFFDCE2EB,true);placeholder.setGravity(Gravity.CENTER);posterBox.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));if(ch.logo!=null&&!ch.logo.trim().isEmpty())loadLogo(poster,placeholder,ch.logo);
-        TextView name=text(ch.name,13,Color.WHITE,true);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);LinearLayout.LayoutParams nameP=new LinearLayout.LayoutParams(-1,0,1);nameP.topMargin=8;card.addView(name,nameP);
-        TextView meta=text((isFavorite(ch)?"★  ":"")+"EN DIRECT",9,isFavorite(ch)?0xFFFFD166:0xFFB7C0CF,true);LinearLayout.LayoutParams metaP=new LinearLayout.LayoutParams(-1,-2);metaP.topMargin=4;card.addView(meta,metaP);
-        card.setOnLongClickListener(v->{toggleFavorite(ch);Toast.makeText(this,isFavorite(ch)?"Ajouté aux favoris":"Retiré des favoris",Toast.LENGTH_SHORT).show();showChannels(new ArrayList<>(channels));return true;});
-        card.setOnClickListener(v->play(ch));card.setOnFocusChangeListener((v,focus)->card.setBackground(rounded(focus?0xFF394253:panel,12)));count++;
+    if(result!=null){channels.clear();channels.addAll(result);}
+    renderChannelsToWeb();
+  }
+  private void renderChannelsToWeb(){
+    if(homeWebView==null||!homeWebReady)return;
+    try{
+      JSONArray arr=new JSONArray();
+      for(int i=0;i<channels.size();i++){
+        Channel ch=channels.get(i);JSONObject o=new JSONObject();
+        o.put("name",ch.name==null?"Chaîne":ch.name);o.put("url",ch.url==null?"":ch.url);
+        o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Direct":ch.group);
+        o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?(ch.group==null?"":ch.group):ch.vavooCountry);
+        o.put("isVavoo",ch.isVavoo);o.put("favorite",isFavorite(ch));arr.put(o);
       }
-      rail.addView(cards);sectionBox.addView(rail);list.addView(sectionBox);
-    }
-    if(!channels.isEmpty())list.setFocusable(false);
+      homeWebView.evaluateJavascript("receiveChannels("+JSONObject.quote(arr.toString())+");",null);
+    }catch(Exception ignored){}
+  }
+  private void renderMediaToWeb(){
+    if(homeWebView==null||!homeWebReady)return;
+    try{
+      JSONArray m=new JSONArray(),s=new JSONArray();
+      for(MediaEntry x:movies){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);m.put(o);}
+      for(MediaEntry x:series){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);mSafePut(s,o);}
+      homeWebView.evaluateJavascript("receiveMedia("+JSONObject.quote(m.toString())+","+JSONObject.quote(s.toString())+");",null);
+    }catch(Exception ignored){}
+  }
+  private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
+  private final class HomeBridge {
+    @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
+    @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
+    @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
+    @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{loadChannels();loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
+    @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
+    @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
+    @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){toggleFavorite(channels.get(index));renderChannelsToWeb();}});}
+    @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())openSeriesEpisodes(series.get(index));});}
   }
   private void loadLogo(ImageView target,TextView fallback,String address){logoIo.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
   private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}

@@ -9,7 +9,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** IPTV-org channel metadata parser with an embedded-M3U fast path. */
 public final class IptvOrgProvider {
@@ -104,6 +106,7 @@ public final class IptvOrgProvider {
         String country = "Pays non précisé";
         String epgId = "";
         int lastPublished = 0;
+        Map<String, String> resolvedCountryCache = new HashMap<>();
 
         while ((line = reader.readLine()) != null) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Chargement IPTV-org annulé.");
@@ -122,12 +125,18 @@ public final class IptvOrgProvider {
 
                 String rawCountry = attribute(line, "tvg-country");
                 if (rawCountry.isEmpty()) rawCountry = attribute(line, "country");
-                String normalized = countryResolver == null ? "" : countryResolver.resolve(rawCountry);
-                if ((normalized == null || normalized.isEmpty()) && countryResolver != null) {
-                    normalized = countryResolver.resolve(group);
+                String cacheKey = rawCountry.isEmpty() ? "group:" + group : "country:" + rawCountry;
+                String normalized = resolvedCountryCache.get(cacheKey);
+                if (normalized == null) {
+                    normalized = countryResolver == null ? "" : countryResolver.resolve(rawCountry);
+                    if ((normalized == null || normalized.isEmpty()) && countryResolver != null) {
+                        normalized = countryResolver.resolve(group);
+                    }
+                    normalized = normalized == null || normalized.isEmpty()
+                            ? "Pays non précisé" : normalized;
+                    resolvedCountryCache.put(cacheKey, normalized);
                 }
-                country = normalized == null || normalized.isEmpty()
-                        ? "Pays non précisé" : normalized;
+                country = normalized;
             } else if (line.startsWith("http://") || line.startsWith("https://")) {
                 if (loaded.size() >= maximum) break;
                 // Do not rewrite the stream URL or add a resolver: this is the original IPTV-org entry.

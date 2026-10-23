@@ -207,10 +207,7 @@ async function main() {
   );
 
   const generatedAt = new Date().toISOString();
-  const escapeAttr = value => clean(value)
-    .replace(/\\\\/g, '\\\\\\\\')
-    .replace(/"/g, '\\\\"')
-    .replace(/[\r\n]+/g, ' ');
+  const escapeAttr = value => clean(value).replace(/["\r\n]/g, ' ');
   const m3u = [
     '#EXTM3U',
     `#NISSKENZI-CATALOG generatedAt="${generatedAt}" channels="${channels.length}" countries="${countries.length}" region="${REGION}"`,

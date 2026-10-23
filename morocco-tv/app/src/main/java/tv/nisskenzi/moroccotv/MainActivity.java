@@ -1311,7 +1311,7 @@ public class MainActivity extends Activity {
             nativeView.setPlayer(active);
             nativeView.setFocusable(true);
             if (fullscreenPlayback) nativeView.post(() -> {
-                if (fullscreenPlayback && playerView == nativeView) nativeView.requestFocus();
+                if (fullscreenPlayback && playerView == nativeView) nativeView.focusControls();
             });
 
             active.addListener(new Player.Listener() {

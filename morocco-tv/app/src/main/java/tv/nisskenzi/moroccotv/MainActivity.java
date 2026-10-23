@@ -243,7 +243,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildHome() {
-        if (player != null || vlcPlayer != null) releasePlayer();
+        if (player != null) releasePlayer();
         root = vertical();
         GradientDrawable backdrop = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -1749,7 +1749,7 @@ public class MainActivity extends Activity {
             exitFullscreenPlayback();
         } else if ("Paramètres".equals(activePage)) {
             setPage("Live TV");
-        } else if (player != null || vlcPlayer != null) {
+        } else if (player != null) {
             stopPreview();
         } else {
             super.onBackPressed();

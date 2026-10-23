@@ -95,7 +95,7 @@ public class MainActivity extends Activity {
     private Channel currentChannel;
     private boolean sourceChooserVisible = false;
     private volatile String activePage = "Live TV";
-    private volatile String catalogStatus = "Préparation du catalogue…";
+    private volatile String catalogStatus = "Catalogue local prêt à ouvrir";
     private volatile boolean loadingCatalog = false;
     private volatile boolean loadingVavoo = false;
     private volatile boolean loadingIptv = false;
@@ -912,7 +912,7 @@ public class MainActivity extends Activity {
 
     private String sourceStatus(String source) {
         boolean loading = "VAVOO".equals(source) ? loadingVavoo : loadingIptv;
-        if (loading) return "chargement en cours";
+        if (loading) return "catalogue local en ouverture";
         if (source.equals(sourceFilter) && !channels.isEmpty()) return "catalogue chargé · " + channels.size();
         String key = "VAVOO".equals(source) ? "vavoo_channels" : "iptv_org_channels";
         if (!getSharedPreferences("catalog_cache", MODE_PRIVATE).getString(key, "").isEmpty()) {

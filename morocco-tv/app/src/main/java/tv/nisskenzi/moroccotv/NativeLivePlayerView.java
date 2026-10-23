@@ -229,14 +229,18 @@ public final class NativeLivePlayerView extends FrameLayout {
         controlsLayer.setVisibility(VISIBLE);
         controlsLayer.animate().cancel();
         controlsLayer.setAlpha(1f);
+        if (isFocused() && !controlsLayer.hasFocus()) playPauseButton.requestFocus();
         scheduleAutoHide();
     }
 
+    /** Give the TV remote a predictable starting focus when fullscreen playback opens. */
+    public void focusControls() {
+        showControls();
+        playPauseButton.requestFocus();
+    }
+
     public void hideControls() {
-        if (controlsLayer.hasFocus()) {
-            scheduleAutoHide();
-            return;
-        }
+        if (controlsLayer.hasFocus()) requestFocus();
         controlsVisible = false;
         controlsLayer.animate().alpha(0f).setDuration(180).withEndAction(() -> {
             if (!controlsVisible) controlsLayer.setVisibility(INVISIBLE);

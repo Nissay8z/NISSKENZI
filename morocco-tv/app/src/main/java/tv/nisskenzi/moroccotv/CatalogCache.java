@@ -56,6 +56,18 @@ public final class CatalogCache {
         return result;
     }
 
+    /** True while the last successful network catalogue refresh is still within its TTL. */
+    public static boolean isFresh(Context context, String source, long maxAgeMillis) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            long updatedAt = prefs.getLong(prefKey(source) + "_updated_at", 0L);
+            long age = System.currentTimeMillis() - updatedAt;
+            return updatedAt > 0L && age >= 0L && age <= maxAgeMillis;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     public static void saveQuick(Context context, List<Channel> items, String source, int maximum) {
         if (items == null || items.isEmpty()) return;
         try {

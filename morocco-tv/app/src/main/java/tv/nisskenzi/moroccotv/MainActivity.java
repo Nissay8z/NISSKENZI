@@ -1416,7 +1416,7 @@ public class MainActivity extends Activity {
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setBackAction(nativeView::hideControls);
-            nativeView.setDrawerChannels(channels, ch.url, this::play,
+            nativeView.setDrawerChannels(channels, catalogVersion, ch.url, this::play,
                     this::loadEpgForCurrentChannel);
             nativeView.setPlaybackState(Player.STATE_BUFFERING);
 

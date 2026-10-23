@@ -2,6 +2,7 @@ package tv.nisskenzi.moroccotv;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
@@ -88,9 +89,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         if (newPosition >= 0 && newPosition != oldPosition) notifyItemChanged(newPosition);
     }
 
-    /** Refreshes favorite stars after the preference value changes. */
+    /** The favorite toggle is attached to the selected channel; refresh only that row. */
     public void refreshDecorations() {
-        if (getItemCount() > 0) notifyItemRangeChanged(0, getItemCount(), "decoration");
+        int position = findPosition(selectedUrl);
+        if (position >= 0) notifyItemChanged(position, "decoration");
     }
 
     private int findPosition(String url) {

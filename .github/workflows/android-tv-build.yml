@@ -45,32 +45,25 @@ jobs:
           cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/*.java source-review/
           cp morocco-tv/app/build.gradle source-review/
           cp morocco-tv/app/src/main/AndroidManifest.xml source-review/
-          mkdir -p source-review/assets
-          cp morocco-tv/app/src/main/assets/vavoo_catalog.json source-review/assets/
-          cp morocco-tv/app/src/main/assets/vavoo_catalog.m3u source-review/assets/
-          cp morocco-tv/app/src/main/assets/iptv_org_catalog.m3u source-review/assets/
-          cp scripts/refresh-vavoo-catalog.mjs source-review/
           cat > source-review/README.md <<'EOF'
           # NISSKENZI+ Android TV — source review bundle
 
           These are the current native Android source files for a speed/performance review. The project uses Java Android Views, not HTML/WebView.
 
-          ## Where the engines are
+          ## Catalogue architecture
           - MainActivity.java: native Android TV layout, source selection, playback lifecycle, and UI state.
           - Channel.java / ChannelFilter.java: immutable channel model with precomputed search index and worker-thread filtering.
           - ChannelAdapter.java / ChannelLogoLoader.java: recycled RecyclerView rows, D-pad focus, bounded cancellable logo loading.
-          - CatalogCache.java / FavoritesStore.java / RecentChannelsStore.java: per-source local caches and in-memory user indexes.
-          - VavooProvider.java / IptvOrgProvider.java: separate catalog providers and network parsing.
-          - VavooSnapshotProvider.java: stream-parses the preloaded all-country VAVOO M3U; stream resolution remains in VavooProvider.
-          - assets/vavoo_catalog.m3u and assets/iptv_org_catalog.m3u: bundled all-country metadata/playlists for local-first startup.
-          - refresh-vavoo-catalog.mjs: updater for both embedded M3U catalogues.
-          - EpgProvider.java: on-demand compressed XMLTV lookup for IPTV-org tvg-id and VAVOO name matches.
+          - ChannelRepository.java / ChannelDao.java / ChannelEntity.java: Room-backed two-source catalogue and local cache.
+          - VavooProvider.java: native VAVOO API catalogue and on-demand stream resolution.
+          - IptvOrgProvider.java / M3UParser.java: IPTV-org master playlist loading and country metadata parsing.
+          - CatalogCache.java / FavoritesStore.java / RecentChannelsStore.java: local channel cache and user indexes.
+          - EpgProvider.java: on-demand XMLTV lookup for IPTV-org tvg-id and VAVOO name matches.
           - NativeLivePlayerView.java / PlayerChannelDrawerAdapter.java: fullscreen controller, left channel drawer, and EPG preview.
-          - build.gradle: dependency versions and Android build settings.
-          - AndroidManifest.xml: app permissions and TV launcher declarations.
+          - build.gradle / AndroidManifest.xml: Android build settings and TV launcher declarations.
 
           ## Suggested performance review
-          Keep filtering off the UI thread, bound and cancel logo downloads, preserve source-specific caches, inspect pagination and JSON/M3U parsing, and check lifecycle cancellation. Keep VAVOO and IPTV-org catalogues separate. Preserve native Android TV / D-pad navigation and do not replace the UI with HTML/WebView.
+          Keep filtering off the UI thread, bound and cancel logo downloads, preserve Room caching, inspect pagination and JSON/M3U parsing, and check lifecycle cancellation. Preserve native Android TV / D-pad navigation and do not replace the UI with HTML/WebView.
 
           Do not assume the VAVOO service endpoints or signatures are stable; failures need graceful handling and must not crash the app.
           EOF

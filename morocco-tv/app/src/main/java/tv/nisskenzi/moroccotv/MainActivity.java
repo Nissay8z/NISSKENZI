@@ -7,7 +7,6 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,9 +30,6 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.util.VLCVideoLayout;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -96,10 +92,8 @@ public class MainActivity extends Activity {
     private View playerStagePlaceholder;
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
     private int playerStageOriginalIndex = -1;
-    private LibVLC libVLC;
-    private org.videolan.libvlc.MediaPlayer vlcPlayer;
-    private VLCVideoLayout vlcVideoLayout;
     private Channel currentChannel;
+    private boolean sourceChooserVisible = false;
     private volatile String activePage = "Live TV";
     private volatile String catalogStatus = "Préparation du catalogue…";
     private volatile boolean loadingCatalog = false;
@@ -789,19 +783,15 @@ public class MainActivity extends Activity {
         TextView intro = label("Gestion des moteurs de catalogues et des lecteurs multimédias.", 11, MUTED, false);
         LinearLayout.LayoutParams ip = lp(-1,-2); ip.topMargin=dp(6); ip.bottomMargin=dp(20); page.addView(intro,ip);
 
-        TextView playerHeading = label("LECTEUR VIDÉO", 9, MUTED, true);
-        page.addView(playerHeading);
-
-        TextView playerMode = buttonText("Lecteur préféré : " + preferredPlayerLabel(), true);
-        LinearLayout.LayoutParams pmp = lp(-1, 48); pmp.topMargin = dp(8); page.addView(playerMode, pmp);
-        
-        TextView playerHelp = label("Media3 est léger. VLC apporte un moteur alternatif pour les flux complexes.", 10, MUTED, false);
-        LinearLayout.LayoutParams php = lp(-1,-2); php.topMargin = dp(6); php.bottomMargin = dp(18); page.addView(playerHelp, php);
-        playerMode.setOnClickListener(v -> {
-            setVlcPreference(!useVlcPlayer());
-            renderSettings();
-            Toast.makeText(this, "Lecteur préféré : " + preferredPlayerLabel(), Toast.LENGTH_SHORT).show();
-        });
+        TextView playerInfo = label("LECTEUR NATIF ANDROID", 9, MUTED, true);
+        page.addView(playerInfo);
+        TextView playerInfoDetail = label(
+                "Un seul lecteur Media3 avec décodage matériel Android quand il est disponible.",
+                11, MUTED, false);
+        LinearLayout.LayoutParams playerInfoParams = lp(-1, -2);
+        playerInfoParams.topMargin = dp(8);
+        playerInfoParams.bottomMargin = dp(18);
+        page.addView(playerInfoDetail, playerInfoParams);
 
         page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
@@ -1303,18 +1293,6 @@ public class MainActivity extends Activity {
             SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
             p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
         }
-    }
-
-    private boolean useVlcPlayer() {
-        return getSharedPreferences("settings", MODE_PRIVATE).getBoolean("use_vlc_player", false);
-    }
-
-    private void setVlcPreference(boolean enabled) {
-        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("use_vlc_player", enabled).apply();
-    }
-
-    private String preferredPlayerLabel() {
-        return useVlcPlayer() ? "VLC (compatibilité étendue)" : "Media3 (léger)";
     }
 
     private void enterFullscreenPlayback() {

@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  * its last valid local copy.
  */
 public final class ChannelRepository {
-    public static final long REFRESH_INTERVAL_HOURS = 6L
+    public static final long REFRESH_INTERVAL_HOURS = 6L;
     private static final int MAX_CHANNELS_PER_SOURCE = 20_000;
     private static final String PREFS = "m3u_sources";
     private static final String DB_PREFS = "catalog_database_state";

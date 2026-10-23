@@ -1,6 +1,6 @@
 package tv.nisskenzi.moroccotv;
 
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
@@ -24,6 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.lifecycle.ViewModelProvider;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -52,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Native Android Live TV app optimized for Android TV and native UI design.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
     private static final int PANEL = 0xCC151D28;
     private static final int LINE = 0x665D6D82;
     private static final int CYAN = 0xFF4CC9F0;
@@ -85,6 +86,7 @@ public class MainActivity extends Activity {
     private TextView previewDetail;
 
     private NativeLivePlayerView playerView;
+    private ChannelViewModel channelViewModel;
     private ExoPlayer player;
     private FrameLayout playerStage;
     private boolean fullscreenPlayback = false;
@@ -114,6 +116,8 @@ public class MainActivity extends Activity {
     // Identity token shared by each player instance for the same loaded catalogue.
     private Object channelCatalogToken = new Object();
     private int countryStatsVersion = -1;
+    private String countryStatsSourceFilter = "";
+    private final Map<String, Integer> sourceCountCache = new HashMap<>();
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
     private final Set<String> channelUrlCache = new HashSet<>();
@@ -126,7 +130,7 @@ public class MainActivity extends Activity {
     private long recentCountStoreRevision = -1L;
 
     private String activeCountry = "Tous les pays";
-    private String sourceFilter = "VAVOO";
+    private String sourceFilter = "all";
     private String searchText = "";
     private String categorySearch = "";
     private String lastRenderedFilterKey = "";
@@ -143,8 +147,32 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
-        // Catalogues are loaded only after an explicit source/refresh action.
-        // Parsing a large bundled M3U on every cold launch can cause startup stutter.
+        channelViewModel = new ViewModelProvider(this).get(ChannelViewModel.class);
+        channelViewModel.getChannels().observe(this, loaded -> {
+            if (loaded == null || activityDestroyed) return;
+            channels.clear();
+            channels.addAll(loaded);
+            markCatalogChanged();
+            lastRenderedFilterKey = "";
+            if (fullscreenPlayback) {
+                renderCountryChoices();
+                updateChannelResults();
+            } else if (!"Paramètres".equals(activePage)) {
+                if (countryChoices == null || channelResults == null) renderPage();
+                else {
+                    renderCountryChoices();
+                    updateChannelResults();
+                }
+            }
+        });
+        channelViewModel.getStatus().observe(this, status -> {
+            if (status == null || activityDestroyed) return;
+            catalogStatus = status;
+            String lower = status.toLowerCase(Locale.ROOT);
+            loadingCatalog = lower.contains("arrière-plan") || lower.contains("vérification");
+            updateStatus();
+        });
+        channelViewModel.initialize();
     }
 
     private int dp(float value) {
@@ -264,7 +292,7 @@ public class MainActivity extends Activity {
         iptvP.leftMargin = dp(8);
         header.addView(iptvTab, iptvP);
 
-        liveTab.setOnClickListener(v -> setPage("Live TV"));
+        liveTab.setOnClickListener(v -> switchSource("ALL"));
         vavooTab.setOnClickListener(v -> switchSource("VAVOO"));
         iptvTab.setOnClickListener(v -> switchSource("IPTV-ORG"));
 
@@ -325,8 +353,8 @@ public class MainActivity extends Activity {
 
     private void updateHeaderTabs() {
         setTabState(liveTab, "Live TV".equals(activePage));
-        setTabState(vavooTab, "Live TV".equals(activePage) && "VAVOO".equals(sourceFilter));
-        setTabState(iptvTab, "Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter));
+        setTabState(vavooTab, "Live TV".equals(activePage) && "vavoo".equals(sourceFilter));
+        setTabState(iptvTab, "Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter));
         setTabState(settingsTab, "Paramètres".equals(activePage));
     }
 

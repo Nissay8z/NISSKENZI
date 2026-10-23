@@ -141,7 +141,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         card.setClickable(true);
         card.setPadding(dp(context, television ? 11 : 8), dp(context, 6),
                 dp(context, 9), dp(context, 6));
-        card.setBackground(roundedDrawable(0x33FFFFFF, 8, 0x00FFFFFF, context));
+        card.setBackground(roundedDrawable(0xFF1D2632, 8, 0x00FFFFFF, context));
         RecyclerView.LayoutParams cardParams =
                 new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight);
         cardParams.bottomMargin = bottomMargin;
@@ -159,7 +159,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         logoFrame.setBackground(roundedDrawable(0xEEFFFFFF, 7, 0x00FFFFFF, context));
         TextView initials = new TextView(context);
         initials.setTextSize(10);
-        initials.setTextColor(0xFF176647);
+        initials.setTextColor(0xFF168AAD);
         initials.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         initials.setGravity(Gravity.CENTER);
         logoFrame.addView(initials, new FrameLayout.LayoutParams(
@@ -380,8 +380,8 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         private void applyState(boolean focused, boolean selected) {
             Context context = itemView.getContext();
             boolean active = focused || selected;
-            card.setBackground(roundedDrawable(active ? 0xAA087449 : 0x33FFFFFF,
-                    8, active ? 0xDDFFFFFF : 0x00FFFFFF, context));
+            card.setBackground(roundedDrawable(active ? 0xFF164A60 : 0xFF1D2632,
+                    8, active ? 0xFF4CC9F0 : 0x00FFFFFF, context));
             card.setScaleX(focused ? 1.02f : 1f);
             card.setScaleY(focused ? 1.02f : 1f);
             name.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);

@@ -554,35 +554,97 @@ public class MainActivity extends ComponentActivity {
         updateChannelResults();
     }
 
+    private boolean matchesCurrentSource(Channel channel) {
+        return channel != null && ("all".equals(sourceFilter)
+                || sourceFilter.equals(channel.catalogSource));
+    }
+
+    private int countVisibleChannels() {
+        if ("all".equals(sourceFilter)) return channels.size();
+        int count = 0;
+        for (Channel channel : channels) if (matchesCurrentSource(channel)) count++;
+        return count;
+    }
+
+    private void rebuildCategoryCountsIfNeeded() {
+        if (countryStatsVersion == catalogVersion
+                && sourceFilter.equals(countryStatsSourceFilter)) return;
+
+        countryCountCache.clear();
+        countryCodeCache.clear();
+        sourceCountCache.clear();
+        channelUrlCache.clear();
+        HashMap<String, String> normalizedCountries = new HashMap<>();
+
+        // This is run only when Room publishes a new snapshot or the selected
+        // source changes, never during a search keystroke or channel playback.
+        for (Channel ch : channels) {
+            if (ch == null) continue;
+            String source = safe(ch.catalogSource);
+            Integer oldSourceCount = sourceCountCache.get(source);
+            sourceCountCache.put(source, oldSourceCount == null ? 1 : oldSourceCount + 1);
+
+            if (!matchesCurrentSource(ch)) continue;
+            if (!safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
+
+            String rawCountry = safe(ch.country);
+            String country = normalizedCountries.get(rawCountry);
+            if (country == null) {
+                country = safeCountry(rawCountry);
+                normalizedCountries.put(rawCountry, country);
+            }
+            Integer oldCount = countryCountCache.get(country);
+            countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
+        }
+
+        for (String country : countryCountCache.keySet()) {
+            countryCodeCache.put(country, countryCode(country));
+        }
+        channelUrlSetVersion = catalogVersion;
+        countryStatsVersion = catalogVersion;
+        countryStatsSourceFilter = sourceFilter;
+    }
+
     private void renderCountryChoices() {
         if (countryChoices == null) return;
+        rebuildCategoryCountsIfNeeded();
         countryChoices.removeAllViews();
 
-        addCategoryRow("Tous", channels.size(),
-                !favoritesOnly && !recentOnly && "Tous les pays".equals(activeCountry),
-                v -> {
-                    activeCountry = "Tous les pays";
-                    favoritesOnly = false;
-                    recentOnly = false;
-                    renderCountryChoices();
-                    updateChannelResults();
-                });
+        addCategoryRow("Toutes les chaînes", countVisibleChannels(),
+                "all".equals(sourceFilter) && !favoritesOnly && !recentOnly
+                        && "Tous les pays".equals(activeCountry),
+                v -> switchSource("ALL"));
         addCategoryRow("Récemment vus", countRecentChannels(), recentOnly,
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
-                    renderCountryChoices();
                     updateChannelResults();
+                    renderCountryChoices();
                 });
         addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
-                    renderCountryChoices();
                     updateChannelResults();
+                    renderCountryChoices();
                 });
+
+        TextView sourcesHeading = label("SOURCES M3U", isTelevision() ? 10 : 8, CYAN, true);
+        sourcesHeading.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams headingParams = lp(-1, -2);
+        headingParams.topMargin = dp(10);
+        headingParams.bottomMargin = dp(6);
+        countryChoices.addView(sourcesHeading, headingParams);
+
+        for (ChannelRepository.Source source : ChannelRepository.getInstance(this).getSources()) {
+            int count = sourceCountCache.containsKey(source.id)
+                    ? sourceCountCache.get(source.id) : 0;
+            addCategoryRow(source.name, count, source.id.equals(sourceFilter)
+                    && !favoritesOnly && !recentOnly,
+                    v -> switchSource(source.id));
+        }
 
         View divider = new View(this);
         divider.setBackgroundColor(LINE);
@@ -591,31 +653,12 @@ public class MainActivity extends ComponentActivity {
         divP.bottomMargin = dp(8);
         countryChoices.addView(divider, divP);
 
-        if (countryStatsVersion != catalogVersion) {
-            countryCountCache.clear();
-            countryCodeCache.clear();
-            // Thousands of channels share the same handful of countries. Normalize
-            // each distinct country only once; do not run Unicode normalization/regex
-            // for every row on the UI thread whenever the category panel is built.
-            HashMap<String, String> normalizedCountries = new HashMap<>();
-            channelUrlCache.clear();
-            for (Channel ch : channels) {
-                if (ch != null && !safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
-                String rawCountry = safe(ch.country);
-                String country = normalizedCountries.get(rawCountry);
-                if (country == null) {
-                    country = safeCountry(rawCountry);
-                    normalizedCountries.put(rawCountry, country);
-                }
-                Integer oldCount = countryCountCache.get(country);
-                countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
-            }
-            for (String country : countryCountCache.keySet()) {
-                countryCodeCache.put(country, countryCode(country));
-            }
-            channelUrlSetVersion = catalogVersion;
-            countryStatsVersion = catalogVersion;
-        }
+        TextView countryHeading = label("PAYS", isTelevision() ? 10 : 8, CYAN, true);
+        countryHeading.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams countryHeadingParams = lp(-1, -2);
+        countryHeadingParams.bottomMargin = dp(6);
+        countryChoices.addView(countryHeading, countryHeadingParams);
+
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
         Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
         String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
@@ -628,8 +671,8 @@ public class MainActivity extends ComponentActivity {
                         activeCountry = country;
                         favoritesOnly = false;
                         recentOnly = false;
-                        renderCountryChoices();
                         updateChannelResults();
+                        renderCountryChoices();
                     });
         }
     }

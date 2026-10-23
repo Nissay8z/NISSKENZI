@@ -1,4 +1,5 @@
 #EXTM3U x-tvg-url="https://epg.kanya.io/us/guide.xml.gz"
+#NISSKENZI-IPTV-CATALOG sha256="766c05f5b3a40171c899cbca" channels="12790"
 #EXTINF:-1 tvg-id="4Afghanistan.fr@SD" tvg-logo="" group-title="Afghanistan",4 Afghanistan
 https://4afghls.persiana.live/hls/stream.m3u8
 #EXTINF:-1 tvg-id="ABNAfghanistan.us@SD" tvg-logo="https://i.imgur.com/LI30mAt.png" group-title="Afghanistan",ABN Afghanistan (540p)

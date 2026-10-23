@@ -127,7 +127,15 @@ public class MainActivity extends Activity {
         JSONObject o=arr.optJSONObject(i);if(o==null)continue;
         String name=o.optString("name","Chaîne"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Direct");
         if(url.isEmpty())continue;
-        cached.add(new Channel(name,url,logo,group,o.optBoolean("isVavoo",false),o.optString("sourceUrl",""),o.optString("country","")));
+        boolean cachedVavoo=o.optBoolean("isVavoo",false);
+        String cachedCountry=normalizeCountry(o.optString("country",""));
+        if(cachedCountry.isEmpty()||"Pays non précisé".equalsIgnoreCase(cachedCountry)||"default".equalsIgnoreCase(cachedCountry)){
+          String prefix=cachedVavoo?"VAVOO · ":"IPTV-ORG · ";
+          String derived=group.startsWith(prefix)?group.substring(prefix.length()):group;
+          cachedCountry=normalizeCountry(derived);
+        }
+        if(cachedCountry.isEmpty()||"default".equalsIgnoreCase(cachedCountry))cachedCountry="Pays non précisé";
+        cached.add(new Channel(name,url,logo,group,cachedVavoo,o.optString("sourceUrl",""),cachedCountry));
       }
       if(!cached.isEmpty()){
         channels.clear();channels.addAll(cached);
@@ -261,7 +269,8 @@ public class MainActivity extends Activity {
         String msg=combined.size()+" chaînes réunies";
         if(!ve.isEmpty())msg+=" · VAVOO indisponible";
         if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
-        status.setText(msg);catalogStatus=msg+"\nVAVOO : "+(ve.isEmpty()?"connecté · catalogue "+vavooAll.size()+" chaînes":ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"connecté · playlist chargée":"indisponible · "+ie);
+        status.setText(msg);catalogStatus=msg+"\nVAVOO : "+(ve.isEmpty()?"catalogue chargé · "+vavooAll.size()+" chaînes":"indisponible · "+ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"playlist internationale chargée":"indisponible · "+ie);
+        if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("setCatalogStatus("+JSONObject.quote(catalogStatus)+");",null);
         if(combined.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
       });
     });

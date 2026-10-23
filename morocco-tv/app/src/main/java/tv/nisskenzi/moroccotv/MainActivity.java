@@ -224,7 +224,7 @@ public class MainActivity extends ComponentActivity {
                 b.setScaleX(1.035f);
                 b.setScaleY(1.035f);
             } else {
-                boolean active = b == liveTab ? "Live TV".equals(activePage)
+                boolean active = b == liveTab ? ("Live TV".equals(activePage) && "all".equals(sourceFilter))
                         : b == vavooTab ? ("Live TV".equals(activePage) && "vavoo".equals(sourceFilter))
                         : b == iptvTab ? ("Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
@@ -354,7 +354,7 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void updateHeaderTabs() {
-        setTabState(liveTab, "Live TV".equals(activePage));
+        setTabState(liveTab, "Live TV".equals(activePage) && "all".equals(sourceFilter));
         setTabState(vavooTab, "Live TV".equals(activePage) && "vavoo".equals(sourceFilter));
         setTabState(iptvTab, "Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter));
         setTabState(settingsTab, "Paramètres".equals(activePage));
@@ -480,7 +480,7 @@ public class MainActivity extends ComponentActivity {
         channelResults.setItemViewCacheSize(8);
         channelResults.setItemAnimator(null);
         channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
-        channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+        channelAdapter.setSelectedChannel(currentChannel);
         channelResults.setAdapter(channelAdapter);
         channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
 
@@ -850,7 +850,7 @@ public class MainActivity extends ComponentActivity {
 
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
-                targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+                targetAdapter.setSelectedChannel(currentChannel);
                 targetAdapter.submitList(filtered, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
@@ -1256,7 +1256,7 @@ public class MainActivity extends ComponentActivity {
         // Back leaves fullscreen and returns directly to the existing native catalogue.
         releaseMediaEngine();
         currentChannel = null;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(null);
         playerStage = null;
         renderPage();
     }
@@ -1264,7 +1264,7 @@ public class MainActivity extends ComponentActivity {
     private void play(Channel ch) {
         if (ch == null) return;
         currentChannel = ch;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.url);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(ch);
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Ouverture du direct…");
@@ -1417,7 +1417,7 @@ public class MainActivity extends ComponentActivity {
     private void stopPreview() {
         releaseMediaEngine();
         currentChannel = null;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(null);
         if (playerStage != null) {
             playerStage.removeAllViews();
             TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);

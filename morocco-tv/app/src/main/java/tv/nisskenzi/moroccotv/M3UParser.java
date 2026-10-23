@@ -277,9 +277,9 @@ public final class M3UParser {
             char ch = line.charAt(i);
             if (quote != 0) {
                 if (escaped) escaped = false;
-                else if (ch == '\\\\') escaped = true;
+                else if (ch == 92) escaped = true;
                 else if (ch == quote) quote = 0;
-            } else if (ch == '"' || ch == '\\'') {
+            } else if (ch == 34 || ch == 39) {
                 quote = ch;
             } else if (ch == ',') {
                 return i;
@@ -309,13 +309,13 @@ public final class M3UParser {
                 while (start < line.length() && Character.isWhitespace(line.charAt(start))) start++;
                 if (start >= line.length()) return "";
                 char quote = line.charAt(start);
-                if (quote == '"' || quote == '\'') {
+                if (quote == 34 || quote == 39) {
                     StringBuilder value = new StringBuilder();
                     boolean escaped = false;
                     for (int i = start + 1; i < line.length(); i++) {
                         char ch = line.charAt(i);
                         if (escaped) { value.append(ch); escaped = false; }
-                        else if (ch == '\\') escaped = true;
+                        else if (ch == 92) escaped = true;
                         else if (ch == quote) return value.toString().trim();
                         else value.append(ch);
                     }

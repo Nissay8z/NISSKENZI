@@ -840,6 +840,7 @@ public class MainActivity extends Activity {
         sourceFilter = source;
         if (changed) {
             channels.clear();
+            markCatalogChanged();
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
@@ -870,26 +871,15 @@ public class MainActivity extends Activity {
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // A full on-disk catalogue is restored in the background first. The small
-            // SharedPreferences cache still supplies an immediate first paint on startup.
-            ArrayList<Channel> diskCached = readFullCatalogCache(requestedSource);
-            if (!diskCached.isEmpty()) {
-                final ArrayList<Channel> diskSnapshot = diskCached;
-                runOnUiThread(() -> {
-                    if (activityDestroyed || currentGen != loadGeneration.get()
-                            || !requestedSource.equals(sourceFilter)) return;
-                    if (channels.size() < diskSnapshot.size()) {
-                        channels.clear();
-                        channels.addAll(diskSnapshot);
-                        catalogStatus = requestedSource + " · " + diskSnapshot.size()
-                                + " chaînes en cache, actualisation…";
-                        updateStatus();
-                        updateHeaderTabs();
-                        renderCountryChoices();
-                        updateChannelResults();
-                    }
-                });
-            }
+            // Parse both caches away from the UI thread. The quick cache appears first,
+            // then the complete per-source cache can replace it without waiting for network.
+            ArrayList<Channel> quickCached = CatalogCache.readQuick(
+                    MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
+            showCachedSnapshot(quickCached, requestedSource, currentGen);
+
+            ArrayList<Channel> diskCached = CatalogCache.readFull(
+                    MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS);
+            showCachedSnapshot(diskCached, requestedSource, currentGen);
 
             ArrayList<Channel> loaded = new ArrayList<>();
             String error = "";
@@ -898,7 +888,7 @@ public class MainActivity extends Activity {
                     List<VavooProvider.VavooChannel> sourceChannels = VavooProvider.loadChannels(partial -> {
                         int size = partial == null ? 0 : partial.size();
                         int previous = lastVavooPublished.get();
-                        if (size <= 0 || (previous > 0 && size - previous < 400)
+                        if (size <= 0 || (previous > 0 && size - previous < 1500)
                                 || !lastVavooPublished.compareAndSet(previous, size)) return;
                         publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
                                 currentGen);
@@ -944,7 +934,7 @@ public class MainActivity extends Activity {
                                 loaded.add(new Channel(name, line.trim(), logo,
                                         "IPTV-ORG · " + group, false, null, country));
                                 int previouslyPublished = lastIptvPublished.get();
-                                if (loaded.size() - previouslyPublished >= 500
+                                if (loaded.size() - previouslyPublished >= 1500
                                         && lastIptvPublished.compareAndSet(previouslyPublished, loaded.size())) {
                                     publishCatalogSnapshot(new ArrayList<>(loaded), requestedSource,
                                             currentGen);
@@ -961,8 +951,9 @@ public class MainActivity extends Activity {
 
             final ArrayList<Channel> result = loaded;
             final String loadError = error;
-            final ArrayList<Channel> cacheSnapshot = cacheableChannels(result);
-            if (!cacheSnapshot.isEmpty()) saveCachedChannels(cacheSnapshot, requestedSource);
+            if (!result.isEmpty()) {
+                CatalogCache.saveQuick(MainActivity.this, result, requestedSource, MAX_CACHED_CHANNELS);
+            }
             runOnUiThread(() -> {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
@@ -979,6 +970,7 @@ public class MainActivity extends Activity {
                     if (!result.isEmpty()) {
                         channels.clear();
                         channels.addAll(result);
+                        markCatalogChanged();
                         catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
                     } else if (!channels.isEmpty()) {
                         catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
@@ -1006,7 +998,7 @@ public class MainActivity extends Activity {
 
             // Saving the complete catalogue happens off the UI thread; subsequent launches
             // can restore all countries/channels without waiting for remote pagination.
-            if (!result.isEmpty()) saveFullCatalogCache(result, requestedSource);
+            if (!result.isEmpty()) CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
         });
     }
 
@@ -1047,97 +1039,23 @@ public class MainActivity extends Activity {
         });
     }
 
-    private File fullCatalogCacheFile(String source) {
-        String suffix = "VAVOO".equals(source) ? "vavoo" : "iptv_org";
-        return new File(getFilesDir(), "nisskenzi_catalog_" + suffix + "_v1.json");
-    }
-
-    private ArrayList<Channel> readFullCatalogCache(String source) {
-        ArrayList<Channel> cached = new ArrayList<>();
-        File file = fullCatalogCacheFile(source);
-        if (!file.isFile() || file.length() <= 0) return cached;
-        if (file.length() > MAX_CATALOG_CACHE_FILE_BYTES) {
-            file.delete();
-            return cached;
-        }
-
-        StringBuilder raw = new StringBuilder((int) Math.min(file.length(), 1024 * 1024));
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
-            char[] buffer = new char[8192];
-            int count;
-            while ((count = reader.read(buffer)) != -1) {
-                if (raw.length() + count > MAX_CATALOG_CACHE_FILE_BYTES) return new ArrayList<>();
-                raw.append(buffer, 0, count);
-            }
-
-            JSONArray array = new JSONArray(raw.toString());
-            boolean wantVavoo = "VAVOO".equals(source);
-            for (int i = 0; i < array.length() && cached.size() < MAX_CATALOG_CHANNELS; i++) {
-                JSONObject object = array.optJSONObject(i);
-                if (object == null) continue;
-                String url = object.optString("url", "").trim();
-                if (url.isEmpty()) continue;
-                boolean isVavoo = object.optBoolean("isVavoo", false);
-                if (isVavoo != wantVavoo) continue;
-                String group = object.optString("group", "Direct");
-                String country = knownCountry(object.optString("country", ""));
-                if (country.isEmpty()) {
-                    String prefix = isVavoo ? "VAVOO · " : "IPTV-ORG · ";
-                    country = knownCountry(group.startsWith(prefix) ? group.substring(prefix.length()) : group);
-                }
-                if (country.isEmpty()) country = "Pays non précisé";
-                cached.add(new Channel(object.optString("name", "Chaîne"), url,
-                        object.optString("logo", ""), group, isVavoo,
-                        object.optString("sourceUrl", ""), country));
-            }
-        } catch (Exception ignored) {
-            cached.clear();
-        }
-        return cached;
-    }
-
-    private void saveFullCatalogCache(ArrayList<Channel> items, String source) {
-        if (items == null || items.isEmpty()) return;
-        File target = fullCatalogCacheFile(source);
-        File temporary = new File(getFilesDir(), target.getName() + ".tmp");
-        try {
-            JSONArray array = new JSONArray();
-            int count = 0;
-            for (Channel channel : items) {
-                if (count++ >= MAX_CATALOG_CHANNELS) break;
-                JSONObject object = new JSONObject();
-                object.put("name", safe(channel.name));
-                object.put("url", safe(channel.url));
-                object.put("logo", safe(channel.logo));
-                object.put("group", safe(channel.group));
-                object.put("isVavoo", channel.isVavoo);
-                object.put("sourceUrl", safe(channel.vavooSourceUrl));
-                object.put("country", safe(channel.country));
-                array.put(object);
-            }
-            try (OutputStreamWriter writer = new OutputStreamWriter(
-                    new FileOutputStream(temporary), "UTF-8")) {
-                writer.write(array.toString());
-                writer.flush();
-            }
-            if (target.exists() && !target.delete()) {
-                temporary.delete();
-                return;
-            }
-            if (!temporary.renameTo(target)) {
-                temporary.delete();
-            }
-        } catch (Exception ignored) {
-            temporary.delete();
-        }
-    }
-
-    private void deleteFullCatalogCache(String source) {
-        File file = fullCatalogCacheFile(source);
-        if (file.exists()) file.delete();
-        File temporary = new File(getFilesDir(), file.getName() + ".tmp");
-        if (temporary.exists()) temporary.delete();
+    private void showCachedSnapshot(ArrayList<Channel> cacheSnapshot, String requestedSource,
+                                    int generation) {
+        if (cacheSnapshot == null || cacheSnapshot.isEmpty()) return;
+        final ArrayList<Channel> snapshot = new ArrayList<>(cacheSnapshot);
+        runOnUiThread(() -> {
+            if (activityDestroyed || generation != loadGeneration.get()
+                    || !requestedSource.equals(sourceFilter) || snapshot.size() <= channels.size()) return;
+            channels.clear();
+            channels.addAll(snapshot);
+            markCatalogChanged();
+            catalogStatus = requestedSource + " · " + snapshot.size()
+                    + " chaînes en cache, actualisation…";
+            updateStatus();
+            updateHeaderTabs();
+            renderCountryChoices();
+            updateChannelResults();
+        });
     }
 
     private void updateStatus() {

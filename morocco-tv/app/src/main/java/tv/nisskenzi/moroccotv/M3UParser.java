@@ -171,22 +171,20 @@ public final class M3UParser {
             String group = "";
             String country = "";
             String epgId = "";
+            String entrySourceId = "";
+            String entrySourceName = "";
             long characters = 0L;
 
             while ((line = reader.readLine()) != null) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new IOException("Lecture M3U annulée.");
-                }
+                if (Thread.currentThread().isInterrupted()) throw new IOException("Lecture M3U annulée.");
                 characters += line.length() + 1L;
-                if (characters > MAX_PLAYLIST_CHARS) {
-                    throw new IOException("Playlist M3U trop volumineuse (limite 40 Mo).");
-                }
+                if (characters > MAX_PLAYLIST_CHARS) throw new IOException("Playlist M3U trop volumineuse (limite 40 Mo).");
                 line = line.trim();
                 if (line.startsWith("\uFEFF")) line = line.substring(1).trim();
                 if (line.isEmpty()) continue;
 
                 if (line.startsWith("#EXTINF:")) {
-                    int comma = line.lastIndexOf(',');
+                    int comma = line.indexOf(',');
                     name = comma >= 0 ? line.substring(comma + 1).trim() : "";
                     String tvgName = attribute(line, "tvg-name");
                     if (!tvgName.isEmpty()) name = tvgName;
@@ -196,6 +194,8 @@ public final class M3UParser {
                     country = attribute(line, "tvg-country");
                     if (country.isEmpty()) country = attribute(line, "country");
                     epgId = attribute(line, "tvg-id");
+                    entrySourceId = attribute(line, "x-source-id");
+                    entrySourceName = attribute(line, "x-source-name");
                     continue;
                 }
                 if (line.startsWith("#")) continue;
@@ -204,19 +204,14 @@ public final class M3UParser {
                 String streamUrl = resolveRelativeUrl(playlistAddress, line);
                 boolean requiresResolver = false;
                 String resolverUrl = "";
-
                 if (line.startsWith("vavoo-catalog://")) {
                     String encoded = line.substring("vavoo-catalog://".length()).trim();
                     try {
-                        byte[] decoded = Base64.decode(encoded,
-                                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                        byte[] decoded = Base64.decode(encoded, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
                         resolverUrl = new String(decoded, StandardCharsets.UTF_8).trim();
-                    } catch (IllegalArgumentException ignored) {
-                        resolverUrl = "";
-                    }
+                    } catch (IllegalArgumentException ignored) { resolverUrl = ""; }
                     if (resolverUrl.isEmpty()) {
-                        resetPending();
-                        name = logo = group = country = epgId = "";
+                        name = logo = group = country = epgId = entrySourceId = entrySourceName = "";
                         continue;
                     }
                     String id = epgId.isEmpty() ? stableId(name, resolverUrl) : epgId;
@@ -227,34 +222,39 @@ public final class M3UParser {
                     resolverUrl = line;
                 }
 
-                if (streamUrl.isEmpty() || !seenUrls.add(streamUrl)) {
-                    name = logo = group = country = epgId = "";
+                String itemSourceId = safe(entrySourceId);
+                String itemSourceName = safe(entrySourceName);
+                if (requiresResolver || line.startsWith("vavoo://")) {
+                    itemSourceId = "vavoo";
+                    itemSourceName = "VAVOO";
+                } else {
+                    if (itemSourceId.isEmpty()) itemSourceId = sourceId;
+                    if (itemSourceName.isEmpty()) itemSourceName = sourceName;
+                }
+
+                String uniqueKey = itemSourceId + "|" + streamUrl;
+                if (streamUrl.isEmpty() || !seenUrls.add(uniqueKey)) {
+                    name = logo = group = country = epgId = entrySourceId = entrySourceName = "";
                     continue;
                 }
 
                 String rawCountry = country.isEmpty() ? group : country;
                 String resolvedCountry = resolver == null ? "" : safe(resolver.resolve(rawCountry));
-                if (resolvedCountry.isEmpty() && resolver != null && !group.isEmpty()) {
-                    resolvedCountry = safe(resolver.resolve(group));
-                }
+                if (resolvedCountry.isEmpty() && resolver != null && !group.isEmpty()) resolvedCountry = safe(resolver.resolve(group));
                 if (resolvedCountry.isEmpty()) resolvedCountry = rawCountry;
                 if (resolvedCountry.isEmpty()) resolvedCountry = "Pays non précisé";
 
                 String itemGroup = group.isEmpty() ? "Direct" : group;
-                if (!itemGroup.startsWith(sourceName + " · ")) {
-                    itemGroup = sourceName + " · " + itemGroup;
-                }
-                // A bundled VAVOO catalogue key is not an XMLTV ID.
-                String xmltvId = requiresResolver && "vavoo".equals(sourceId) ? "" : epgId;
+                if (!itemGroup.startsWith(itemSourceName + " · ")) itemGroup = itemSourceName + " · " + itemGroup;
+                String xmltvId = requiresResolver || "vavoo".equals(itemSourceId) ? "" : epgId;
                 result.add(new Channel(name, streamUrl, logo, itemGroup, requiresResolver,
-                        resolverUrl, resolvedCountry, xmltvId, sourceId, null));
+                        resolverUrl, resolvedCountry, xmltvId, itemSourceId, null));
 
-                name = logo = group = country = epgId = "";
+                name = logo = group = country = epgId = entrySourceId = entrySourceName = "";
             }
         }
         return result;
     }
-
     private static String resolveRelativeUrl(String playlistAddress, String value) {
         if (playlistAddress == null || playlistAddress.isEmpty()
                 || value.startsWith("http://") || value.startsWith("https://")

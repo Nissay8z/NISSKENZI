@@ -24,7 +24,7 @@ public final class IptvOrgProvider {
         void onChannelsUpdated(List<Channel> snapshot);
     }
 
-    private static final String PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.country.m3u";
+    private static final String PLAYLIST_URL = "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u";
     private static final String BUNDLED_ASSET = "iptv_org_catalog.m3u";
     private static final int CONNECT_TIMEOUT_MS = 10_000;
     private static final int READ_TIMEOUT_MS = 20_000;
@@ -157,14 +157,53 @@ public final class IptvOrgProvider {
     }
 
     private static String attribute(String line, String key) {
-        int startAt = line.indexOf(key + "=");
-        if (startAt < 0) return "";
-        int start = startAt + key.length() + 1;
-        if (start < line.length() && line.charAt(start) == '"') {
-            int end = line.indexOf('"', start + 1);
-            return end > start ? line.substring(start + 1, end).trim() : "";
+        if (line == null || key == null || key.isEmpty()) return "";
+        int from = 0;
+        while (from < line.length()) {
+            int at = indexOfIgnoreCase(line, key, from);
+            if (at < 0) return "";
+            boolean boundaryBefore = at == 0 || Character.isWhitespace(line.charAt(at - 1));
+            int equals = at + key.length();
+            boolean boundaryAfter = equals >= line.length()
+                    || Character.isWhitespace(line.charAt(equals))
+                    || line.charAt(equals) == '=';
+            if (boundaryBefore && boundaryAfter) {
+                while (equals < line.length() && Character.isWhitespace(line.charAt(equals))) equals++;
+                if (equals >= line.length() || line.charAt(equals) != '=') {
+                    from = at + key.length();
+                    continue;
+                }
+                int start = equals + 1;
+                while (start < line.length() && Character.isWhitespace(line.charAt(start))) start++;
+                if (start >= line.length()) return "";
+                char quote = line.charAt(start);
+                if (quote == '"' || quote == '\'') {
+                    StringBuilder value = new StringBuilder();
+                    boolean escaped = false;
+                    for (int i = start + 1; i < line.length(); i++) {
+                        char ch = line.charAt(i);
+                        if (escaped) { value.append(ch); escaped = false; }
+                        else if (ch == '\\') escaped = true;
+                        else if (ch == quote) return value.toString().trim();
+                        else value.append(ch);
+                    }
+                    return value.toString().trim();
+                }
+                int end = start;
+                while (end < line.length() && !Character.isWhitespace(line.charAt(end))
+                        && line.charAt(end) != ',') end++;
+                return line.substring(start, end).trim();
+            }
+            from = at + key.length();
         }
-        int end = line.indexOf(' ', start);
-        return end < 0 ? line.substring(start).trim() : line.substring(start, end).trim();
+        return "";
+    }
+
+    private static int indexOfIgnoreCase(String text, String search, int from) {
+        int last = text.length() - search.length();
+        for (int i = Math.max(0, from); i <= last; i++) {
+            if (text.regionMatches(true, i, search, 0, search.length())) return i;
+        }
+        return -1;
     }
 }

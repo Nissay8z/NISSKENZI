@@ -43,6 +43,7 @@ jobs:
           mkdir -p source-review
           cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/VavooProvider.java source-review/
           cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/MainActivity.java source-review/
+          cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/ChannelAdapter.java source-review/
           cp morocco-tv/app/build.gradle source-review/
           cp morocco-tv/app/src/main/AndroidManifest.xml source-review/
           cat > source-review/README.md <<'EOF'
@@ -52,7 +53,8 @@ jobs:
 
           ## Where the engines are
           - VavooProvider.java: VAVOO catalogue pagination, API requests/signature handling, channel metadata, and stream resolution.
-          - MainActivity.java: IPTV-org playlist fetching/parsing is currently implemented inside loadChannels(); it also contains the Android TV list rendering, logo loader/cache, and player lifecycle. The VAVOO source selection is there too.
+          - MainActivity.java: IPTV-org playlist fetching/parsing is currently implemented inside loadChannels(); it manages Android TV pages, catalog state, filters, playback, and source selection.
+          - ChannelAdapter.java: virtualized RecyclerView rows, D-pad focus/selection styling, favorite indicators, and asynchronous logo loading/cache.
           - build.gradle: dependency versions and Android build settings.
           - AndroidManifest.xml: app permissions and TV launcher declarations.
 

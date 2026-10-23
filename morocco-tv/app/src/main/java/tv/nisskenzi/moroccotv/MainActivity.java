@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -20,13 +18,14 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.media3.common.MediaItem;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultDataSource;
@@ -43,9 +42,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -53,7 +50,6 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -72,17 +68,18 @@ public class MainActivity extends Activity {
     private static final int TEXT = 0xFFFFFFFF;
     private static final int GREEN = 0xFF0E714A;
     private static final int YELLOW = 0xFFFFFF00;
-    private static final int CHANNELS_PER_BATCH = 28;
     private static final int MAX_CACHED_CHANNELS = 400;
     private static final int MAX_CATALOG_CHANNELS = 9000;
-    private static final int MAX_LOGO_CACHE = 72;
 
     private LinearLayout root;
     private FrameLayout contentHost;
     private TextView statusView;
     private TextView countView;
     private LinearLayout countryChoices;
-    private LinearLayout channelResults;
+    private RecyclerView channelResults;
+    private FrameLayout channelListHost;
+    private LinearLayout channelEmptyView;
+    private ChannelAdapter channelAdapter;
     private EditText searchInput;
     private EditText categorySearchInput;
     private TextView liveTab;
@@ -109,26 +106,18 @@ public class MainActivity extends Activity {
 
     private final AtomicInteger loadGeneration = new AtomicInteger(0);
 
-    private int visibleChannelLimit = CHANNELS_PER_BATCH;
-    private int focusChannelIndex = -1;
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "VAVOO";
     private String searchText = "";
     private String categorySearch = "";
+    private String lastRenderedFilterKey = "";
     private boolean favoritesOnly = false;
     private boolean recentOnly = false;
 
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newFixedThreadPool(2);
-    private final ExecutorService logoIo = Executors.newFixedThreadPool(2);
-    private final Map<String, Bitmap> logoCache = Collections.synchronizedMap(
-        new LinkedHashMap<String, Bitmap>(128, 0.75f, true) {
-            @Override protected boolean removeEldestEntry(Map.Entry<String, Bitmap> eldest) {
-                return size() > MAX_LOGO_CACHE;
-            }
-        });
 
-    private static class Channel {
+    static class Channel {
         String name, url, logo, group, vavooSourceUrl, country;
         boolean isVavoo;
         Channel(String n, String u, String l, String g, boolean v, String source, String countryName) {
@@ -282,8 +271,6 @@ public class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 searchText = s == null ? "" : s.toString();
-                visibleChannelLimit = CHANNELS_PER_BATCH;
-                focusChannelIndex = -1;
                 updateChannelResults();
             }
             @Override public void afterTextChanged(Editable e) {}
@@ -337,6 +324,13 @@ public class MainActivity extends Activity {
 
     private void renderPage() {
         if (contentHost == null) return;
+        if (channelAdapter != null) {
+            channelAdapter.shutdown();
+            channelAdapter = null;
+        }
+        channelResults = null;
+        channelListHost = null;
+        channelEmptyView = null;
         contentHost.removeAllViews();
         if ("Paramètres".equals(activePage)) renderSettings();
         else renderLivePage();
@@ -422,12 +416,23 @@ public class MainActivity extends Activity {
         lsp.bottomMargin = dp(10);
         middle.addView(listSubtitle, lsp);
 
-        ScrollView channelScroll = new ScrollView(this);
-        channelScroll.setVerticalScrollBarEnabled(true);
-        channelScroll.setFillViewport(false);
-        channelResults = vertical();
-        channelScroll.addView(channelResults);
-        middle.addView(channelScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        // RecyclerView reuses visible rows instead of inflating a view for every channel.
+        channelListHost = new FrameLayout(this);
+        channelResults = new RecyclerView(this);
+        channelResults.setLayoutManager(new LinearLayoutManager(this));
+        channelResults.setHasFixedSize(true);
+        channelResults.setItemViewCacheSize(8);
+        channelResults.setItemAnimator(null);
+        channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
+        channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+        channelResults.setAdapter(channelAdapter);
+        channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
+
+        channelEmptyView = vertical();
+        channelEmptyView.setGravity(Gravity.CENTER);
+        channelEmptyView.setVisibility(View.GONE);
+        channelListHost.addView(channelEmptyView, new FrameLayout.LayoutParams(-1, -1));
+        middle.addView(channelListHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // Colonne de droite : Aperçu & Actions
         previewTitle = label(currentChannel == null ? "Aperçu du direct" : safe(currentChannel.name),
@@ -473,6 +478,7 @@ public class MainActivity extends Activity {
             favorite.setTextColor(isFavorite(currentChannel) ? YELLOW : Color.WHITE);
             renderCountryChoices();
             updateChannelResults();
+            if (channelAdapter != null) channelAdapter.refreshDecorations();
         });
         stop.setOnClickListener(v -> stopPreview());
 
@@ -504,8 +510,6 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = false;
-                    visibleChannelLimit = CHANNELS_PER_BATCH;
-                    focusChannelIndex = -1;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -514,8 +518,6 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
-                    visibleChannelLimit = CHANNELS_PER_BATCH;
-                    focusChannelIndex = -1;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -524,8 +526,6 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
-                    visibleChannelLimit = CHANNELS_PER_BATCH;
-                    focusChannelIndex = -1;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -556,8 +556,6 @@ public class MainActivity extends Activity {
                         activeCountry = country;
                         favoritesOnly = false;
                         recentOnly = false;
-                        visibleChannelLimit = CHANNELS_PER_BATCH;
-                        focusChannelIndex = -1;
                         renderCountryChoices();
                         updateChannelResults();
                     });
@@ -647,22 +645,34 @@ public class MainActivity extends Activity {
     }
 
     private void updateChannelResults() {
-        if (channelResults == null || !"Live TV".equals(activePage)) return;
+        if (channelResults == null || channelAdapter == null || !"Live TV".equals(activePage)) return;
+
         ArrayList<Channel> filtered = filteredChannels();
         if (countView != null) countView.setText(filtered.size() + " chaînes");
-        channelResults.removeAllViews();
+
+        String filterKey = sourceFilter + "|" + activeCountry + "|" + safe(searchText)
+                + "|" + favoritesOnly + "|" + recentOnly;
+        boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
+        lastRenderedFilterKey = filterKey;
 
         if (filtered.isEmpty()) {
+            channelAdapter.submitList(new ArrayList<>());
+            channelResults.setVisibility(View.GONE);
+            channelEmptyView.setVisibility(View.VISIBLE);
+            channelEmptyView.removeAllViews();
+
             LinearLayout empty = vertical();
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(dp(14), dp(22), dp(14), dp(22));
             empty.setBackground(rounded(0x33FFFFFF, 12));
+
             String source = sourceFilter;
             TextView heading = label(channels.isEmpty()
                     ? (loadingCatalog ? "Connexion au catalogue…" : "Catalogue prêt à charger")
                     : "Aucune chaîne trouvée", isTelevision() ? 18 : 14, Color.WHITE, true);
             heading.setGravity(Gravity.CENTER);
             empty.addView(heading, lp(-1, -2));
+
             TextView msg = label(channels.isEmpty()
                     ? source + " se charge en arrière-plan. Vous pouvez naviguer ou actualiser."
                     : "Essayez une autre catégorie ou modifiez votre recherche.",
@@ -670,162 +680,26 @@ public class MainActivity extends Activity {
             msg.setGravity(Gravity.CENTER);
             msg.setPadding(0, dp(8), 0, dp(12));
             empty.addView(msg, lp(-1, -2));
+
             TextView retry = buttonText(loadingCatalog ? "Chargement…" : "↻ Actualiser " + source, true);
             empty.addView(retry, lp(-2, isTelevision() ? 46 : 38));
             retry.setOnClickListener(v -> loadChannels());
-            channelResults.addView(empty, lp(-1, -2));
+            channelEmptyView.addView(empty, new LinearLayout.LayoutParams(-1, -2));
             return;
         }
 
-        int shown = Math.min(filtered.size(), visibleChannelLimit);
-        for (int i = 0; i < shown; i++) {
-            Channel ch = filtered.get(i);
-            LinearLayout card = channelCard(ch, i);
-            LinearLayout.LayoutParams cp = lp(-1, isTelevision() ? 63 : 54);
-            cp.bottomMargin = dp(5);
-            channelResults.addView(card, cp);
-            if (i == focusChannelIndex) {
-                focusChannelIndex = -1;
-                if (isTelevision()) card.post(() -> card.requestFocus());
+        channelEmptyView.setVisibility(View.GONE);
+        channelResults.setVisibility(View.VISIBLE);
+        ChannelAdapter adapter = channelAdapter;
+        RecyclerView recycler = channelResults;
+        adapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+        adapter.submitList(new ArrayList<>(filtered), () -> {
+            if (adapter != channelAdapter || recycler != channelResults) return;
+            adapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+            if (filtersChanged && recycler.getAdapter() == adapter && adapter.getItemCount() > 0) {
+                recycler.scrollToPosition(0);
             }
-        }
-
-        if (shown < filtered.size()) {
-            int addCount = Math.min(CHANNELS_PER_BATCH, filtered.size() - shown);
-            TextView more = buttonText("Afficher " + addCount + " de plus  ·  " + shown + " / " + filtered.size(), false);
-            more.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams moreP = lp(-1, isTelevision() ? 48 : 40);
-            moreP.topMargin = dp(6);
-            moreP.bottomMargin = dp(10);
-            channelResults.addView(more, moreP);
-            more.setOnClickListener(v -> {
-                focusChannelIndex = shown;
-                visibleChannelLimit = Math.min(filtered.size(), visibleChannelLimit + CHANNELS_PER_BATCH);
-                updateChannelResults();
-            });
-        }
-    }
-
-    private LinearLayout channelCard(Channel ch, int index) {
-        boolean selected = ch == currentChannel;
-        LinearLayout card = horizontal();
-        card.setPadding(dp(isTelevision() ? 11 : 8), dp(6), dp(9), dp(6));
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setBackground(outlined(selected ? 0xAA087449 : 0x33FFFFFF, 8,
-                selected ? 0xBBFFFFFF : 0x00FFFFFF));
-        card.setFocusable(true);
-        card.setClickable(true);
-
-        TextView number = label(String.valueOf(index + 1), isTelevision() ? 15 : 12,
-                selected ? YELLOW : Color.WHITE, true);
-        number.setGravity(Gravity.CENTER);
-        card.addView(number, lp(isTelevision() ? 30 : 26, -1));
-
-        FrameLayout logoFrame = new FrameLayout(this);
-        logoFrame.setBackground(rounded(0xEEFFFFFF, 7));
-        TextView initials = label(initials(ch.name), 10, 0xFF176647, true);
-        initials.setGravity(Gravity.CENTER);
-        logoFrame.addView(initials, new FrameLayout.LayoutParams(-1, -1));
-        ImageView image = new ImageView(this);
-        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setPadding(dp(3), dp(3), dp(3), dp(3));
-        logoFrame.addView(image, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams logoP = lp(isTelevision() ? 44 : 38, isTelevision() ? 44 : 38);
-        logoP.rightMargin = dp(10);
-        card.addView(logoFrame, logoP);
-        loadLogo(ch.logo, image, initials);
-
-        LinearLayout info = vertical();
-        info.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(info, new LinearLayout.LayoutParams(0, -1, 1f));
-        TextView name = label(safe(ch.name), isTelevision() ? 14 : 11,
-                selected ? YELLOW : Color.WHITE, true);
-        name.setSingleLine(true);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        info.addView(name, lp(-1, -2));
-
-        String group = safe(ch.group).replace("VAVOO · ", "").replace("IPTV-ORG · ", "");
-        TextView meta = label(flag(ch.country, countryCode(ch.country)) + "  " + safeCountry(ch.country)
-                + (group.isEmpty() ? "" : "  ·  " + group),
-                isTelevision() ? 9 : 8, 0xEEFFFFFF, false);
-        meta.setSingleLine(true);
-        meta.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams metaP = lp(-1, -2);
-        metaP.topMargin = dp(2);
-        info.addView(meta, metaP);
-
-        if (isFavorite(ch)) {
-            TextView star = label("★", isTelevision() ? 15 : 12, YELLOW, true);
-            card.addView(star, lp(22, -2));
-        }
-        card.setOnFocusChangeListener((view, focused) -> {
-            card.setBackground(outlined(focused || selected ? 0xAA087449 : 0x33FFFFFF, 8,
-                    focused ? 0xDDFFFFFF : (selected ? 0xBBFFFFFF : 0x00FFFFFF)));
-            name.setTextColor(focused || selected ? YELLOW : Color.WHITE);
-            number.setTextColor(focused || selected ? YELLOW : Color.WHITE);
-            card.setScaleX(focused ? 1.02f : 1f);
-            card.setScaleY(focused ? 1.02f : 1f);
         });
-        card.setOnClickListener(v -> {
-            card.setBackground(outlined(0xAA087449, 8, 0xBBFFFFFF));
-            play(ch);
-        });
-        return card;
-    }
-
-    private void loadLogo(String address, ImageView image, TextView initials) {
-        if (address == null || address.trim().isEmpty()) { image.setVisibility(View.GONE); return; }
-        image.setTag(address);
-        Bitmap cached = logoCache.get(address);
-        if (cached != null) { image.setImageBitmap(cached); initials.setVisibility(View.GONE); return; }
-        logoIo.execute(() -> {
-            HttpURLConnection conn = null;
-            try {
-                conn = (HttpURLConnection) new URL(address).openConnection();
-                conn.setConnectTimeout(5000); conn.setReadTimeout(7000);
-                conn.setRequestProperty("User-Agent", "NISSKENZI+/1.9.3");
-                try (InputStream in = conn.getInputStream()) {
-                    Bitmap bitmap = decodeLogo(in);
-                    if (bitmap != null) {
-                        logoCache.put(address, bitmap);
-                        image.post(() -> {
-                            if (address.equals(image.getTag())) {
-                                image.setImageBitmap(bitmap);
-                                image.setVisibility(View.VISIBLE);
-                                initials.setVisibility(View.GONE);
-                            }
-                        });
-                    }
-                }
-            } catch (Exception ignored) {
-            } finally { if (conn != null) conn.disconnect(); }
-        });
-    }
-
-    private Bitmap decodeLogo(InputStream input) throws java.io.IOException {
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        int read;
-        while ((read = input.read(buffer)) != -1) {
-            total += read;
-            if (total > 2 * 1024 * 1024) return null;
-            output.write(buffer, 0, read);
-        }
-        byte[] data = output.toByteArray();
-        if (data.length == 0) return null;
-
-        BitmapFactory.Options bounds = new BitmapFactory.Options();
-        bounds.inJustDecodeBounds = true;
-        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
-
-        int sample = 1;
-        while (bounds.outWidth / sample > 192 || bounds.outHeight / sample > 192) sample *= 2;
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inSampleSize = sample;
-        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        return BitmapFactory.decodeByteArray(data, 0, data.length, options);
     }
 
     private void renderSettings() {
@@ -1010,8 +884,6 @@ public class MainActivity extends Activity {
             recentOnly = false;
             categorySearch = "";
             searchText = "";
-            visibleChannelLimit = CHANNELS_PER_BATCH;
-            focusChannelIndex = -1;
             if (searchInput != null) searchInput.setText("");
         }
         updateHeaderTabs();
@@ -1275,6 +1147,7 @@ public class MainActivity extends Activity {
     private void play(Channel ch) {
         if (ch == null) return;
         currentChannel = ch;
+        if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.url);
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Connexion au flux " + sourceFilter + "…");
@@ -1433,6 +1306,7 @@ public class MainActivity extends Activity {
     private void stopPreview() {
         releaseMediaEngine();
         currentChannel = null;
+        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
         if (playerStage != null) {
             playerStage.removeAllViews();
             TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);
@@ -1467,7 +1341,7 @@ public class MainActivity extends Activity {
         loadGeneration.incrementAndGet();
         releasePlayer();
         io.shutdownNow();
-        logoIo.shutdownNow();
+        if (channelAdapter != null) channelAdapter.shutdown();
         super.onDestroy();
     }
 }

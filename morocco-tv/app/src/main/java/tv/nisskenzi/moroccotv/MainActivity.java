@@ -1273,7 +1273,7 @@ public class MainActivity extends Activity {
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Connexion au flux " + sourceFilter + "…");
         if (previewDetail != null) previewDetail.setText(
-                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.channel != null ? ch.country : ch.country));
+                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
         renderCountryChoices();
         startPlayback(ch);
     }

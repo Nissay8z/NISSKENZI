@@ -1361,64 +1361,77 @@ public class MainActivity extends Activity {
         if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.url);
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
-        if (previewStatus != null) previewStatus.setText("Connexion au flux " + sourceFilter + "…");
+        if (previewStatus != null) previewStatus.setText("Ouverture du direct…");
         if (previewDetail != null) previewDetail.setText(
                 "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
-        renderCountryChoices();
+
+        // Don't rebuild the country pane every time a channel is chosen. The
+        // full catalogue can contain ten thousand rows and this was causing stutter.
         enterFullscreenPlayback();
         startPlayback(ch);
     }
 
+    /** Create the native video surface before resolving the one channel the user chose. */
     private void startPlayback(Channel ch) {
         releaseMediaEngine();
-        if (playerStage != null) playerStage.removeAllViews();
-        if (ch.isVavoo) {
-            Toast.makeText(this, "Résolution du flux VAVOO…", Toast.LENGTH_SHORT).show();
-            io.execute(() -> {
-                try {
-                    String resolved = VavooProvider.resolveStream(ch.vavooSourceUrl);
-                    runOnUiThread(() -> {
-                        if (currentChannel != ch || playerStage == null) return;
-                        startResolvedPlayback(ch, resolved);
-                    });
-                } catch (Exception e) {
-                    String message = e.getMessage() == null ? "Résolution VAVOO impossible" : e.getMessage();
-                    runOnUiThread(() -> { if (currentChannel == ch) Toast.makeText(MainActivity.this, "VAVOO : " + message, Toast.LENGTH_LONG).show(); });
-                }
-            });
-        } else {
-            startResolvedPlayback(ch, ch.url);
-        }
-    }
-
-    private void startResolvedPlayback(Channel ch, String streamUrl) {
         if (playerStage == null || currentChannel != ch) return;
-        if (useVlcPlayer()) startVlcPlayback(ch, streamUrl);
-        else startMedia3Playback(ch, streamUrl);
+        playerStage.removeAllViews();
+
+        final NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
+        nativeView.setChannelName(ch.name);
+        nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+        nativeView.setBackAction(nativeView::hideControls);
+        nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
+                this::loadEpgForCurrentChannel);
+        nativeView.setPlaybackState(Player.STATE_BUFFERING);
+        playerView = nativeView;
+        playerStage.addView(nativeView, new FrameLayout.LayoutParams(-1, -1));
+        nativeView.setFocusable(true);
+        if (fullscreenPlayback) nativeView.post(() -> {
+            if (fullscreenPlayback && playerView == nativeView) nativeView.focusControls();
+        });
+
+        // IPTV-org entries already contain their direct stream URL.
+        if (!ch.isVavoo) {
+            startMedia3Playback(ch, ch.url, nativeView);
+            return;
+        }
+
+        final String catalogReference = safe(ch.vavooSourceUrl);
+        String cachedStream = ResolvedStreamCache.get(catalogReference);
+        if (cachedStream != null) {
+            startMedia3Playback(ch, cachedStream, nativeView);
+            return;
+        }
+
+        // Resolve this selected VAVOO entry only. The native spinner and controls
+        // are visible while the request runs; no neighbouring channels are prefetched.
+        io.execute(() -> {
+            try {
+                String resolved = VavooProvider.resolveStream(catalogReference);
+                ResolvedStreamCache.put(catalogReference, resolved);
+                runOnUiThread(() -> {
+                    if (activityDestroyed || currentChannel != ch || !fullscreenPlayback
+                            || playerView != nativeView || playerStage == null) return;
+                    startMedia3Playback(ch, resolved, nativeView);
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (activityDestroyed || currentChannel != ch || playerView != nativeView) return;
+                    nativeView.setErrorMessage("Flux VAVOO indisponible. Réessaie cette chaîne plus tard.");
+                    if (previewStatus != null) previewStatus.setText("Flux indisponible");
+                });
+            }
+        });
     }
 
-    private void startMedia3Playback(Channel ch, String streamUrl) {
-        NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
+    private void startMedia3Playback(Channel ch, String streamUrl, NativeLivePlayerView nativeView) {
+        if (playerStage == null || currentChannel != ch || playerView != nativeView) return;
         try {
             ExoPlayer active = LivePlaybackFactory.create(this,
-                    ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
-            nativeView.setChannelName(ch.name);
-            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
-            // The visible Back button dismisses the on-screen bars. Physical Back
-            // closes the drawer, then hides controls, then exits fullscreen.
-            nativeView.setBackAction(nativeView::hideControls);
-            nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
-                    this::loadEpgForCurrentChannel);
-            nativeView.setPlaybackState(Player.STATE_BUFFERING);
-
+                    ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.6");
             player = active;
-            playerView = nativeView;
-            playerStage.addView(nativeView, new FrameLayout.LayoutParams(-1, -1));
             nativeView.setPlayer(active);
-            nativeView.setFocusable(true);
-            if (fullscreenPlayback) nativeView.post(() -> {
-                if (fullscreenPlayback && playerView == nativeView) nativeView.focusControls();
-            });
 
             active.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int playbackState) {
@@ -1427,43 +1440,28 @@ public class MainActivity extends Activity {
                     if (playbackState == Player.STATE_READY) {
                         previewStatus.setText("● EN DIRECT");
                     } else if (playbackState == Player.STATE_BUFFERING) {
-                        previewStatus.setText("Connexion · mise en mémoire tampon…");
+                        previewStatus.setText("Ouverture du direct…");
                     } else {
-                        previewStatus.setText("Connexion au flux…");
+                        previewStatus.setText("Prêt à lire");
                     }
                 }
 
-                @Override public void onPlayerError(PlaybackException e) {
-                    if (currentChannel == ch && playerView == nativeView) {
-                        nativeView.setErrorMessage("Flux indisponible · un autre lecteur peut être nécessaire");
-                        if (previewStatus != null) {
-                            previewStatus.setText("Flux indisponible · essayez l’autre lecteur");
-                        }
-                    }
-                    Toast.makeText(MainActivity.this,
-                            "Media3 : lecture impossible (" + e.getErrorCodeName() + ").",
-                            Toast.LENGTH_LONG).show();
-                    if (!useVlcPlayer()) {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Essayer un autre lecteur ?")
-                            .setMessage("Ce flux semble nécessiter un moteur vidéo plus compatible. VLC est disponible en option.")
-                            .setNegativeButton("Pas maintenant", null)
-                            .setPositiveButton("Essayer VLC", (dialog, which) -> {
-                                setVlcPreference(true);
-                                startPlayback(ch);
-                            }).show();
-                    }
+                @Override public void onPlayerError(PlaybackException error) {
+                    if (currentChannel != ch || playerView != nativeView) return;
+                    if (ch.isVavoo) ResolvedStreamCache.invalidate(ch.vavooSourceUrl);
+                    nativeView.setErrorMessage("Flux indisponible. Essaie une autre chaîne.");
+                    if (previewStatus != null) previewStatus.setText("Flux indisponible");
+                    // This application intentionally uses one player only; errors are
+                    // shown inline and never trigger an alternate-player pop-up.
                 }
             });
+
             active.setMediaItem(LivePlaybackFactory.mediaItem(streamUrl, ch.name));
             active.prepare();
             active.setPlayWhenReady(true);
-        } catch (Exception e) {
-            if (nativeView != null) {
-                nativeView.setErrorMessage("Démarrage impossible");
-            }
-            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
-                    Toast.LENGTH_LONG).show();
+        } catch (Exception error) {
+            nativeView.setErrorMessage("Impossible de démarrer ce flux.");
+            if (previewStatus != null) previewStatus.setText("Démarrage impossible");
         }
     }
 
@@ -1482,69 +1480,23 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void startVlcPlayback(Channel ch, String streamUrl) {
-        try {
-            ArrayList<String> options = new ArrayList<>();
-            options.add("--network-caching=1500");
-            options.add("--no-drop-late-frames");
-            options.add("--no-skip-frames");
-            libVLC = new LibVLC(this, options);
-            org.videolan.libvlc.MediaPlayer active = new org.videolan.libvlc.MediaPlayer(libVLC);
-            vlcPlayer = active;
-            vlcVideoLayout = new VLCVideoLayout(this);
-            playerStage.addView(vlcVideoLayout, new FrameLayout.LayoutParams(-1, -1));
-            active.attachViews(vlcVideoLayout, null, false, false);
-            active.setEventListener(event -> {
-                if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                    runOnUiThread(() -> {
-                        if (vlcPlayer != active || currentChannel != ch) return;
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("VLC n’a pas pu lire le flux")
-                            .setMessage("Le flux est peut-être indisponible. Souhaitez-vous tenter le lecteur Media3 ?")
-                            .setNegativeButton("Fermer", null)
-                            .setPositiveButton("Essayer Media3", (dialog, which) -> {
-                                setVlcPreference(false);
-                                startPlayback(ch);
-                            }).show();
-                    });
-                }
-            });
-            Media media = new Media(libVLC, Uri.parse(streamUrl));
-            media.setHWDecoderEnabled(true, false);
-            media.addOption(":network-caching=1500");
-            active.setMedia(media);
-            media.release();
-            active.play();
-        } catch (Exception e) {
-            releaseMediaEngine();
-            Toast.makeText(this, "Impossible de démarrer VLC : " + safe(e.getMessage()), Toast.LENGTH_LONG).show();
-            if (currentChannel == ch && playerStage != null) {
-                setVlcPreference(false);
-                startMedia3Playback(ch, streamUrl);
-            }
-        }
-    }
-
     private void releaseMediaEngine() {
         if (player != null) {
-            try { player.stop(); player.clearMediaItems(); player.release(); } catch (Exception ignored) {}
+            try {
+                player.stop();
+                player.clearMediaItems();
+                player.release();
+            } catch (Exception ignored) {
+            }
             player = null;
         }
         if (playerView != null) {
-            try { playerView.setPlayer(null); if (playerStage != null) playerStage.removeView(playerView); } catch (Exception ignored) {}
+            try {
+                playerView.setPlayer(null);
+                if (playerStage != null) playerStage.removeView(playerView);
+            } catch (Exception ignored) {
+            }
             playerView = null;
-        }
-        if (vlcPlayer != null) {
-            try { vlcPlayer.stop(); vlcPlayer.detachViews(); vlcPlayer.release(); } catch (Exception ignored) {}
-            vlcPlayer = null;
-        }
-        if (libVLC != null) {
-            try { libVLC.release(); } catch (Exception ignored) {}
-            libVLC = null;
-        }
-        if (vlcVideoLayout != null) {
-            try { if (playerStage != null) playerStage.removeView(vlcVideoLayout); } catch (Exception ignored) {}
-            vlcVideoLayout = null;
         }
     }
 
@@ -1577,7 +1529,7 @@ public class MainActivity extends Activity {
             exitFullscreenPlayback();
         } else if ("Paramètres".equals(activePage)) {
             setPage("Live TV");
-        } else if (player != null || vlcPlayer != null) {
+        } else if (player != null) {
             stopPreview();
         } else {
             super.onBackPressed();

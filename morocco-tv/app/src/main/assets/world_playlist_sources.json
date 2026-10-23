@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "maxChannels": 20000,
+  "maxPlaylistBytes": 41943040,
+  "minimumMergedChannels": 1000,
+  "blockedTerms": [
+    "pluto tv",
+    "samsung tv plus"
+  ],
+  "sources": [
+    {
+      "id": "iptv-org",
+      "name": "IPTV-org mondial",
+      "url": "https://iptv-org.github.io/iptv/index.country.m3u",
+      "enabled": true,
+      "required": true,
+      "priority": 50,
+      "minimumChannels": 1000,
+      "countryFromGroup": true
+    },
+    {
+      "id": "free-tv",
+      "name": "Free-TV sélection libre",
+      "url": "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+      "enabled": true,
+      "required": false,
+      "priority": 100,
+      "minimumChannels": 25,
+      "countryFromGroup": false
+    },
+    {
+      "id": "dearbulut-online",
+      "name": "Flux validés",
+      "url": "https://dearbulut.github.io/iptv/playlists/online.m3u",
+      "enabled": true,
+      "required": false,
+      "priority": 80,
+      "minimumChannels": 500,
+      "countryFromGroup": false
+    }
+  ]
+}

@@ -59,7 +59,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Native Android Live TV app optimized for Android TV and native UI design.
@@ -929,7 +928,6 @@ public class MainActivity extends Activity {
 
         final int currentGen = loadGeneration.incrementAndGet();
 
-        final AtomicBoolean remoteFinished = new AtomicBoolean(false);
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
@@ -939,8 +937,7 @@ public class MainActivity extends Activity {
             if (!diskCached.isEmpty()) {
                 final ArrayList<Channel> diskSnapshot = diskCached;
                 runOnUiThread(() -> {
-                    if (activityDestroyed || remoteFinished.get()
-                            || currentGen != loadGeneration.get()
+                    if (activityDestroyed || currentGen != loadGeneration.get()
                             || !requestedSource.equals(sourceFilter)) return;
                     if (channels.size() < diskSnapshot.size()) {
                         channels.clear();
@@ -965,7 +962,7 @@ public class MainActivity extends Activity {
                         if (size <= 0 || (previous > 0 && size - previous < 400)
                                 || !lastVavooPublished.compareAndSet(previous, size)) return;
                         publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
-                                currentGen, remoteFinished);
+                                currentGen);
                     });
 
                     for (VavooProvider.VavooChannel item : sourceChannels) {
@@ -1011,7 +1008,7 @@ public class MainActivity extends Activity {
                                 if (loaded.size() - previouslyPublished >= 500
                                         && lastIptvPublished.compareAndSet(previouslyPublished, loaded.size())) {
                                     publishCatalogSnapshot(new ArrayList<>(loaded), requestedSource,
-                                            currentGen, remoteFinished);
+                                            currentGen);
                                 }
                             }
                         }
@@ -1027,8 +1024,6 @@ public class MainActivity extends Activity {
             final String loadError = error;
             final ArrayList<Channel> cacheSnapshot = cacheableChannels(result);
             if (!cacheSnapshot.isEmpty()) saveCachedChannels(cacheSnapshot, requestedSource);
-            remoteFinished.set(true);
-
             runOnUiThread(() -> {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
@@ -1095,12 +1090,11 @@ public class MainActivity extends Activity {
     }
 
     private void publishCatalogSnapshot(ArrayList<Channel> snapshot, String requestedSource,
-                                        int generation, AtomicBoolean remoteFinished) {
+                                        int generation) {
         if (snapshot == null || snapshot.isEmpty()) return;
         final ArrayList<Channel> copy = new ArrayList<>(snapshot);
         runOnUiThread(() -> {
-            if (activityDestroyed || remoteFinished.get()
-                    || generation != loadGeneration.get()
+            if (activityDestroyed || generation != loadGeneration.get()
                     || !requestedSource.equals(sourceFilter)
                     || copy.size() <= channels.size()) return;
             channels.clear();

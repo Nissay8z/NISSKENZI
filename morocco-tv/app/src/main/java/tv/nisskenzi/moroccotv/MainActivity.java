@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadCachedImportedChannels(); loadChannels(); loadXtreamCatalog(); loadSavedSourcePlaylists();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -62,6 +62,31 @@ public class MainActivity extends Activity {
     status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
     list=new LinearLayout(this);setContentView(root);
     homeWebView.loadUrl("file:///android_asset/nisskenzi_home.html");
+  }
+  private void loadCachedImportedChannels(){
+    try{
+      String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("imported_channels","");
+      if(raw.isEmpty())return;
+      JSONArray arr=new JSONArray(raw);
+      importedChannels.clear();
+      for(int i=0;i<arr.length();i++){
+        JSONObject o=arr.optJSONObject(i);if(o==null)continue;
+        String name=o.optString("name","Chaîne importée"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Playlist importée");
+        if(url.isEmpty())continue;
+        importedChannels.add(new Channel(name,url,logo,group,false,o.optString("sourceUrl",""),o.optString("country","")));
+      }
+    }catch(Exception ignored){}
+  }
+  private void saveCachedImportedChannels(){
+    try{
+      JSONArray arr=new JSONArray();
+      for(Channel ch:importedChannels){
+        JSONObject o=new JSONObject();o.put("name",ch.name==null?"Chaîne importée":ch.name);o.put("url",ch.url==null?"":ch.url);
+        o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Playlist importée":ch.group);
+        o.put("sourceUrl",ch.vavooSourceUrl==null?"":ch.vavooSourceUrl);o.put("country",ch.vavooCountry==null?"":ch.vavooCountry);arr.put(o);
+      }
+      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("imported_channels",arr.toString()).apply();
+    }catch(Exception ignored){}
   }
   private void loadCachedChannels(){
     try{
@@ -340,6 +365,7 @@ public class MainActivity extends Activity {
         if(result.isEmpty()){status.setText("Import impossible : "+err);return;}
         for(java.util.Iterator<Channel> it=importedChannels.iterator();it.hasNext();){Channel existing=it.next();if(playlist.equals(existing.vavooSourceUrl))it.remove();}
         importedChannels.addAll(result);
+        saveCachedImportedChannels();
         rememberPlaylist(playlist);
         ArrayList<Channel> base=new ArrayList<>(baseChannels.isEmpty()?allVavooChannels:baseChannels);
         ArrayList<Channel> combined=mergeChannels(base,importedChannels);

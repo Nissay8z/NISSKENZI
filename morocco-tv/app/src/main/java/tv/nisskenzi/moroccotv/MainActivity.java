@@ -634,7 +634,7 @@ public class MainActivity extends ComponentActivity {
                     renderCountryChoices();
                 });
 
-        TextView sourcesHeading = label("SOURCES M3U", isTelevision() ? 10 : 8, CYAN, true);
+        TextView sourcesHeading = label("SOURCES", isTelevision() ? 10 : 8, CYAN, true);
         sourcesHeading.setLetterSpacing(0.08f);
         LinearLayout.LayoutParams headingParams = lp(-1, -2);
         headingParams.topMargin = dp(10);
@@ -867,138 +867,89 @@ public class MainActivity extends ComponentActivity {
         LinearLayout page = vertical();
         page.setPadding(dp(20), dp(20), dp(20), dp(24));
         scroll.addView(page);
-        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1,-1));
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
         page.addView(label("Paramètres", 26, TEXT, true));
-        TextView intro = label("Gestion des moteurs de catalogues et des lecteurs multimédias.", 11, MUTED, false);
-        LinearLayout.LayoutParams ip = lp(-1,-2); ip.topMargin=dp(6); ip.bottomMargin=dp(20); page.addView(intro,ip);
+        TextView intro = label(
+                "Deux catalogues seulement : VAVOO natif et IPTV-org mondial.",
+                11, MUTED, false);
+        LinearLayout.LayoutParams ip = lp(-1, -2);
+        ip.topMargin = dp(6);
+        ip.bottomMargin = dp(20);
+        page.addView(intro, ip);
 
-        TextView playerInfo = label("LECTEUR NATIF ANDROID", 9, MUTED, true);
-        page.addView(playerInfo);
-        TextView playerInfoDetail = label(
-                "Un seul lecteur Media3 avec décodage matériel Android quand il est disponible.",
+        page.addView(label("LECTEUR NATIF ANDROID", 9, MUTED, true));
+        TextView playerInfo = label(
+                "Lecture Media3 native. Les références VAVOO sont résolues uniquement au clic.",
                 11, MUTED, false);
         LinearLayout.LayoutParams playerInfoParams = lp(-1, -2);
         playerInfoParams.topMargin = dp(8);
         playerInfoParams.bottomMargin = dp(18);
-        page.addView(playerInfoDetail, playerInfoParams);
+        page.addView(playerInfo, playerInfoParams);
 
-        page.addView(sourceCard("VAVOO", "V", "M3U local + résolution à la demande",
-                "Le catalogue VAVOO provient du M3U intégré. Le résolveur VAVOO ne sert qu'au clic sur une chaîne concernée.", CYAN));
+        page.addView(sourceCard(
+                "VAVOO", "V", "API native · résolution à la demande",
+                "Le catalogue est chargé directement par VavooProvider. Aucun M3U GitHub n’est utilisé pour VAVOO ; le flux est résolu au moment de la lecture.",
+                CYAN));
+
         LinearLayout.LayoutParams gap = lp(-1, -2);
         gap.topMargin = dp(12);
-        page.addView(sourceCard("IPTV-org France", "FR", "Playlist publique",
-                "Chaînes françaises à URLs directes, chargées dans la base SQLite.", PURPLE), gap);
-        LinearLayout.LayoutParams cardGap = lp(-1, -2);
-        cardGap.topMargin = dp(12);
-        page.addView(sourceCard("Pluto TV France", "P", "FAST • M3U public",
-                "Bouquet Pluto TV France via une playlist communautaire maintenue publiquement.", CYAN), cardGap);
-        LinearLayout.LayoutParams samsungGap = lp(-1, -2);
-        samsungGap.topMargin = dp(12);
-        page.addView(sourceCard("Samsung TV Plus France", "S+", "FAST • M3U public",
-                "Bouquet Samsung TV Plus France via une playlist communautaire maintenue publiquement.", PURPLE), samsungGap);
-        LinearLayout.LayoutParams worldGap = lp(-1, -2);
-        worldGap.topMargin = dp(12);
-        page.addView(sourceCard("Free-TV International", "🌐", "Chaînes internationales gratuites",
-                "Playlist internationale de chaînes gratuites, distincte des autres bouquets.", CYAN), worldGap);
+        page.addView(sourceCard(
+                "IPTV-org", "🌍", "Playlist mondiale via GitHub Raw",
+                "Téléchargement du master M3U public : pays, group-title et tvg-country sont conservés et indexés dans Room.",
+                PURPLE), gap);
 
-        SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
-        TextView m3uTitle = label("CONFIGURATION DES PLAYLISTS M3U", 10, CYAN, true);
-        LinearLayout.LayoutParams m3uTitleParams = lp(-1, -2);
-        m3uTitleParams.topMargin = dp(20);
-        m3uTitleParams.bottomMargin = dp(8);
-        page.addView(m3uTitle, m3uTitleParams);
-        page.addView(label("Laisse un champ vide pour garder sa source par défaut. VAVOO utilise le M3U intégré si son champ est vide. URL acceptées : https://…, asset://nom.m3u ou file://…", 10, MUTED, false), lp(-1, -2));
-
-        EditText vavooM3uUrl = m3uUrlField(m3uPrefs.getString("vavoo_url", ""), "URL M3U VAVOO (facultatif)");
-        LinearLayout.LayoutParams vavooUrlParams = lp(-1, 46);
-        vavooUrlParams.topMargin = dp(8);
-        page.addView(vavooM3uUrl, vavooUrlParams);
-        EditText iptvM3uUrl = m3uUrlField(m3uPrefs.getString("iptv_org_url", ""), "URL M3U IPTV-org France (facultatif)");
-        LinearLayout.LayoutParams iptvUrlParams = lp(-1, 46);
-        iptvUrlParams.topMargin = dp(8);
-        page.addView(iptvM3uUrl, iptvUrlParams);
-        EditText plutoM3uUrl = m3uUrlField(m3uPrefs.getString("pluto_url", ""), "URL M3U Pluto TV France (facultatif)");
-        LinearLayout.LayoutParams plutoUrlParams = lp(-1, 46);
-        plutoUrlParams.topMargin = dp(8);
-        page.addView(plutoM3uUrl, plutoUrlParams);
-        EditText samsungM3uUrl = m3uUrlField(m3uPrefs.getString("samsung_url", ""), "URL M3U Samsung TV Plus France (facultatif)");
-        LinearLayout.LayoutParams samsungUrlParams = lp(-1, 46);
-        samsungUrlParams.topMargin = dp(8);
-        page.addView(samsungM3uUrl, samsungUrlParams);
-        EditText freeTvM3uUrl = m3uUrlField(m3uPrefs.getString("free_tv_url", ""), "URL M3U Free-TV International (facultatif)");
-        LinearLayout.LayoutParams freeTvUrlParams = lp(-1, 46);
-        freeTvUrlParams.topMargin = dp(8);
-        page.addView(freeTvM3uUrl, freeTvUrlParams);
-
-        TextView saveM3uUrls = buttonText("Enregistrer les playlists M3U", true);
-        LinearLayout.LayoutParams saveM3uParams = lp(-1, 46);
-        saveM3uParams.topMargin = dp(10);
-        page.addView(saveM3uUrls, saveM3uParams);
-        saveM3uUrls.setOnClickListener(v -> {
-            m3uPrefs.edit()
-                    .putString("vavoo_url", safe(vavooM3uUrl.getText() == null ? "" : vavooM3uUrl.getText().toString()))
-                    .putString("iptv_org_url", safe(iptvM3uUrl.getText() == null ? "" : iptvM3uUrl.getText().toString()))
-                    .putString("pluto_url", safe(plutoM3uUrl.getText() == null ? "" : plutoM3uUrl.getText().toString()))
-                    .putString("samsung_url", safe(samsungM3uUrl.getText() == null ? "" : samsungM3uUrl.getText().toString()))
-                    .putString("free_tv_url", safe(freeTvM3uUrl.getText() == null ? "" : freeTvM3uUrl.getText().toString()))
-                    .apply();
-            M3UParser.clearMemoryCache();
-            Toast.makeText(this, "Playlists enregistrées : actualisation en arrière-plan.", Toast.LENGTH_LONG).show();
-            loadChannels(true);
-        });
+        LinearLayout.LayoutParams urlParams = lp(-1, -2);
+        urlParams.topMargin = dp(12);
+        TextView sourceUrl = label(
+                "Catalogue IPTV-org : raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u",
+                10, MUTED, false);
+        sourceUrl.setTextIsSelectable(true);
+        page.addView(sourceUrl, urlParams);
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
         statusCard.setBackground(outlined(PANEL, 14, LINE));
-        LinearLayout.LayoutParams sp = lp(-1,-2); sp.topMargin = dp(16); page.addView(statusCard, sp);
-        
+        LinearLayout.LayoutParams sp = lp(-1, -2);
+        sp.topMargin = dp(18);
+        page.addView(statusCard, sp);
+
         statusCard.addView(label("ÉTAT DU CATALOGUE", 9, MUTED, true));
         TextView details = label(catalogStatus, 11, TEXT, false);
         details.setTextIsSelectable(true);
         details.setPadding(0, dp(10), 0, dp(4));
         statusCard.addView(details);
 
-        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser toutes les sources M3U", true);
-        LinearLayout.LayoutParams rp = lp(-1, 48); rp.topMargin = dp(16); page.addView(refresh, rp);
+        TextView refresh = buttonText(
+                loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser VAVOO + IPTV-org",
+                true);
+        LinearLayout.LayoutParams rp = lp(-1, 48);
+        rp.topMargin = dp(16);
+        page.addView(refresh, rp);
         refresh.setOnClickListener(v -> loadChannels(true));
         if (loadingCatalog) refresh.setAlpha(0.65f);
 
         TextView cache = buttonText("Effacer le cache local", false);
-        LinearLayout.LayoutParams cp = lp(-1, 46); cp.topMargin = dp(10); page.addView(cache, cp);
+        LinearLayout.LayoutParams cp = lp(-1, 46);
+        cp.topMargin = dp(10);
+        page.addView(cache, cp);
         cache.setOnClickListener(v -> new AlertDialog.Builder(this)
-            .setTitle("Effacer le cache ?")
-            .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Vos favoris sont conservés.")
-            .setNegativeButton("Annuler", null)
-            .setPositiveButton("Effacer", (dialog, which) -> {
-                CatalogCache.clear(MainActivity.this);
-                M3UParser.clearMemoryCache();
-                activeCountry = "Tous les pays";
-                favoritesOnly = false;
-                recentOnly = false;
-                lastRenderedFilterKey = "";
-                if (channelViewModel != null) channelViewModel.clearLocalDatabase();
-                Toast.makeText(this, "Base SQLite effacée. Les playlists seront rechargées en arrière-plan.", Toast.LENGTH_LONG).show();
-            }).show());
-
-        TextView note = label("Le catalogue est lu depuis une playlist M3U locale ou distante. Les références VAVOO sont résolues uniquement au clic sur une chaîne.", 10, MUTED, false);
-        note.setPadding(dp(2), dp(14), dp(2), 0);
-        page.addView(note);
-    }
-
-    private EditText m3uUrlField(String initialValue, String hint) {
-        EditText field = new EditText(this);
-        field.setSingleLine(true);
-        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        field.setTextSize(isTelevision() ? 14 : 11);
-        field.setTextColor(Color.WHITE);
-        field.setHintTextColor(0xFF8997A8);
-        field.setHint(hint);
-        field.setPadding(dp(14), 0, dp(14), 0);
-        field.setBackground(outlined(0xFF171F2A, 12, 0xFF39485B));
-        field.setText(initialValue == null ? "" : initialValue);
-        field.setSelectAllOnFocus(true);
-        return field;
+                .setTitle("Effacer le cache ?")
+                .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Vos favoris sont conservés.")
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton("Effacer", (dialog, which) -> {
+                    CatalogCache.clear(MainActivity.this);
+                    M3UParser.clearMemoryCache();
+                    activeCountry = "Tous les pays";
+                    favoritesOnly = false;
+                    recentOnly = false;
+                    lastRenderedFilterKey = "";
+                    if (channelViewModel != null) channelViewModel.clearLocalDatabase();
+                    Toast.makeText(this,
+                            "Cache local effacé. Les deux catalogues seront rechargés.",
+                            Toast.LENGTH_LONG).show();
+                })
+                .show());
     }
 
     private View sourceCard(String title, String icon, String tagline, String description, int accent) {

@@ -165,11 +165,11 @@ public class MainActivity extends Activity {
     status.setText("Connexion native à VAVOO…");
     io.execute(()->{
       ArrayList<Channel> found=new ArrayList<>();
+      ArrayList<Channel> all=new ArrayList<>();
       String error="";
       try{
         java.util.List<VavooProvider.VavooChannel> remote=VavooProvider.loadChannels();
         String wanted=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_country_filter","France");
-        ArrayList<Channel> all=new ArrayList<>();
         for(VavooProvider.VavooChannel item:remote){
           all.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl,item.country));
           boolean matches="Tous les pays".equals(wanted) ||
@@ -185,7 +185,7 @@ public class MainActivity extends Activity {
       }catch(Exception e){
         error=e.getMessage()==null?"Erreur de connexion au catalogue":e.getMessage();
       }
-      final ArrayList<Channel> result=found;final String err=error;
+      final ArrayList<Channel> result=found;final ArrayList<Channel> allResult=new ArrayList<>(all);final String err=error;
       runOnUiThread(()->{
         allVavooChannels.clear();allVavooChannels.addAll(allResult);
         if(result.isEmpty()){

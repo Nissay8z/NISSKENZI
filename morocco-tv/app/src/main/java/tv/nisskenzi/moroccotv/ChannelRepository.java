@@ -146,12 +146,14 @@ public final class ChannelRepository {
                 || "toutes les sources".equals(id)) return "all";
         if ("vavoo".equals(id)) return "vavoo";
         if ("iptv-org".equals(id) || "iptv org".equals(id)
-                || "iptv-org-fr".equals(id)) return "iptv-org-fr";
+                || "iptv-org-fr".equals(id) || "iptv-org france".equals(id)) return "iptv-org-fr";
         if ("pluto".equals(id) || "pluto tv".equals(id)
-                || "pluto-tv-fr".equals(id)) return "pluto-tv-fr";
+                || "pluto-tv-fr".equals(id) || "pluto tv france".equals(id)) return "pluto-tv-fr";
         if ("samsung".equals(id) || "samsung tv".equals(id)
-                || "samsung-tv-plus".equals(id) || "samsung-tv-fr".equals(id)) return "samsung-tv-fr";
-        if ("free-tv".equals(id) || "free-tv-world".equals(id)) return "free-tv-world";
+                || "samsung-tv-plus".equals(id) || "samsung-tv-fr".equals(id)
+                || "samsung tv plus france".equals(id)) return "samsung-tv-fr";
+        if ("free-tv".equals(id) || "free-tv-world".equals(id)
+                || "free-tv international".equals(id)) return "free-tv-world";
         return id;
     }
 
@@ -309,7 +311,8 @@ public final class ChannelRepository {
     private String resolveCountry(String rawCountry) {
         String raw = rawCountry == null ? "" : rawCountry.trim();
         if (raw.isEmpty()) return "";
-        if (raw.length() == 2 && raw.chars().allMatch(Character::isLetter)) {
+        if (raw.length() == 2 && Character.isLetter(raw.charAt(0))
+                && Character.isLetter(raw.charAt(1))) {
             String code = raw.toUpperCase(java.util.Locale.ROOT);
             try {
                 java.util.Locale locale = new java.util.Locale("", code);

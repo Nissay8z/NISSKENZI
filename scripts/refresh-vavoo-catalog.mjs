@@ -11,7 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const ROOT = process.cwd();
-const OUT = path.join(ROOT, 'morocco-tv/app/src/main/assets/vavoo_catalog.json');
+const OUT = path.join(ROOT, 'morocco-tv/app/src/main/assets/vavoo_catalog.m3u');
 const LANGUAGE = 'fr';
 const REGION = 'US'; // Broad/global VAVOO catalog; do not hard-filter to France.
 const CLIENT_VERSION = '3.0.2';
@@ -206,27 +206,31 @@ async function main() {
     a.country.localeCompare(b.country) || a.name.localeCompare(b.name) || a.url.localeCompare(b.url)
   );
 
-  let existing = null;
-  try {
-    existing = JSON.parse(fs.readFileSync(OUT, 'utf8'));
-  } catch {}
-  if (existing && Array.isArray(existing.channels)
-      && JSON.stringify(existing.channels) === JSON.stringify(channels)) {
-    console.log(`Catalogue inchangé: ${channels.length} chaînes de ${countries.length} pays; pas de commit nécessaire.`);
+  const generatedAt = new Date().toISOString();
+  const escapeAttr = value => clean(value).replace(/["\r\n]/g, ' ');
+  const m3u = [
+    '#EXTM3U',
+    `#NISSKENZI-CATALOG generatedAt="${generatedAt}" channels="${channels.length}" countries="${countries.length}" region="${REGION}"`,
+    ...channels.flatMap(channel => [
+      `#EXTINF:-1 tvg-id="${escapeAttr(channel.id)}" tvg-name="${escapeAttr(channel.name)}" tvg-logo="${escapeAttr(channel.logo)}" group-title="${escapeAttr(channel.group)}" tvg-country="${escapeAttr(channel.country)}",${escapeAttr(channel.name)}`,
+      `vavoo-catalog://${Buffer.from(channel.url, 'utf8').toString('base64url')}`,
+    ]),
+    '',
+  ].join('\n');
+
+  let existing = '';
+  try { existing = fs.readFileSync(OUT, 'utf8'); } catch {}
+  const stripGeneratedHeader = text => text.replace(
+    /^#NISSKENZI-CATALOG generatedAt="[^"]*" channels="[^"]*" countries="[^"]*" region="[^"]*"$/m,
+    '#NISSKENZI-CATALOG'
+  ).trim();
+  if (existing && stripGeneratedHeader(existing) === stripGeneratedHeader(m3u)) {
+    console.log(`Catalogue M3U inchangé: ${channels.length} chaînes de ${countries.length} pays.`);
     return;
   }
 
-  const snapshot = {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    language: LANGUAGE,
-    region: REGION,
-    countryCount: countries.length,
-    channelCount: channels.length,
-    channels,
-  };
-  fs.writeFileSync(OUT, JSON.stringify(snapshot), 'utf8');
-  console.log(`Catalogue actualisé: ${channels.length} chaînes de ${countries.length} pays. Fichier: ${OUT}`);
+  fs.writeFileSync(OUT, m3u, 'utf8');
+  console.log(`Catalogue M3U actualisé: ${channels.length} chaînes de ${countries.length} pays. Fichier: ${OUT}`);
 }
 
 main().catch(error => {

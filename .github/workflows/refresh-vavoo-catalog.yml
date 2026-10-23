@@ -32,13 +32,13 @@ jobs:
       - name: Commit changed catalogue
         id: commit
         run: |
-          if git diff --quiet -- morocco-tv/app/src/main/assets/vavoo_catalog.json; then
+          if git diff --quiet -- morocco-tv/app/src/main/assets/vavoo_catalog.m3u; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No catalogue changes."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add morocco-tv/app/src/main/assets/vavoo_catalog.json
+            git add morocco-tv/app/src/main/assets/vavoo_catalog.m3u
             git commit -m "chore: refresh embedded VAVOO global catalogue"
             git push origin main
             echo "changed=true" >> "$GITHUB_OUTPUT"

@@ -13,15 +13,23 @@ public final class Channel {
     public final String vavooSourceUrl;
     public final String country;
     public final boolean isVavoo;
+    /** XMLTV id from tvg-id, empty for sources that do not expose a guide identifier. */
+    public final String epgId;
     private final String searchIndex;
 
     public Channel(String name, String url, String logo, String group,
                    boolean isVavoo, String sourceUrl, String country) {
+        this(name, url, logo, group, isVavoo, sourceUrl, country, "");
+    }
+
+    public Channel(String name, String url, String logo, String group,
+                   boolean isVavoo, String sourceUrl, String country, String epgId) {
         this.name = safe(name);
         this.url = safe(url);
         this.logo = safe(logo);
         this.group = safe(group);
         this.isVavoo = isVavoo;
+        this.epgId = safe(epgId);
         this.vavooSourceUrl = safe(sourceUrl);
         this.country = safe(country).isEmpty() ? "Pays non précisé" : safe(country);
         this.searchIndex = normalizeSearch(this.name + " " + this.group + " " + this.country);

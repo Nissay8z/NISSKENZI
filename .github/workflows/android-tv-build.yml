@@ -47,6 +47,7 @@ jobs:
           cp morocco-tv/app/src/main/AndroidManifest.xml source-review/
           mkdir -p source-review/assets
           cp morocco-tv/app/src/main/assets/vavoo_catalog.json source-review/assets/
+          cp morocco-tv/app/src/main/assets/vavoo_catalog.m3u source-review/assets/
           cp scripts/refresh-vavoo-catalog.mjs source-review/
           cat > source-review/README.md <<'EOF'
           # NISSKENZI+ Android TV — source review bundle
@@ -59,8 +60,10 @@ jobs:
           - ChannelAdapter.java / ChannelLogoLoader.java: recycled RecyclerView rows, D-pad focus, bounded cancellable logo loading.
           - CatalogCache.java / FavoritesStore.java / RecentChannelsStore.java: per-source local caches and in-memory user indexes.
           - VavooProvider.java / IptvOrgProvider.java: separate catalog providers and network parsing.
-          - VavooSnapshotProvider.java: reads a preloaded all-country VAVOO metadata snapshot; stream resolution remains in VavooProvider.
-          - assets/vavoo_catalog.json and refresh-vavoo-catalog.mjs: generated catalogue snapshot and its updater.
+          - VavooSnapshotProvider.java: stream-parses the preloaded all-country VAVOO M3U; stream resolution remains in VavooProvider.
+          - assets/vavoo_catalog.m3u and refresh-vavoo-catalog.mjs: generated catalogue snapshot and its updater.
+          - EpgProvider.java: on-demand compressed XMLTV lookup for IPTV-org tvg-id and VAVOO name matches.
+          - NativeLivePlayerView.java / PlayerChannelDrawerAdapter.java: fullscreen controller, left channel drawer, and EPG preview.
           - build.gradle: dependency versions and Android build settings.
           - AndroidManifest.xml: app permissions and TV launcher declarations.
 

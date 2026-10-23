@@ -453,12 +453,17 @@ public class MainActivity extends Activity {
       homeWebView.evaluateJavascript("finishChannels();",null);
     }catch(Exception ignored){}
   }
+  private Channel mediaFavoriteChannel(MediaEntry item){
+    String key=item.url;
+    if(key==null||key.trim().isEmpty())key="series://"+(item.id==null?item.name:item.id);
+    return new Channel(item.name==null?"Média":item.name,key,item.poster==null?"":item.poster,item.group==null?"VOD":item.group);
+  }
   private void renderMediaToWeb(){
     if(homeWebView==null||!homeWebReady)return;
     try{
       JSONArray m=new JSONArray(),s=new JSONArray();
-      for(MediaEntry x:movies){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);m.put(o);}
-      for(MediaEntry x:series){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);mSafePut(s,o);}
+      for(MediaEntry x:movies){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);o.put("favorite",isFavorite(mediaFavoriteChannel(x)));m.put(o);}
+      for(MediaEntry x:series){JSONObject o=new JSONObject();o.put("name",x.name);o.put("url",x.url);o.put("poster",x.poster);o.put("group",x.group);o.put("type",x.type);o.put("id",x.id);o.put("favorite",isFavorite(mediaFavoriteChannel(x)));mSafePut(s,o);}
       homeWebView.evaluateJavascript("receiveMedia("+JSONObject.quote(m.toString())+","+JSONObject.quote(s.toString())+");",null);
     }catch(Exception ignored){}
   }
@@ -477,6 +482,7 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
     @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
     @JavascriptInterface public void playMedia(String type,int index){runOnUiThread(()->{if("Films".equals(type)){if(index>=0&&index<movies.size()){MediaEntry x=movies.get(index);MainActivity.this.play(new Channel(x.name,x.url,x.poster,"Films · "+x.group));}}else if(index>=0&&index<series.size())MainActivity.this.openSeriesEpisodes(series.get(index));});}
+    @JavascriptInterface public void toggleMediaFavorite(String type,int index){runOnUiThread(()->{ArrayList<MediaEntry> list="Films".equals(type)?movies:series;if(index>=0&&index<list.size()){toggleFavorite(mediaFavoriteChannel(list.get(index)));renderMediaToWeb();}});}
   }
   private void loadLogo(ImageView target,TextView fallback,String address){logoIo.execute(()->{try{HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(5000);conn.setReadTimeout(7000);conn.setInstanceFollowRedirects(true);conn.setRequestProperty("User-Agent","NissayStream/1.4");android.graphics.Bitmap bmp=BitmapFactory.decodeStream(conn.getInputStream());conn.disconnect();if(bmp!=null)runOnUiThread(()->{target.setImageBitmap(bmp);fallback.setVisibility(View.GONE);});}catch(Exception ignored){}});}
   private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}

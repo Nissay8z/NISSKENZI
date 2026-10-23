@@ -96,6 +96,7 @@ public class MainActivity extends Activity {
     private TextView settingsTab;
     private TextView previewTitle;
     private TextView previewStatus;
+    private TextView previewDetail;
 
     private PlayerView playerView;
     private ExoPlayer player;
@@ -140,6 +141,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
         loadCachedChannels();
         loadChannels();
@@ -563,12 +565,12 @@ public class MainActivity extends Activity {
         });
         stop.setOnClickListener(v -> stopPreview());
 
-        TextView detail = label(currentChannel == null
+        previewDetail = label(currentChannel == null
                 ? "La vidéo apparaît ici sans quitter la liste."
                 : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
                 isTelevision() ? 13 : 10, Color.WHITE, false);
-        detail.setPadding(0, dp(12), 0, 0);
-        right.addView(detail, lp(-1, -2));
+        previewDetail.setPadding(0, dp(12), 0, 0);
+        right.addView(previewDetail, lp(-1, -2));
         if (currentChannel == null) {
             TextView placeholder = label("▶\n\nSélectionne une chaîne", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);
             placeholder.setGravity(Gravity.CENTER);
@@ -1342,6 +1344,9 @@ public class MainActivity extends Activity {
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Connexion au flux " + sourceFilter + "…");
+        if (previewDetail != null) previewDetail.setText(
+                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
+        renderCountryChoices();
         startPlayback(ch);
     }
 
@@ -1503,6 +1508,7 @@ public class MainActivity extends Activity {
         }
         if (previewTitle != null) previewTitle.setText("Aperçu du direct");
         if (previewStatus != null) previewStatus.setText("Choisis une chaîne dans la liste");
+        if (previewDetail != null) previewDetail.setText("La vidéo apparaît ici sans quitter la liste.");
         updateChannelResults();
         renderCountryChoices();
     }

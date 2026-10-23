@@ -1,6 +1,5 @@
 package tv.nisskenzi.moroccotv;
 
-import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -16,25 +15,35 @@ import androidx.work.WorkManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Single owner of the multi-source M3U catalogue.
+ * Room-backed catalogue repository.
  *
- * Room is the UI source of truth. Network work only replaces one source's rows
- * after that playlist parsed successfully; a broken/offline feed never erases
- * its last valid local copy.
+ * Public channels come from one GitHub master.m3u, tagged per entry with
+ * x-source-id / x-source-name. VAVOO is deliberately independent: only this
+ * repository calls VavooProvider.loadChannels(), and the player resolves a
+ * VAVOO stream after the user selects it.
  */
 public final class ChannelRepository {
-    public static final long REFRESH_INTERVAL_HOURS = 12L;
-    private static final int MAX_CHANNELS_PER_SOURCE = 20_000;
-    private static final String PREFS = "m3u_sources";
-    private static final String DB_PREFS = "catalog_database_state";
+    public static final long REFRESH_INTERVAL_HOURS = 6L;
+    public static final String DEFAULT_MASTER_PLAYLIST_URL =
+            "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u";
+
+    private static final int MAX_MASTER_CHANNELS = 30_000;
+    private static final String URL_PREFS = "m3u_sources";
+    private static final String STATE_PREFS = "catalog_database_state";
+    private static final String MASTER_URL_KEY = "master_url";
+    private static final String VAVOO_REFRESH_KEY = "last_refresh_vavoo";
+    private static final String MASTER_REFRESH_KEY = "last_refresh_public_master";
     private static final String PERIODIC_WORK_NAME = "nisskenzi_m3u_refresh";
 
+    /** UI source/category row; only VAVOO and the single public master are network jobs. */
     public static final class Source {
         public final String id;
         public final String name;
@@ -43,35 +52,27 @@ public final class ChannelRepository {
         public final String urlPreferenceKey;
         public final boolean bundledAsset;
 
-        Source(String id, String name, String defaultUrl, String assetName,
-               String urlPreferenceKey, boolean bundledAsset) {
+        Source(String id, String name) {
             this.id = id;
             this.name = name;
-            this.defaultUrl = defaultUrl;
-            this.assetName = assetName;
-            this.urlPreferenceKey = urlPreferenceKey;
-            this.bundledAsset = bundledAsset;
+            this.defaultUrl = "";
+            this.assetName = "";
+            this.urlPreferenceKey = "";
+            this.bundledAsset = false;
         }
     }
 
     private static final List<Source> SOURCES;
     static {
-        ArrayList<Source> sources = new ArrayList<>();
-        sources.add(new Source("vavoo", "VAVOO", "",
-                "vavoo_catalog.m3u", "vavoo_url", true));
-        sources.add(new Source("iptv-org-fr", "IPTV-org France",
-                "https://iptv-org.github.io/iptv/countries/fr.m3u",
-                "", "iptv_org_url", false));
-        sources.add(new Source("pluto-tv-fr", "Pluto TV France",
-                "https://i.mjh.nz/PlutoTV/fr.m3u8",
-                "", "pluto_url", false));
-        sources.add(new Source("samsung-tv-fr", "Samsung TV Plus France",
-                "https://i.mjh.nz/SamsungTVPlus/fr.m3u8",
-                "", "samsung_url", false));
-        sources.add(new Source("free-tv-world", "Free-TV International",
-                "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
-                "", "free_tv_url", false));
-        SOURCES = Collections.unmodifiableList(sources);
+        ArrayList<Source> rows = new ArrayList<>();
+        rows.add(new Source("vavoo", "VAVOO"));
+        rows.add(new Source("iptv-org-fr", "IPTV-org France"));
+        rows.add(new Source("iptv-org-arab", "IPTV-org Monde arabe"));
+        rows.add(new Source("iptv-org-africa", "IPTV-org Afrique"));
+        rows.add(new Source("pluto-tv-fr", "Pluto TV France"));
+        rows.add(new Source("samsung-tv-fr", "Samsung TV Plus France"));
+        rows.add(new Source("free-tv-world", "Free-TV International"));
+        SOURCES = Collections.unmodifiableList(rows);
     }
 
     private static volatile ChannelRepository INSTANCE;
@@ -81,20 +82,23 @@ public final class ChannelRepository {
     private final ChannelDao dao;
     private final SharedPreferences urlPreferences;
     private final SharedPreferences statePreferences;
-    private final ExecutorService ioExecutor = Executors.newFixedThreadPool(4);
+    private final ExecutorService ioExecutor = Executors.newFixedThreadPool(3);
     private final ExecutorService mappingExecutor = Executors.newSingleThreadExecutor();
-    private final MutableLiveData<List<Channel>> channels = new MutableLiveData<>(Collections.emptyList());
+    private final MutableLiveData<List<Channel>> channels =
+            new MutableLiveData<>(Collections.emptyList());
     private final MutableLiveData<String> status = new MutableLiveData<>(
-            "Catalogue local prêt · actualisation réseau en arrière-plan");
+            "Catalogue SQLite prêt · vérification en arrière-plan");
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     private ChannelRepository(@NonNull Context context) {
         appContext = context.getApplicationContext();
         database = AppDatabase.getInstance(appContext);
         dao = database.channelDao();
-        urlPreferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        statePreferences = appContext.getSharedPreferences(DB_PREFS, Context.MODE_PRIVATE);
+        urlPreferences = appContext.getSharedPreferences(URL_PREFS, Context.MODE_PRIVATE);
+        statePreferences = appContext.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE);
 
+        // Room's LiveData query executes away from the UI thread. Convert rows on a
+        // dedicated worker and publish the immutable channel snapshot to the ViewModel.
         dao.observeAllChannels().observeForever(rows -> mappingExecutor.execute(() -> {
             ArrayList<Channel> mapped = new ArrayList<>(rows == null ? 0 : rows.size());
             if (rows != null) {
@@ -107,17 +111,17 @@ public final class ChannelRepository {
     }
 
     public static ChannelRepository getInstance(@NonNull Context context) {
-        ChannelRepository repo = INSTANCE;
-        if (repo == null) {
+        ChannelRepository repository = INSTANCE;
+        if (repository == null) {
             synchronized (ChannelRepository.class) {
-                repo = INSTANCE;
-                if (repo == null) {
-                    repo = new ChannelRepository(context);
-                    INSTANCE = repo;
+                repository = INSTANCE;
+                if (repository == null) {
+                    repository = new ChannelRepository(context);
+                    INSTANCE = repository;
                 }
             }
         }
-        return repo;
+        return repository;
     }
 
     public LiveData<List<Channel>> observeChannels() {
@@ -128,6 +132,7 @@ public final class ChannelRepository {
         return status;
     }
 
+    /** Source categories are read from the merged master M3U; this list names the UI filters. */
     public List<Source> getSources() {
         return SOURCES;
     }
@@ -135,71 +140,78 @@ public final class ChannelRepository {
     public static String displayName(Context context, String sourceId) {
         String id = canonicalSourceId(sourceId);
         if ("all".equals(id)) return "Toutes les sources";
-        for (Source source : SOURCES) if (source.id.equals(id)) return source.name;
+        if ("public".equals(id)) return "M3U publics";
+        for (Source source : SOURCES) {
+            if (source.id.equals(id)) return source.name;
+        }
         return id.isEmpty() ? "Toutes les sources" : id;
     }
 
     public static String canonicalSourceId(String sourceId) {
         if (sourceId == null) return "all";
-        String id = sourceId.trim().toLowerCase(java.util.Locale.ROOT);
+        String id = sourceId.trim().toLowerCase(Locale.ROOT);
         if (id.isEmpty() || "all".equals(id) || "toutes".equals(id)
-                || "toutes les sources".equals(id)) return "all";
+                || "toutes les sources".equals(id) || "live tv".equals(id)) return "all";
+        if ("public".equals(id) || "m3u".equals(id) || "m3u publics".equals(id)
+                || "iptv-org".equals(id) || "iptv org".equals(id)) return "public";
         if ("vavoo".equals(id)) return "vavoo";
-        if ("iptv-org".equals(id) || "iptv org".equals(id)
-                || "iptv-org-fr".equals(id) || "iptv-org france".equals(id)) return "iptv-org-fr";
-        if ("pluto".equals(id) || "pluto tv".equals(id)
-                || "pluto-tv-fr".equals(id) || "pluto tv france".equals(id)) return "pluto-tv-fr";
-        if ("samsung".equals(id) || "samsung tv".equals(id)
-                || "samsung-tv-plus".equals(id) || "samsung-tv-fr".equals(id)
-                || "samsung tv plus france".equals(id)) return "samsung-tv-fr";
+        if ("iptv-org-fr".equals(id) || "iptv-org france".equals(id)) return "iptv-org-fr";
+        if ("iptv-org-arab".equals(id) || "iptv-org monde arabe".equals(id)) return "iptv-org-arab";
+        if ("iptv-org-africa".equals(id) || "iptv-org afrique".equals(id)) return "iptv-org-africa";
+        if ("pluto".equals(id) || "pluto tv".equals(id) || "pluto-tv-fr".equals(id)
+                || "pluto tv france".equals(id)) return "pluto-tv-fr";
+        if ("samsung".equals(id) || "samsung tv".equals(id) || "samsung-tv-plus".equals(id)
+                || "samsung-tv-fr".equals(id) || "samsung tv plus france".equals(id)) return "samsung-tv-fr";
         if ("free-tv".equals(id) || "free-tv-world".equals(id)
                 || "free-tv international".equals(id)) return "free-tv-world";
         return id;
     }
 
-    /** Called by the ViewModel as soon as the home screen is created. */
+    /** The existing Room snapshot is observed immediately; network refresh never blocks this call. */
     public void initialize() {
         schedulePeriodicRefresh();
         if (!initialized.compareAndSet(false, true)) return;
+        refreshAllAsync(false);
+    }
+
+    /** Refreshes VAVOO through its native provider and public channels through exactly one master M3U. */
+    public void refreshAllAsync(boolean force) {
+        status.postValue(force
+                ? "Actualisation de VAVOO et du master M3U en arrière-plan…"
+                : "Vérification du cache local et des sources en arrière-plan…");
+        final AtomicInteger pending = new AtomicInteger(2);
+        final AtomicBoolean everySourceOkay = new AtomicBoolean(true);
+
         ioExecutor.execute(() -> {
-            seedLocalCatalogueIfEmpty();
-            refreshStaleSourcesAsync();
+            if (!refreshVavooIfNeeded(force)) everySourceOkay.set(false);
+            finishRefresh(pending, everySourceOkay);
+        });
+        ioExecutor.execute(() -> {
+            if (!refreshMasterIfNeeded(force)) everySourceOkay.set(false);
+            finishRefresh(pending, everySourceOkay);
         });
     }
 
-    /** Manual refresh runs entirely off the main/UI thread. */
-    public void refreshAllAsync(boolean force) {
-        status.postValue(force
-                ? "Actualisation des playlists M3U en arrière-plan…"
-                : "Vérification des playlists M3U…");
-        for (Source source : SOURCES) {
-            ioExecutor.execute(() -> refreshOne(source, force));
+    private void finishRefresh(AtomicInteger pending, AtomicBoolean okay) {
+        if (pending.decrementAndGet() == 0) {
+            status.postValue(okay.get()
+                    ? "Catalogue synchronisé · SQLite prêt"
+                    : "Actualisation partielle · les anciennes chaînes en cache restent disponibles");
         }
     }
 
-    /** WorkManager entry point. Called from its background worker thread. */
+    /** WorkManager entry point; invoked on a background thread. */
     public boolean refreshStaleSourcesBlocking() {
-        boolean successfulOrFresh = true;
-        for (Source source : SOURCES) {
-            try {
-                if (shouldRefresh(source, false)) {
-                    boolean updated = refreshOneSynchronously(source, false);
-                    successfulOrFresh = successfulOrFresh && (updated || dao.countForSource(source.id) > 0);
-                }
-            } catch (Exception error) {
-                successfulOrFresh = false;
-            }
-        }
-        return successfulOrFresh;
+        boolean vavooOkay = refreshVavooIfNeeded(false);
+        boolean masterOkay = refreshMasterIfNeeded(false);
+        return vavooOkay && masterOkay;
     }
 
-    /** Clear only the Room catalogue rows; the next initialize/refresh seeds them again. */
     public void clearDatabaseAsync() {
         ioExecutor.execute(() -> {
             database.runInTransaction(dao::deleteAll);
             statePreferences.edit().clear().apply();
-            seedLocalCatalogueIfEmpty();
-            refreshStaleSourcesAsync();
+            refreshAllAsync(true);
         });
     }
 
@@ -217,113 +229,121 @@ public final class ChannelRepository {
                 PERIODIC_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request);
     }
 
-    private void seedLocalCatalogueIfEmpty() {
-        for (Source source : SOURCES) {
-            if (!source.bundledAsset) continue;
-            try {
-                if (dao.countForSource(source.id) == 0) {
-                    refreshOneSynchronously(source, true);
-                }
-            } catch (Exception ignored) {
-                status.postValue("M3U local indisponible · " + source.name);
-            }
-        }
-    }
-
-    private void refreshStaleSourcesAsync() {
-        for (Source source : SOURCES) {
-            if (shouldRefreshSafely(source, false)) {
-                ioExecutor.execute(() -> refreshOne(source, false));
-            }
-        }
-    }
-
-    private boolean shouldRefreshSafely(Source source, boolean force) {
+    private boolean refreshVavooIfNeeded(boolean force) {
         try {
-            return shouldRefresh(source, force);
-        } catch (Exception ignored) {
+            if (!shouldRefreshVavoo(force)) return true;
+            List<VavooProvider.VavooChannel> providerChannels = VavooProvider.loadChannels();
+            ArrayList<ChannelEntity> rows = new ArrayList<>(providerChannels.size());
+            for (VavooProvider.VavooChannel item : providerChannels) {
+                if (item == null) continue;
+                String name = safe(item.name);
+                String id = safe(item.id);
+                String catalogReference = safe(item.sourceUrl);
+                if (name.isEmpty() || id.isEmpty() || catalogReference.isEmpty()) continue;
+
+                String group = safe(item.group);
+                if (group.isEmpty()) group = "VAVOO Live";
+                if (!group.startsWith("VAVOO · ")) group = "VAVOO · " + group;
+                Channel channel = new Channel(name, "vavoo://" + id, safe(item.logo),
+                        group, true, catalogReference, resolveCountry(item.country),
+                        "", "vavoo", null);
+                rows.add(ChannelEntity.fromChannel("vavoo", "VAVOO", channel));
+            }
+            if (rows.isEmpty()) return dao.countForSource("vavoo") > 0;
+
+            database.runInTransaction(() -> {
+                dao.deleteSource("vavoo");
+                dao.insertAll(rows);
+            });
+            statePreferences.edit().putLong(VAVOO_REFRESH_KEY, System.currentTimeMillis()).apply();
             return true;
-        }
-    }
-
-    private boolean shouldRefresh(Source source, boolean force) {
-        if (force) return true;
-        int count = dao.countForSource(source.id);
-        String configured = configuredUrl(source);
-        boolean hasRemoteOverride = source.bundledAsset && !configured.isEmpty();
-        boolean isRemote = !source.defaultUrl.isEmpty() || hasRemoteOverride;
-        if (!isRemote) return count == 0;
-
-        long last = statePreferences.getLong(lastRefreshKey(source), 0L);
-        long age = System.currentTimeMillis() - last;
-        return count == 0 || last == 0L || age >= TimeUnit.HOURS.toMillis(REFRESH_INTERVAL_HOURS);
-    }
-
-    private void refreshOne(Source source, boolean force) {
-        try {
-            if (!shouldRefresh(source, force)) return;
-            refreshOneSynchronously(source, force);
         } catch (Exception error) {
-            status.postValue(source.name + " · mise à jour impossible, cache local conservé");
+            // Do not erase cached VAVOO channels when the provider is offline.
+            return dao.countForSource("vavoo") > 0;
         }
     }
 
-    private boolean refreshOneSynchronously(Source source, boolean force) {
-        String configuredUrl = configuredUrl(source);
+    private boolean refreshMasterIfNeeded(boolean force) {
         try {
-            String address = configuredUrl.isEmpty() ? source.defaultUrl : configuredUrl;
-            ArrayList<Channel> parsed = M3UParser.load(appContext, source.id, source.name,
-                    source.assetName, address, MAX_CHANNELS_PER_SOURCE, this::resolveCountry, force);
-            if (parsed.isEmpty()) {
-                status.postValue(source.name + " · playlist vide, cache local conservé");
-                return false;
-            }
+            if (!shouldRefreshMaster(force)) return true;
+            String address = configuredMasterUrl();
+            ArrayList<Channel> parsed = M3UParser.load(appContext,
+                    "public-master", "M3U publics", "", address,
+                    MAX_MASTER_CHANNELS, this::resolveCountry, force);
+            if (parsed.isEmpty()) return countPublicChannels() > 0;
 
             ArrayList<ChannelEntity> rows = new ArrayList<>(parsed.size());
             for (Channel channel : parsed) {
-                if (channel != null && !channel.url.isEmpty()) {
-                    rows.add(ChannelEntity.fromChannel(source.id, source.name, channel));
-                }
+                if (channel == null || safe(channel.url).isEmpty()) continue;
+                // VAVOO must never be imported from the generated public master file.
+                if (channel.isVavoo || "vavoo".equals(canonicalSourceId(channel.catalogSource))) continue;
+                String sourceId = safe(channel.catalogSource);
+                if (sourceId.isEmpty() || "public-master".equals(sourceId)) sourceId = "iptv-org-fr";
+                Channel normalized = new Channel(channel.name, channel.url, channel.logo, channel.group,
+                        false, "", channel.country, channel.epgId, sourceId, null);
+                rows.add(ChannelEntity.fromChannel(sourceId, displayName(appContext, sourceId), normalized));
             }
-            if (rows.isEmpty()) return false;
+            if (rows.isEmpty()) return countPublicChannels() > 0;
 
             database.runInTransaction(() -> {
-                dao.deleteSource(source.id);
+                dao.deleteAllPublicSources();
                 dao.insertAll(rows);
             });
-            statePreferences.edit().putLong(lastRefreshKey(source), System.currentTimeMillis()).apply();
-            status.postValue(source.name + " · " + rows.size() + " chaînes en cache local");
+            statePreferences.edit().putLong(MASTER_REFRESH_KEY, System.currentTimeMillis()).apply();
             return true;
         } catch (Exception error) {
-            status.postValue(source.name + " · réseau indisponible, anciennes chaînes conservées");
-            return false;
+            // An unavailable master leaves the last successful public catalogue intact.
+            return countPublicChannels() > 0;
         }
     }
 
-    private String configuredUrl(Source source) {
-        return urlPreferences.getString(source.urlPreferenceKey, "").trim();
+    private boolean shouldRefreshVavoo(boolean force) {
+        if (force || dao.countForSource("vavoo") == 0) return true;
+        long last = statePreferences.getLong(VAVOO_REFRESH_KEY, 0L);
+        return last == 0L || System.currentTimeMillis() - last
+                >= TimeUnit.HOURS.toMillis(REFRESH_INTERVAL_HOURS);
     }
 
-    private static String lastRefreshKey(Source source) {
-        return "last_refresh_" + source.id;
+    private boolean shouldRefreshMaster(boolean force) {
+        if (force || countPublicChannels() == 0) return true;
+        long last = statePreferences.getLong(MASTER_REFRESH_KEY, 0L);
+        return last == 0L || System.currentTimeMillis() - last
+                >= TimeUnit.HOURS.toMillis(REFRESH_INTERVAL_HOURS);
+    }
+
+    private int countPublicChannels() {
+        int count = 0;
+        for (Source source : SOURCES) {
+            if (!"vavoo".equals(source.id)) count += dao.countForSource(source.id);
+        }
+        return count;
+    }
+
+    private String configuredMasterUrl() {
+        String configured = urlPreferences.getString(MASTER_URL_KEY, DEFAULT_MASTER_PLAYLIST_URL);
+        if (configured == null || configured.trim().isEmpty()) return DEFAULT_MASTER_PLAYLIST_URL;
+        return configured.trim();
     }
 
     private String resolveCountry(String rawCountry) {
-        String raw = rawCountry == null ? "" : rawCountry.trim();
+        String raw = safe(rawCountry);
         if (raw.isEmpty()) return "";
         if (raw.length() == 2 && Character.isLetter(raw.charAt(0))
                 && Character.isLetter(raw.charAt(1))) {
-            String code = raw.toUpperCase(java.util.Locale.ROOT);
+            String code = raw.toUpperCase(Locale.ROOT);
             try {
-                java.util.Locale locale = new java.util.Locale("", code);
-                String french = locale.getDisplayCountry(java.util.Locale.FRENCH);
+                Locale countryLocale = new Locale("", code);
+                String french = countryLocale.getDisplayCountry(Locale.FRENCH);
                 if (french != null && !french.trim().isEmpty() && !french.equals(code)) return french;
             } catch (Exception ignored) {}
         }
         return raw;
     }
 
-    /** Worker tests need not own UI observers; process lifetime owns this singleton. */
+    private static String safe(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     public void shutdownForTests() {
         ioExecutor.shutdownNow();
         mappingExecutor.shutdownNow();

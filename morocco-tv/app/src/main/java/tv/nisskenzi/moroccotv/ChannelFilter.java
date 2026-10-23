@@ -26,7 +26,9 @@ public final class ChannelFilter {
         ArrayList<Channel> result = new ArrayList<>();
         if (sourceChannels == null || sourceChannels.isEmpty()) return result;
 
+        int visited = 0;
         for (Channel channel : sourceChannels) {
+            if ((visited++ & 127) == 0 && Thread.currentThread().isInterrupted()) return result;
             if (channel == null) continue;
             String source = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
             if (!safe(sourceFilter).equals(source)) continue;

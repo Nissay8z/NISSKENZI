@@ -92,7 +92,7 @@ public final class IptvOrgProvider {
         while ((line = reader.readLine()) != null) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Chargement IPTV-org annulé.");
             if (line.startsWith("#EXTINF:")) {
-                int comma = line.lastIndexOf(',');
+                int comma = titleSeparator(line);
                 name = comma >= 0 ? line.substring(comma + 1).trim() : "Chaîne";
                 logo = "";
                 group = "Pays non précisé";
@@ -135,6 +135,25 @@ public final class IptvOrgProvider {
             }
         }
         return loaded;
+    }
+
+    /** Finds the EXTINF metadata/title comma outside quoted attributes. */
+    private static int titleSeparator(String line) {
+        char quote = 0;
+        boolean escaped = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (quote != 0) {
+                if (escaped) escaped = false;
+                else if (ch == '\\\\') escaped = true;
+                else if (ch == quote) quote = 0;
+            } else if (ch == '"' || ch == '\\'') {
+                quote = ch;
+            } else if (ch == ',') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static String attribute(String line, String key) {

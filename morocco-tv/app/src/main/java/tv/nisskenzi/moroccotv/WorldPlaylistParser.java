@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Locale;
 
 /** Streaming M3U parser shared by source refresh and recovery from the embedded M3U. */
 public final class WorldPlaylistParser {

@@ -187,7 +187,7 @@ async function refreshIptvOrgCatalog() {
   });
   if (!response.ok) throw new Error(`IPTV-org playlist HTTP ${response.status}`);
   const raw = await response.text();
-  const playlist = raw.endsWith('\\n') ? raw : raw + '\\n';
+  const playlist = raw.endsWith('\n') ? raw : raw + '\n';
   const channelCount = (playlist.match(/^#EXTINF:/gm) || []).length;
   if (!playlist.trimStart().startsWith('#EXTM3U') || channelCount < 1000) {
     throw new Error(`IPTV-org playlist invalide/incomplète: ${channelCount} entrées détectées.`);

@@ -25,16 +25,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.media3.common.MediaItem;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
-import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-import androidx.media3.ui.PlayerView;
 
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
@@ -91,7 +86,7 @@ public class MainActivity extends Activity {
     private TextView previewStatus;
     private TextView previewDetail;
 
-    private PlayerView playerView;
+    private NativeLivePlayerView playerView;
     private ExoPlayer player;
     private FrameLayout playerStage;
     private boolean fullscreenPlayback = false;
@@ -783,7 +778,7 @@ public class MainActivity extends Activity {
 
         TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser " + sourceFilter, true);
         LinearLayout.LayoutParams rp = lp(-1, 48); rp.topMargin = dp(16); page.addView(refresh, rp);
-        refresh.setOnClickListener(v -> loadChannels());
+        refresh.setOnClickListener(v -> loadChannels(true));
         if (loadingCatalog) refresh.setAlpha(0.65f);
 
         TextView cache = buttonText("Effacer le cache local", false);
@@ -862,7 +857,9 @@ public class MainActivity extends Activity {
         if (changed || channels.isEmpty()) loadChannels();
     }
 
-    private void loadChannels() {
+    private void loadChannels() { loadChannels(false); }
+
+    private void loadChannels(boolean forceRefresh) {
         final String requestedSource = "IPTV-ORG".equals(sourceFilter) ? "IPTV-ORG" : "VAVOO";
         final boolean requestVavoo = "VAVOO".equals(requestedSource);
         if (requestVavoo ? loadingVavoo : loadingIptv) return;
@@ -887,6 +884,39 @@ public class MainActivity extends Activity {
 
             ArrayList<Channel> diskCached = CatalogCache.readFull(
                     MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS);
+
+            if (!forceRefresh && !diskCached.isEmpty()
+                    && CatalogCache.isFresh(MainActivity.this, requestedSource, 12L * 60L * 60L * 1000L)) {
+                final ArrayList<Channel> restored = diskCached;
+                runOnUiThread(() -> {
+                    if (activityDestroyed) return;
+                    if (currentGen != loadGeneration.get()) {
+                        if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
+                        return;
+                    }
+                    if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
+                    loadingCatalog = loadingVavoo || loadingIptv;
+                    if (!requestedSource.equals(sourceFilter)) {
+                        updateStatus();
+                        return;
+                    }
+                    channels.clear();
+                    channels.addAll(restored);
+                    markCatalogChanged();
+                    catalogStatus = requestedSource + " · " + restored.size()
+                            + " chaînes · catalogue local prêt";
+                    updateStatus();
+                    updateHeaderTabs();
+                    if (fullscreenPlayback) {
+                        renderCountryChoices();
+                        updateChannelResults();
+                    } else {
+                        renderPage();
+                    }
+                });
+                return;
+            }
+
             showCachedSnapshot(diskCached, requestedSource, currentGen);
 
             ArrayList<Channel> loaded = new ArrayList<>();
@@ -1266,45 +1296,52 @@ public class MainActivity extends Activity {
     }
 
     private void startMedia3Playback(Channel ch, String streamUrl) {
+        NativeLivePlayerView nativeView = null;
         try {
-            DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                .setUserAgent(ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/1.9")
-                .setAllowCrossProtocolRedirects(true);
-            DefaultDataSource.Factory data = new DefaultDataSource.Factory(this, http);
-            ExoPlayer active = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(data)).build();
+            ExoPlayer active = LivePlaybackFactory.create(this,
+                    ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
+            nativeView = new NativeLivePlayerView(this);
+            nativeView.setChannelName(ch.name);
+            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+            nativeView.setBackAction(this::exitFullscreenPlayback);
+            nativeView.setPlaybackState(Player.STATE_BUFFERING);
+
             player = active;
-            playerView = new PlayerView(this);
-            playerView.setUseController(true);
-            playerView.setKeepContentOnPlayerReset(true);
-            playerView.setShutterBackgroundColor(Color.BLACK);
-            playerStage.addView(playerView, new FrameLayout.LayoutParams(-1, -1));
-            playerView.setFocusable(true);
-            playerView.setPlayer(active);
-            if (fullscreenPlayback) playerView.post(() -> {
-                if (fullscreenPlayback && playerView != null) playerView.requestFocus();
+            playerView = nativeView;
+            playerStage.addView(nativeView, new FrameLayout.LayoutParams(-1, -1));
+            nativeView.setPlayer(active);
+            nativeView.setFocusable(true);
+            if (fullscreenPlayback) nativeView.post(() -> {
+                if (fullscreenPlayback && playerView == nativeView) nativeView.requestFocus();
             });
+
             active.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int playbackState) {
-                    if (currentChannel != ch || previewStatus == null) return;
+                    if (currentChannel != ch || playerView != nativeView || previewStatus == null) return;
+                    nativeView.setPlaybackState(playbackState);
                     if (playbackState == Player.STATE_READY) {
                         previewStatus.setText("● EN DIRECT");
                     } else if (playbackState == Player.STATE_BUFFERING) {
-                        previewStatus.setText("Mise en mémoire tampon…");
+                        previewStatus.setText("Connexion · mise en mémoire tampon…");
                     } else {
                         previewStatus.setText("Connexion au flux…");
                     }
                 }
 
                 @Override public void onPlayerError(PlaybackException e) {
-                    if (currentChannel == ch && previewStatus != null) {
-                        previewStatus.setText("Flux indisponible · essayez un autre lecteur");
+                    if (currentChannel == ch && playerView == nativeView) {
+                        nativeView.setErrorMessage("Flux indisponible · un autre lecteur peut être nécessaire");
+                        if (previewStatus != null) {
+                            previewStatus.setText("Flux indisponible · essayez l’autre lecteur");
+                        }
                     }
-                    Toast.makeText(MainActivity.this, "Media3 : lecture impossible (" + e.getErrorCodeName() + ").", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this,
+                            "Media3 : lecture impossible (" + e.getErrorCodeName() + ").",
+                            Toast.LENGTH_LONG).show();
                     if (!useVlcPlayer()) {
                         new AlertDialog.Builder(MainActivity.this)
                             .setTitle("Essayer un autre lecteur ?")
-                            .setMessage("Ce flux nécessite un autre moteur vidéo. VLC est disponible en option.")
+                            .setMessage("Ce flux semble nécessiter un moteur vidéo plus compatible. VLC est disponible en option.")
                             .setNegativeButton("Pas maintenant", null)
                             .setPositiveButton("Essayer VLC", (dialog, which) -> {
                                 setVlcPreference(true);
@@ -1313,11 +1350,15 @@ public class MainActivity extends Activity {
                     }
                 }
             });
-            active.setMediaItem(MediaItem.fromUri(streamUrl));
+            active.setMediaItem(LivePlaybackFactory.mediaItem(streamUrl, ch.name));
             active.prepare();
             active.setPlayWhenReady(true);
         } catch (Exception e) {
-            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()), Toast.LENGTH_LONG).show();
+            if (nativeView != null) {
+                nativeView.setErrorMessage("Démarrage impossible");
+            }
+            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
+                    Toast.LENGTH_LONG).show();
         }
     }
 

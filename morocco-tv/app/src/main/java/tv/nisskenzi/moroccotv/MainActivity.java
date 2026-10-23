@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextUtils;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -60,8 +61,7 @@ public class MainActivity extends Activity {
     private static final int TEXT = 0xFFFFFFFF;
     private static final int GREEN = 0xFF4CC9F0;
     private static final int YELLOW = 0xFFFFFF00;
-    private static final int MAX_CACHED_CHANNELS = 400;
-    // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
+    // Bound M3U parsing for unusually large or malformed remote playlists.
     private static final int MAX_CATALOG_CHANNELS = 20000;
 
     private LinearLayout root;
@@ -793,9 +793,39 @@ public class MainActivity extends Activity {
         playerInfoParams.bottomMargin = dp(18);
         page.addView(playerInfoDetail, playerInfoParams);
 
-        page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
+        page.addView(sourceCard("VAVOO", "V", "Playlist M3U", "Le catalogue vient d’une playlist M3U. Seule une chaîne vavoo:// sélectionnée passe par resolveStream().", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Catalogue mondial structuré par pays.", PURPLE), gap);
+        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist M3U", "Les URLs HTTP(S) de la playlist sont envoyées directement au lecteur natif.", PURPLE), gap);
+
+        SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
+        TextView m3uTitle = label("SOURCES DES PLAYLISTS M3U", 10, CYAN, true);
+        LinearLayout.LayoutParams m3uTitleParams = lp(-1, -2);
+        m3uTitleParams.topMargin = dp(20);
+        m3uTitleParams.bottomMargin = dp(8);
+        page.addView(m3uTitle, m3uTitleParams);
+        page.addView(label("Laisse une URL vide pour utiliser le M3U intégré à l’application. URL acceptées : https://…, asset://nom.m3u ou file://…", 10, MUTED, false), lp(-1, -2));
+
+        EditText vavooM3uUrl = m3uUrlField(m3uPrefs.getString("vavoo_url", ""), "Playlist M3U VAVOO (facultatif)");
+        LinearLayout.LayoutParams vavooUrlParams = lp(-1, 46);
+        vavooUrlParams.topMargin = dp(8);
+        page.addView(vavooM3uUrl, vavooUrlParams);
+        EditText iptvM3uUrl = m3uUrlField(m3uPrefs.getString("iptv_org_url", ""), "Playlist M3U IPTV-ORG (facultatif)");
+        LinearLayout.LayoutParams iptvUrlParams = lp(-1, 46);
+        iptvUrlParams.topMargin = dp(8);
+        page.addView(iptvM3uUrl, iptvUrlParams);
+
+        TextView saveM3uUrls = buttonText("Enregistrer les URLs M3U", true);
+        LinearLayout.LayoutParams saveM3uParams = lp(-1, 46);
+        saveM3uParams.topMargin = dp(10);
+        page.addView(saveM3uUrls, saveM3uParams);
+        saveM3uUrls.setOnClickListener(v -> {
+            m3uPrefs.edit()
+                    .putString("vavoo_url", safe(vavooM3uUrl.getText() == null ? "" : vavooM3uUrl.getText().toString()))
+                    .putString("iptv_org_url", safe(iptvM3uUrl.getText() == null ? "" : iptvM3uUrl.getText().toString()))
+                    .apply();
+            M3UParser.clearMemoryCache();
+            Toast.makeText(this, "URLs M3U enregistrées. Appuie sur Actualiser pour recharger la source.", Toast.LENGTH_LONG).show();
+        });
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -821,6 +851,7 @@ public class MainActivity extends Activity {
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
                 CatalogCache.clear(MainActivity.this);
+                M3UParser.clearMemoryCache();
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
                 channels.clear();
                 markCatalogChanged();
@@ -829,9 +860,24 @@ public class MainActivity extends Activity {
                 renderPage();
             }).show());
 
-        TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
+        TextView note = label("Le catalogue est lu depuis une playlist M3U locale ou distante. Les références VAVOO sont résolues uniquement au clic sur une chaîne.", 10, MUTED, false);
         note.setPadding(dp(2), dp(14), dp(2), 0);
         page.addView(note);
+    }
+
+    private EditText m3uUrlField(String initialValue, String hint) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        field.setTextSize(isTelevision() ? 14 : 11);
+        field.setTextColor(Color.WHITE);
+        field.setHintTextColor(0xFF8997A8);
+        field.setHint(hint);
+        field.setPadding(dp(14), 0, dp(14), 0);
+        field.setBackground(outlined(0xFF171F2A, 12, 0xFF39485B));
+        field.setText(initialValue == null ? "" : initialValue);
+        field.setSelectAllOnFocus(true);
+        return field;
     }
 
     private View sourceCard(String title, String icon, String tagline, String description, int accent) {
@@ -856,13 +902,11 @@ public class MainActivity extends Activity {
 
     private String sourceStatus(String source) {
         boolean loading = "VAVOO".equals(source) ? loadingVavoo : loadingIptv;
-        if (loading) return "catalogue local en ouverture";
-        if (source.equals(sourceFilter) && !channels.isEmpty()) return "catalogue chargé · " + channels.size();
-        String key = "VAVOO".equals(source) ? "vavoo_channels" : "iptv_org_channels";
-        if (!getSharedPreferences("catalog_cache", MODE_PRIVATE).getString(key, "").isEmpty()) {
-            return "cache disponible";
-        }
-        return "pas encore chargé";
+        if (loading) return "playlist M3U en lecture";
+        if (source.equals(sourceFilter) && !channels.isEmpty()) return "M3U chargé · " + channels.size();
+        String key = "VAVOO".equals(source) ? "vavoo_url" : "iptv_org_url";
+        String url = getSharedPreferences("m3u_sources", MODE_PRIVATE).getString(key, "");
+        return url == null || url.trim().isEmpty() ? "M3U local intégré" : "URL M3U distante configurée";
     }
 
     private void switchSource(String source) {
@@ -898,282 +942,76 @@ public class MainActivity extends Activity {
 
         if (requestVavoo) loadingVavoo = true; else loadingIptv = true;
         loadingCatalog = loadingVavoo || loadingIptv;
+        final String assetName = requestVavoo ? "vavoo_catalog.m3u" : "iptv_org_catalog.m3u";
+        final SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
+        final String playlistUrl = safe(m3uPrefs.getString(
+                requestVavoo ? "vavoo_url" : "iptv_org_url", ""));
         catalogStatus = forceRefresh
-                ? requestedSource + " · actualisation du catalogue…"
-                : requestedSource + " · catalogue local en ouverture…";
+                ? requestedSource + " · actualisation de la playlist M3U…"
+                : requestedSource + " · ouverture de la playlist M3U…";
         updateStatus();
 
         if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
         if ("Paramètres".equals(activePage)) renderSettings();
 
         final int currentGen = loadGeneration.incrementAndGet();
-
-        final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // VAVOO is shipped as a compact, streaming-parsed M3U snapshot. Use it
-            // as the startup catalogue and skip the 35+ page network crawl entirely.
-            // We keep the stream resolver unchanged; only metadata comes from this file.
-            if (requestVavoo && !forceRefresh) {
-                ArrayList<Channel> bundled = VavooSnapshotProvider.readBundled(
-                        MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
-                if (bundled.size() >= 500) {
-                    CatalogCache.saveQuick(MainActivity.this, bundled, requestedSource, MAX_CACHED_CHANNELS);
-                    final ArrayList<Channel> ready = bundled;
-                    runOnUiThread(() -> {
-                        loadingVavoo = false;
-                        loadingCatalog = loadingVavoo || loadingIptv;
-                        if (activityDestroyed) return;
-                        if (currentGen != loadGeneration.get()) {
-                            if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
-                            return;
-                        }
-                        if (!requestedSource.equals(sourceFilter)) {
-                            updateStatus();
-                            return;
-                        }
-                        channels.clear();
-                        channels.addAll(ready);
-                        markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
-                        updateStatus();
-                        updateHeaderTabs();
-                        if (fullscreenPlayback) {
-                            renderCountryChoices();
-                            updateChannelResults();
-                        } else {
-                            renderPage();
-                        }
-                    });
-                    return;
-                }
-            }
-
-            // IPTV-org also ships as its own original M3U playlist. Parse it off-thread
-            // and publish one complete snapshot instead of rendering hundreds of partial
-            // lists while downloading/parsing the remote playlist on every launch.
-            if (!requestVavoo && !forceRefresh) {
-                ArrayList<Channel> bundled = IptvOrgProvider.loadBundledChannels(
-                        MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
-                if (!bundled.isEmpty()) {
-                    final ArrayList<Channel> ready = bundled;
-                    runOnUiThread(() -> {
-                        loadingIptv = false;
-                        loadingCatalog = loadingVavoo || loadingIptv;
-                        if (activityDestroyed) return;
-                        if (currentGen != loadGeneration.get()) {
-                            if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
-                            return;
-                        }
-                        if (!requestedSource.equals(sourceFilter)) {
-                            updateStatus();
-                            return;
-                        }
-                        channels.clear();
-                        channels.addAll(ready);
-                        markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
-                        updateStatus();
-                        updateHeaderTabs();
-                        if (fullscreenPlayback) {
-                            renderCountryChoices();
-                            updateChannelResults();
-                        } else {
-                            renderPage();
-                        }
-                    });
-                    return;
-                }
-            }
-
-            // Only the fallback/manual-refresh path reads the legacy disk cache and
-            // performs a remote catalogue request. The normal VAVOO start above returns early.
-            ArrayList<Channel> quickCached = CatalogCache.readQuick(
-                    MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
-            showCachedSnapshot(quickCached, requestedSource, currentGen);
-
-            ArrayList<Channel> diskCached = CatalogCache.readFull(
-                    MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS);
-
-            if (!forceRefresh && !diskCached.isEmpty()
-                    && CatalogCache.isFresh(MainActivity.this, requestedSource, 12L * 60L * 60L * 1000L)) {
-                final ArrayList<Channel> restored = diskCached;
-                runOnUiThread(() -> {
-                    if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
-                    loadingCatalog = loadingVavoo || loadingIptv;
-                    if (activityDestroyed) return;
-                    if (currentGen != loadGeneration.get()) {
-                        if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
-                        return;
-                    }
-                    if (!requestedSource.equals(sourceFilter)) {
-                        updateStatus();
-                        return;
-                    }
-                    channels.clear();
-                    channels.addAll(restored);
-                    markCatalogChanged();
-                    catalogStatus = requestedSource + " · " + restored.size()
-                            + " chaînes · catalogue local prêt";
-                    updateStatus();
-                    updateHeaderTabs();
-                    if (fullscreenPlayback) {
-                        renderCountryChoices();
-                        updateChannelResults();
-                    } else {
-                        renderPage();
-                    }
-                });
-                return;
-            }
-
-            showCachedSnapshot(diskCached, requestedSource, currentGen);
-
             ArrayList<Channel> loaded = new ArrayList<>();
             String error = "";
-            if (requestVavoo) {
-                try {
-                    List<VavooProvider.VavooChannel> sourceChannels = VavooProvider.loadChannels(partial -> {
-                        int size = partial == null ? 0 : partial.size();
-                        int previous = lastVavooPublished.get();
-                        if (size <= 0 || (previous > 0 && size - previous < 1500)
-                                || !lastVavooPublished.compareAndSet(previous, size)) return;
-                        publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
-                                currentGen);
-                    });
-
-                    for (VavooProvider.VavooChannel item : sourceChannels) {
-                        if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
-                        loaded.add(toAppChannel(item));
-                    }
-                } catch (Exception e) {
-                    error = e.getMessage() == null ? "catalogue VAVOO indisponible" : e.getMessage();
-                }
-            } else {
-                try {
-                    loaded.addAll(IptvOrgProvider.loadChannels(MainActivity.this, MAX_CATALOG_CHANNELS,
-                            this::knownCountry,
-                            partial -> publishCatalogSnapshot(new ArrayList<>(partial),
-                                    requestedSource, currentGen),
-                            forceRefresh));
-                } catch (Exception e) {
-                    error = e.getMessage() == null
-                            ? "playlist IPTV-ORG indisponible" : e.getMessage();
-                }
+            try {
+                loaded = M3UParser.load(MainActivity.this, requestedSource, assetName,
+                        playlistUrl, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry,
+                        forceRefresh);
+            } catch (Exception e) {
+                error = e.getMessage() == null ? "impossible de lire la playlist M3U" : e.getMessage();
             }
 
             final ArrayList<Channel> result = loaded;
             final String loadError = error;
-            if (!result.isEmpty()) {
-                CatalogCache.saveQuick(MainActivity.this, result, requestedSource, MAX_CACHED_CHANNELS);
-            }
             runOnUiThread(() -> {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
-
                 if (activityDestroyed) return;
+
                 if (currentGen != loadGeneration.get()) {
-                    // If the user returned to this source while its previous request was
-                    // still running, retry now that the old request has released its loading flag.
                     if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
+                    else updateStatus();
+                    return;
+                }
+                if (!requestedSource.equals(sourceFilter)) {
+                    updateStatus();
                     return;
                 }
 
-                if (requestedSource.equals(sourceFilter)) {
-                    if (!result.isEmpty()) {
-                        channels.clear();
-                        channels.addAll(result);
-                        markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
-                    } else if (!channels.isEmpty()) {
-                        catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
-                    } else {
-                        catalogStatus = requestedSource + " · aucun flux reçu"
-                                + (loadError.isEmpty() ? "" : " · " + loadError);
-                    }
-                    updateStatus();
-                    updateHeaderTabs();
-                    if (fullscreenPlayback) {
-                        renderCountryChoices();
-                        updateChannelResults();
-                    } else {
-                        renderPage();
-                    }
-                    if (result.isEmpty() && channels.isEmpty()) {
-                        Toast.makeText(MainActivity.this,
-                                requestedSource + " : chargement impossible. Vérifiez votre connexion.",
-                                Toast.LENGTH_LONG).show();
-                    }
+                if (!result.isEmpty()) {
+                    channels.clear();
+                    channels.addAll(result);
+                    markCatalogChanged();
+                    String origin = playlistUrl.isEmpty() ? "M3U local" : "M3U distant";
+                    catalogStatus = requestedSource + " · " + result.size()
+                            + " chaînes · " + origin + " · sans chargement du catalogue API";
+                } else if (!channels.isEmpty()) {
+                    catalogStatus = requestedSource + " · playlist inaccessible, chaînes précédentes conservées";
                 } else {
-                    updateStatus();
+                    catalogStatus = requestedSource + " · playlist M3U vide ou inaccessible"
+                            + (loadError.isEmpty() ? "" : " · " + loadError);
+                }
+                updateStatus();
+                updateHeaderTabs();
+                if (fullscreenPlayback) {
+                    renderCountryChoices();
+                    updateChannelResults();
+                } else if ("Paramètres".equals(activePage)) {
+                    renderSettings();
+                } else {
+                    renderPage();
+                }
+                if (result.isEmpty() && channels.isEmpty()) {
+                    Toast.makeText(MainActivity.this,
+                            requestedSource + " : impossible de lire la playlist M3U.",
+                            Toast.LENGTH_LONG).show();
                 }
             });
-
-            // Saving the complete catalogue happens off the UI thread; subsequent launches
-            // can restore all countries/channels without waiting for remote pagination.
-            // IPTV-org remains cached locally. VAVOO uses the bundled M3U as the
-            // canonical startup snapshot, so rebuilding a duplicate JSON catalogue is wasted work.
-            if (!result.isEmpty() && !requestVavoo && forceRefresh) {
-                CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
-            }
-        });
-    }
-
-    private Channel toAppChannel(VavooProvider.VavooChannel item) {
-        String country = knownCountry(item.country);
-        if (country.isEmpty()) country = knownCountry(item.group);
-        if (country.isEmpty()) country = "Pays non précisé";
-        return new Channel(item.name, "vavoo://" + item.id, item.logo,
-                "VAVOO · " + (item.group == null || item.group.trim().isEmpty()
-                ? "Direct" : item.group), true, item.sourceUrl, country);
-    }
-
-    private ArrayList<Channel> convertVavooChannels(List<VavooProvider.VavooChannel> items) {
-        ArrayList<Channel> converted = new ArrayList<>(Math.min(items.size(), MAX_CATALOG_CHANNELS));
-        for (VavooProvider.VavooChannel item : items) {
-            if (converted.size() >= MAX_CATALOG_CHANNELS) break;
-            converted.add(toAppChannel(item));
-        }
-        return converted;
-    }
-
-    private void publishCatalogSnapshot(ArrayList<Channel> snapshot, String requestedSource,
-                                        int generation) {
-        if (snapshot == null || snapshot.isEmpty()) return;
-        final ArrayList<Channel> copy = new ArrayList<>(snapshot);
-        runOnUiThread(() -> {
-            if (activityDestroyed || generation != loadGeneration.get()
-                    || !requestedSource.equals(sourceFilter)
-                    || copy.size() <= channels.size()) return;
-            channels.clear();
-            channels.addAll(copy);
-            markCatalogChanged();
-            catalogStatus = requestedSource + " · " + copy.size()
-                    + " chaînes reçues, catalogue en chargement…";
-            updateStatus();
-            updateHeaderTabs();
-            renderCountryChoices();
-            updateChannelResults();
-        });
-    }
-
-    private void showCachedSnapshot(ArrayList<Channel> cacheSnapshot, String requestedSource,
-                                    int generation) {
-        if (cacheSnapshot == null || cacheSnapshot.isEmpty()) return;
-        final ArrayList<Channel> snapshot = new ArrayList<>(cacheSnapshot);
-        runOnUiThread(() -> {
-            if (activityDestroyed || generation != loadGeneration.get()
-                    || !requestedSource.equals(sourceFilter) || snapshot.size() <= channels.size()) return;
-            channels.clear();
-            channels.addAll(snapshot);
-            markCatalogChanged();
-            catalogStatus = requestedSource + " · " + snapshot.size()
-                    + " chaînes en cache, actualisation…";
-            updateStatus();
-            updateHeaderTabs();
-            renderCountryChoices();
-            updateChannelResults();
         });
     }
 
@@ -1399,14 +1237,21 @@ public class MainActivity extends Activity {
             if (fullscreenPlayback && playerView == nativeView) nativeView.focusControls();
         });
 
-        // IPTV-org entries already contain their direct stream URL.
-        if (!ch.isVavoo) {
+        // A normal HTTP(S) URL from the M3U goes straight to Media3, regardless
+        // of which catalogue supplied it. Only a VAVOO reference needs resolving.
+        boolean vavooReference = safe(ch.vavooSourceUrl).startsWith("vavoo://")
+                || safe(ch.url).startsWith("vavoo://")
+                || safe(ch.url).startsWith("vavoo-catalog://")
+                || !safe(ch.vavooSourceUrl).isEmpty();
+        if (!vavooReference) {
             startMedia3Playback(ch, ch.url, nativeView);
             return;
         }
 
-        final String catalogReference = safe(ch.vavooSourceUrl);
-        String cachedStream = ResolvedStreamCache.get(catalogReference);
+        String catalogReference = safe(ch.vavooSourceUrl);
+        if (catalogReference.isEmpty()) catalogReference = safe(ch.url);
+        final String selectedCatalogReference = catalogReference;
+        String cachedStream = ResolvedStreamCache.get(selectedCatalogReference);
         if (cachedStream != null) {
             startMedia3Playback(ch, cachedStream, nativeView);
             return;
@@ -1416,8 +1261,8 @@ public class MainActivity extends Activity {
         // are visible while the request runs; no neighbouring channels are prefetched.
         io.execute(() -> {
             try {
-                String resolved = VavooProvider.resolveStream(catalogReference);
-                ResolvedStreamCache.put(catalogReference, resolved);
+                String resolved = VavooProvider.resolveStream(selectedCatalogReference);
+                ResolvedStreamCache.put(selectedCatalogReference, resolved);
                 runOnUiThread(() -> {
                     if (activityDestroyed || currentChannel != ch || !fullscreenPlayback
                             || playerView != nativeView || playerStage == null) return;
@@ -1456,7 +1301,7 @@ public class MainActivity extends Activity {
 
                 @Override public void onPlayerError(PlaybackException error) {
                     if (currentChannel != ch || playerView != nativeView) return;
-                    if (ch.isVavoo) ResolvedStreamCache.invalidate(ch.vavooSourceUrl);
+                    if (!safe(ch.vavooSourceUrl).isEmpty()) ResolvedStreamCache.invalidate(ch.vavooSourceUrl);
                     nativeView.setErrorMessage("Flux indisponible. Essaie une autre chaîne.");
                     if (previewStatus != null) previewStatus.setText("Flux indisponible");
                     // This application intentionally uses one player only; errors are

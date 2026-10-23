@@ -35,10 +35,20 @@ public final class IptvOrgProvider {
     public static ArrayList<Channel> loadBundledChannels(Context context, int maximum,
             CountryResolver countryResolver) {
         if (context == null) return new ArrayList<>();
+
+        ArrayList<Channel> cached = FastCatalogCache.read(
+                context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_VALID_BUNDLED_CHANNELS);
+        if (!cached.isEmpty()) return cached;
+
         try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
              BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
             ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-            return bundled.size() >= MIN_VALID_BUNDLED_CHANNELS ? bundled : new ArrayList<>();
+            if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) {
+                FastCatalogCache.write(context, "IPTV-ORG", BUNDLED_ASSET,
+                        bundled, maximum, MIN_VALID_BUNDLED_CHANNELS);
+                return bundled;
+            }
+            return new ArrayList<>();
         } catch (IOException ignored) {
             return new ArrayList<>();
         }

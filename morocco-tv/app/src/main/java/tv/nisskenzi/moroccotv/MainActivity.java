@@ -141,7 +141,7 @@ public class MainActivity extends Activity {
         while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group));}
         r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
       }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
-      final ArrayList<Channel> result=found;final ArrayList<Channel> allResult=new ArrayList<>(all);final String err=error;
+      final ArrayList<Channel> result=found;final String err=error;
       runOnUiThread(()->{if(result.isEmpty())status.setText("Import impossible : "+err);else status.setText(result.size()+" chaînes importées");showChannels(result);});
     });
   }

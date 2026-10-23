@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
   private final ArrayList<MediaEntry> movies=new ArrayList<>();
   private final ArrayList<MediaEntry> series=new ArrayList<>();
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels(); loadXtreamCatalog();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -168,6 +168,83 @@ public class MainActivity extends Activity {
   private void openCloudInfo(){
     new AlertDialog.Builder(this).setTitle("NISSKENZI+ · Cloud").setMessage("La rubrique Cloud pourra afficher les fichiers locaux et les sources cloud compatibles après connexion. Aucune connexion cloud n’est configurée dans cette version.").setPositiveButton("OK",null).setNegativeButton("Connecter une playlist",(d,w)->openSourceMenu()).show();
   }
+  private String xtreamUrl(String host,String user,String pass,String action){
+    return host.replaceAll("/+$","")+"/player_api.php?username="+android.net.Uri.encode(user)+"&password="+android.net.Uri.encode(pass)+(action==null||action.isEmpty()?"":"&action="+android.net.Uri.encode(action));
+  }
+  private JSONArray requestJsonArray(String address) throws Exception{
+    HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();
+    conn.setConnectTimeout(10000);conn.setReadTimeout(18000);conn.setRequestProperty("User-Agent","NISSKENZI+/1.7");
+    try{
+      int code=conn.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);
+      BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));
+      StringBuilder body=new StringBuilder();String line;while((line=reader.readLine())!=null)body.append(line);reader.close();
+      String raw=body.toString().trim();if(!raw.startsWith("["))throw new java.io.IOException("Réponse API invalide");return new JSONArray(raw);
+    }finally{conn.disconnect();}
+  }
+  private java.util.HashMap<String,String> xtreamCategories(String host,String user,String pass,String action){
+    java.util.HashMap<String,String> result=new java.util.HashMap<>();
+    try{JSONArray array=requestJsonArray(xtreamUrl(host,user,pass,action));for(int i=0;i<array.length();i++){JSONObject o=array.optJSONObject(i);if(o!=null)result.put(o.optString("category_id",""),o.optString("category_name","Autres"));}}catch(Exception ignored){}
+    return result;
+  }
+  private void loadXtreamCatalog(){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    String host=prefs.getString("xc_host","").trim().replaceAll("/+$",""),user=prefs.getString("xc_user","").trim(),pass=prefs.getString("xc_pass","");
+    if(host.isEmpty()||user.isEmpty()||pass.isEmpty())return;
+    status.setText("Chargement des catalogues Films et Séries…");
+    io.execute(()->{
+      ArrayList<MediaEntry> newMovies=new ArrayList<>(),newSeries=new ArrayList<>();String error="";
+      try{
+        java.util.HashMap<String,String> movieCategories=xtreamCategories(host,user,pass,"get_vod_categories");
+        java.util.HashMap<String,String> seriesCategories=xtreamCategories(host,user,pass,"get_series_categories");
+        JSONArray vod=requestJsonArray(xtreamUrl(host,user,pass,"get_vod_streams"));
+        for(int i=0;i<vod.length()&&newMovies.size()<700;i++){
+          JSONObject o=vod.optJSONObject(i);if(o==null)continue;
+          String id=o.optString("stream_id","");if(id.isEmpty())continue;
+          String name=o.optString("name","Film");String ext=o.optString("container_extension","mp4");
+          String cat=movieCategories.getOrDefault(o.optString("category_id",""),"Films");
+          String url=host+"/movie/"+android.net.Uri.encode(user)+"/"+android.net.Uri.encode(pass)+"/"+id+"."+(ext.isEmpty()?"mp4":ext);
+          newMovies.add(new MediaEntry(name,url,o.optString("stream_icon",""),cat,"movie",id,ext));
+        }
+        JSONArray tv=requestJsonArray(xtreamUrl(host,user,pass,"get_series"));
+        for(int i=0;i<tv.length()&&newSeries.size()<700;i++){
+          JSONObject o=tv.optJSONObject(i);if(o==null)continue;
+          String id=o.optString("series_id","");if(id.isEmpty())continue;
+          String cat=seriesCategories.getOrDefault(o.optString("category_id",""),"Séries");
+          newSeries.add(new MediaEntry(o.optString("name","Série"),"",o.optString("cover",""),cat,"series",id,""));
+        }
+      }catch(Exception e){error=e.getMessage()==null?"API Xtream indisponible":e.getMessage();}
+      final ArrayList<MediaEntry> m=newMovies,s=newSeries;final String err=error;
+      runOnUiThread(()->{
+        movies.clear();movies.addAll(m);series.clear();series.addAll(s);renderMediaToWeb();
+        if(m.isEmpty()&&s.isEmpty()&&!err.isEmpty())status.setText("Catalogues VOD indisponibles : "+err);
+        else status.setText(m.size()+" films · "+s.size()+" séries chargés depuis Xtream");
+      });
+    });
+  }
+  private void openSeriesEpisodes(MediaEntry item){
+    SharedPreferences prefs=getSharedPreferences("sources",MODE_PRIVATE);
+    String host=prefs.getString("xc_host","").trim().replaceAll("/+$",""),user=prefs.getString("xc_user","").trim(),pass=prefs.getString("xc_pass","");
+    if(host.isEmpty()||user.isEmpty()||pass.isEmpty()){new AlertDialog.Builder(this).setTitle(item.name).setMessage("Connecte un compte Xtream compatible pour charger les épisodes de cette série.").setPositiveButton("OK",null).show();return;}
+    status.setText("Chargement des épisodes de "+item.name+"…");
+    io.execute(()->{
+      ArrayList<MediaEntry> eps=new ArrayList<>();String err="";
+      try{
+        String address=xtreamUrl(host,user,pass,"get_series_info")+"&series_id="+android.net.Uri.encode(item.id);
+        HttpURLConnection conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(10000);conn.setReadTimeout(18000);conn.setRequestProperty("User-Agent","NISSKENZI+/1.7");
+        JSONObject rootObj;
+        try{int code=conn.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("HTTP "+code);BufferedReader r=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));StringBuilder b=new StringBuilder();String line;while((line=r.readLine())!=null)b.append(line);r.close();rootObj=new JSONObject(b.toString());}finally{conn.disconnect();}
+        JSONObject episodeMap=rootObj.optJSONObject("episodes");
+        if(episodeMap!=null){java.util.Iterator<String> seasons=episodeMap.keys();while(seasons.hasNext()){String season=seasons.next();JSONArray arr=episodeMap.optJSONArray(season);if(arr==null)continue;for(int i=0;i<arr.length();i++){JSONObject ep=arr.optJSONObject(i);if(ep==null)continue;String id=ep.optString("id","");if(id.isEmpty())continue;String ext=ep.optString("container_extension","mp4");String label=ep.optString("title","Épisode "+ep.optString("episode_num",String.valueOf(i+1)));String stream=host+"/series/"+android.net.Uri.encode(user)+"/"+android.net.Uri.encode(pass)+"/"+id+"."+(ext.isEmpty()?"mp4":ext);eps.add(new MediaEntry(label,stream,ep.optString("info",""),"Saison "+season,"episode",id,ext));}}}
+        if(eps.isEmpty())throw new java.io.IOException("Aucun épisode n’a été retourné par la source.");
+      }catch(Exception e){err=e.getMessage()==null?"Impossible de charger les épisodes":e.getMessage();}
+      final ArrayList<MediaEntry> items=eps;final String error=err;
+      runOnUiThread(()->{
+        if(items.isEmpty()){new AlertDialog.Builder(this).setTitle(item.name).setMessage("Épisodes indisponibles : "+error).setPositiveButton("OK",null).show();return;}
+        String[] labels=new String[items.size()];for(int i=0;i<items.size();i++)labels[i]=items.get(i).group+" · "+items.get(i).name;
+        new AlertDialog.Builder(this).setTitle(item.name).setItems(labels,(d,which)->{MediaEntry ep=items.get(which);play(new Channel(item.name+" — "+ep.name,ep.url,item.poster,"Séries · "+ep.group));}).setNegativeButton("Fermer",null).show();
+      });
+    });
+  }
   private void openSourceMenu(){
     new AlertDialog.Builder(this).setTitle("Ajouter une source").setItems(new String[]{"Playlist M3U/M3U8","Xtream Codes","VXParser VAVOO","Portail MAC / Stalker"},(d,which)->{if(which==0)openPlaylistImport();else if(which==1)openXtream();else if(which==2)openVxParser();else openMacPortal();}).setNegativeButton("Annuler",null).show();
   }
@@ -182,7 +259,7 @@ public class MainActivity extends Activity {
       String h=host.getText().toString().trim().replaceAll("/+$",""),u=user.getText().toString().trim(),pw=pass.getText().toString().trim();
       if(h.isEmpty()||u.isEmpty()||pw.isEmpty()){Toast.makeText(this,"Les trois champs sont obligatoires",Toast.LENGTH_SHORT).show();return;}
       p.edit().putString("xc_host",h).putString("xc_user",u).putString("xc_pass",pw).apply();
-      loadImportedPlaylist(h+"/get.php?username="+android.net.Uri.encode(u)+"&password="+android.net.Uri.encode(pw)+"&type=m3u_plus&output=ts");
+      loadImportedPlaylist(h+"/get.php?username="+android.net.Uri.encode(u)+"&password="+android.net.Uri.encode(pw)+"&type=m3u_plus&output=ts");loadXtreamCatalog();
     }).setNegativeButton("Annuler",null).show();
   }
   private void openVxParser(){

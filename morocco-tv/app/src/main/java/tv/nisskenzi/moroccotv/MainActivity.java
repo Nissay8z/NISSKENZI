@@ -1570,7 +1570,6 @@ public class MainActivity extends Activity {
         releaseMediaEngine();
         if (playerStage != null) playerStage.removeAllViews();
         if (ch.isVavoo) {
-            Toast.makeText(this, "Résolution du flux VAVOO…", Toast.LENGTH_SHORT).show();
             io.execute(() -> {
                 try {
                     String resolved = VavooProvider.resolveStream(ch.vavooSourceUrl);
@@ -1610,7 +1609,7 @@ public class MainActivity extends Activity {
             ExoPlayer active = LivePlaybackFactory.create(this,
                     ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
             nativeView.setChannelName(ch.name);
-            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "MONDE IPTV");
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setBackAction(nativeView::hideControls);

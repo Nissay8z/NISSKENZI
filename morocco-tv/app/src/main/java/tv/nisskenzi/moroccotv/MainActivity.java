@@ -1173,12 +1173,19 @@ public class MainActivity extends Activity {
     private String safe(String value) { return value == null ? "" : value.trim(); }
 
     private boolean isFavorite(Channel ch) {
-        return getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(ch.url, false);
+        return ch != null && (favoritesStore != null
+                ? favoritesStore.contains(ch.url)
+                : getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(ch.url, false));
     }
 
     private void toggleFavorite(Channel ch) {
-        SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
-        p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
+        if (ch == null) return;
+        if (favoritesStore != null) {
+            favoritesStore.toggle(ch.url);
+        } else {
+            SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
+            p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
+        }
     }
 
     private boolean useVlcPlayer() {
@@ -1455,6 +1462,9 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         activityDestroyed = true;
         loadGeneration.incrementAndGet();
+        filterGeneration.incrementAndGet();
+        if (filterJob != null) filterJob.cancel(true);
+        filterExecutor.shutdownNow();
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();

@@ -1,6 +1,6 @@
 package tv.nisskenzi.moroccotv;
 
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
@@ -24,6 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.lifecycle.ViewModelProvider;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -52,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Native Android Live TV app optimized for Android TV and native UI design.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends ComponentActivity {
     private static final int PANEL = 0xCC151D28;
     private static final int LINE = 0x665D6D82;
     private static final int CYAN = 0xFF4CC9F0;
@@ -85,6 +86,7 @@ public class MainActivity extends Activity {
     private TextView previewDetail;
 
     private NativeLivePlayerView playerView;
+    private ChannelViewModel channelViewModel;
     private ExoPlayer player;
     private FrameLayout playerStage;
     private boolean fullscreenPlayback = false;
@@ -114,6 +116,8 @@ public class MainActivity extends Activity {
     // Identity token shared by each player instance for the same loaded catalogue.
     private Object channelCatalogToken = new Object();
     private int countryStatsVersion = -1;
+    private String countryStatsSourceFilter = "";
+    private final Map<String, Integer> sourceCountCache = new HashMap<>();
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
     private final Set<String> channelUrlCache = new HashSet<>();
@@ -121,12 +125,14 @@ public class MainActivity extends Activity {
     private int favoriteCountCache = 0;
     private int favoriteCountCatalogVersion = -1;
     private long favoriteCountStoreRevision = -1L;
+    private String favoriteCountSourceFilter = "";
     private int recentCountCache = 0;
     private int recentCountCatalogVersion = -1;
     private long recentCountStoreRevision = -1L;
+    private String recentCountSourceFilter = "";
 
     private String activeCountry = "Tous les pays";
-    private String sourceFilter = "VAVOO";
+    private String sourceFilter = "all";
     private String searchText = "";
     private String categorySearch = "";
     private String lastRenderedFilterKey = "";
@@ -143,8 +149,32 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
-        // Catalogues are loaded only after an explicit source/refresh action.
-        // Parsing a large bundled M3U on every cold launch can cause startup stutter.
+        channelViewModel = new ViewModelProvider(this).get(ChannelViewModel.class);
+        channelViewModel.getChannels().observe(this, loaded -> {
+            if (loaded == null || activityDestroyed) return;
+            channels.clear();
+            channels.addAll(loaded);
+            markCatalogChanged();
+            lastRenderedFilterKey = "";
+            if (fullscreenPlayback) {
+                renderCountryChoices();
+                updateChannelResults();
+            } else if (!"Paramètres".equals(activePage)) {
+                if (countryChoices == null || channelResults == null) renderPage();
+                else {
+                    renderCountryChoices();
+                    updateChannelResults();
+                }
+            }
+        });
+        channelViewModel.getStatus().observe(this, status -> {
+            if (status == null || activityDestroyed) return;
+            catalogStatus = status;
+            String lower = status.toLowerCase(Locale.ROOT);
+            loadingCatalog = lower.contains("arrière-plan") || lower.contains("vérification");
+            updateStatus();
+        });
+        channelViewModel.initialize();
     }
 
     private int dp(float value) {
@@ -194,9 +224,9 @@ public class MainActivity extends Activity {
                 b.setScaleX(1.035f);
                 b.setScaleY(1.035f);
             } else {
-                boolean active = b == liveTab ? "Live TV".equals(activePage)
-                        : b == vavooTab ? ("Live TV".equals(activePage) && "VAVOO".equals(sourceFilter))
-                        : b == iptvTab ? ("Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter))
+                boolean active = b == liveTab ? ("Live TV".equals(activePage) && "all".equals(sourceFilter))
+                        : b == vavooTab ? ("Live TV".equals(activePage) && "vavoo".equals(sourceFilter))
+                        : b == iptvTab ? ("Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
                 b.setBackground(rounded(active ? 0xFF173D52 : 0xFF242E3B, 22));
                 b.setTextColor(active ? YELLOW : Color.WHITE);
@@ -248,8 +278,8 @@ public class MainActivity extends Activity {
         back.setOnClickListener(v -> onBackPressed());
 
         liveTab = buttonText("Live TV", true);
-        vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
+        vavooTab = buttonText("VAVOO", "vavoo".equals(sourceFilter));
+        iptvTab = buttonText("IPTV-ORG", "iptv-org-fr".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
 
         LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
@@ -264,7 +294,7 @@ public class MainActivity extends Activity {
         iptvP.leftMargin = dp(8);
         header.addView(iptvTab, iptvP);
 
-        liveTab.setOnClickListener(v -> setPage("Live TV"));
+        liveTab.setOnClickListener(v -> switchSource("ALL"));
         vavooTab.setOnClickListener(v -> switchSource("VAVOO"));
         iptvTab.setOnClickListener(v -> switchSource("IPTV-ORG"));
 
@@ -324,9 +354,9 @@ public class MainActivity extends Activity {
     }
 
     private void updateHeaderTabs() {
-        setTabState(liveTab, "Live TV".equals(activePage));
-        setTabState(vavooTab, "Live TV".equals(activePage) && "VAVOO".equals(sourceFilter));
-        setTabState(iptvTab, "Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter));
+        setTabState(liveTab, "Live TV".equals(activePage) && "all".equals(sourceFilter));
+        setTabState(vavooTab, "Live TV".equals(activePage) && "vavoo".equals(sourceFilter));
+        setTabState(iptvTab, "Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter));
         setTabState(settingsTab, "Paramètres".equals(activePage));
     }
 
@@ -426,7 +456,7 @@ public class MainActivity extends Activity {
 
         // En-tête de la liste centrale
         LinearLayout middleHeader = horizontal();
-        TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
+        TextView sourceTitle = label(ChannelRepository.displayName(this, sourceFilter), isTelevision() ? 24 : 18, Color.WHITE, true);
         middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
         countView.setBackground(rounded(0xFF212B38, 15));
@@ -435,7 +465,7 @@ public class MainActivity extends Activity {
         middle.addView(middleHeader, lp(-1, -2));
 
         TextView listSubtitle = label(
-                "Flux direct · " + ("VAVOO".equals(sourceFilter) ? "VAVOO Server" : "IPTV-ORG Playlist"),
+                "Catalogue SQLite · " + ("all".equals(sourceFilter) ? "toutes les sources M3U" : "source M3U sélectionnée"),
                 isTelevision() ? 12 : 9, 0xEEFFFFFF, false);
         LinearLayout.LayoutParams lsp = lp(-1, -2);
         lsp.topMargin = dp(4);
@@ -450,7 +480,7 @@ public class MainActivity extends Activity {
         channelResults.setItemViewCacheSize(8);
         channelResults.setItemAnimator(null);
         channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
-        channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+        channelAdapter.setSelectedChannel(currentChannel);
         channelResults.setAdapter(channelAdapter);
         channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
 
@@ -510,7 +540,8 @@ public class MainActivity extends Activity {
 
         previewDetail = label(currentChannel == null
                 ? "La lecture s'intègre directement ici."
-                : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
+                : ("SOURCE  " + ChannelRepository.displayName(this, currentChannel.catalogSource)
+                        + "     ·     PAYS  " + safeCountry(currentChannel.country)),
                 isTelevision() ? 13 : 10, Color.WHITE, false);
         previewDetail.setPadding(0, dp(12), 0, 0);
         right.addView(previewDetail, lp(-1, -2));
@@ -526,35 +557,97 @@ public class MainActivity extends Activity {
         updateChannelResults();
     }
 
+    private boolean matchesCurrentSource(Channel channel) {
+        return channel != null && ("all".equals(sourceFilter)
+                || sourceFilter.equals(channel.catalogSource));
+    }
+
+    private int countVisibleChannels() {
+        if ("all".equals(sourceFilter)) return channels.size();
+        int count = 0;
+        for (Channel channel : channels) if (matchesCurrentSource(channel)) count++;
+        return count;
+    }
+
+    private void rebuildCategoryCountsIfNeeded() {
+        if (countryStatsVersion == catalogVersion
+                && sourceFilter.equals(countryStatsSourceFilter)) return;
+
+        countryCountCache.clear();
+        countryCodeCache.clear();
+        sourceCountCache.clear();
+        channelUrlCache.clear();
+        HashMap<String, String> normalizedCountries = new HashMap<>();
+
+        // This is run only when Room publishes a new snapshot or the selected
+        // source changes, never during a search keystroke or channel playback.
+        for (Channel ch : channels) {
+            if (ch == null) continue;
+            String source = safe(ch.catalogSource);
+            Integer oldSourceCount = sourceCountCache.get(source);
+            sourceCountCache.put(source, oldSourceCount == null ? 1 : oldSourceCount + 1);
+
+            if (!matchesCurrentSource(ch)) continue;
+            if (!safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
+
+            String rawCountry = safe(ch.country);
+            String country = normalizedCountries.get(rawCountry);
+            if (country == null) {
+                country = safeCountry(rawCountry);
+                normalizedCountries.put(rawCountry, country);
+            }
+            Integer oldCount = countryCountCache.get(country);
+            countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
+        }
+
+        for (String country : countryCountCache.keySet()) {
+            countryCodeCache.put(country, countryCode(country));
+        }
+        channelUrlSetVersion = catalogVersion;
+        countryStatsVersion = catalogVersion;
+        countryStatsSourceFilter = sourceFilter;
+    }
+
     private void renderCountryChoices() {
         if (countryChoices == null) return;
+        rebuildCategoryCountsIfNeeded();
         countryChoices.removeAllViews();
 
-        addCategoryRow("Tous", channels.size(),
-                !favoritesOnly && !recentOnly && "Tous les pays".equals(activeCountry),
-                v -> {
-                    activeCountry = "Tous les pays";
-                    favoritesOnly = false;
-                    recentOnly = false;
-                    renderCountryChoices();
-                    updateChannelResults();
-                });
+        addCategoryRow("Toutes les chaînes", countVisibleChannels(),
+                "all".equals(sourceFilter) && !favoritesOnly && !recentOnly
+                        && "Tous les pays".equals(activeCountry),
+                v -> switchSource("ALL"));
         addCategoryRow("Récemment vus", countRecentChannels(), recentOnly,
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
-                    renderCountryChoices();
                     updateChannelResults();
+                    renderCountryChoices();
                 });
         addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
-                    renderCountryChoices();
                     updateChannelResults();
+                    renderCountryChoices();
                 });
+
+        TextView sourcesHeading = label("SOURCES M3U", isTelevision() ? 10 : 8, CYAN, true);
+        sourcesHeading.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams headingParams = lp(-1, -2);
+        headingParams.topMargin = dp(10);
+        headingParams.bottomMargin = dp(6);
+        countryChoices.addView(sourcesHeading, headingParams);
+
+        for (ChannelRepository.Source source : ChannelRepository.getInstance(this).getSources()) {
+            int count = sourceCountCache.containsKey(source.id)
+                    ? sourceCountCache.get(source.id) : 0;
+            addCategoryRow(source.name, count, source.id.equals(sourceFilter)
+                    && !favoritesOnly && !recentOnly,
+                    v -> switchSource(source.id));
+        }
 
         View divider = new View(this);
         divider.setBackgroundColor(LINE);
@@ -563,31 +656,12 @@ public class MainActivity extends Activity {
         divP.bottomMargin = dp(8);
         countryChoices.addView(divider, divP);
 
-        if (countryStatsVersion != catalogVersion) {
-            countryCountCache.clear();
-            countryCodeCache.clear();
-            // Thousands of channels share the same handful of countries. Normalize
-            // each distinct country only once; do not run Unicode normalization/regex
-            // for every row on the UI thread whenever the category panel is built.
-            HashMap<String, String> normalizedCountries = new HashMap<>();
-            channelUrlCache.clear();
-            for (Channel ch : channels) {
-                if (ch != null && !safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
-                String rawCountry = safe(ch.country);
-                String country = normalizedCountries.get(rawCountry);
-                if (country == null) {
-                    country = safeCountry(rawCountry);
-                    normalizedCountries.put(rawCountry, country);
-                }
-                Integer oldCount = countryCountCache.get(country);
-                countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
-            }
-            for (String country : countryCountCache.keySet()) {
-                countryCodeCache.put(country, countryCode(country));
-            }
-            channelUrlSetVersion = catalogVersion;
-            countryStatsVersion = catalogVersion;
-        }
+        TextView countryHeading = label("PAYS", isTelevision() ? 10 : 8, CYAN, true);
+        countryHeading.setLetterSpacing(0.08f);
+        LinearLayout.LayoutParams countryHeadingParams = lp(-1, -2);
+        countryHeadingParams.bottomMargin = dp(6);
+        countryChoices.addView(countryHeading, countryHeadingParams);
+
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
         Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
         String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
@@ -600,8 +674,8 @@ public class MainActivity extends Activity {
                         activeCountry = country;
                         favoritesOnly = false;
                         recentOnly = false;
-                        renderCountryChoices();
                         updateChannelResults();
+                        renderCountryChoices();
                     });
         }
     }
@@ -651,29 +725,45 @@ public class MainActivity extends Activity {
 
     private int countFavoriteChannels() {
         long revision = favoritesStore == null ? 0L : favoritesStore.revision();
-        if (favoriteCountCatalogVersion != catalogVersion || favoriteCountStoreRevision != revision) {
-            favoriteCountCache = favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+        if (favoriteCountCatalogVersion != catalogVersion
+                || favoriteCountStoreRevision != revision
+                || !sourceFilter.equals(favoriteCountSourceFilter)) {
+            int count = 0;
+            if (favoritesStore != null) {
+                Set<String> favorites = favoritesStore.snapshotUrls();
+                for (Channel ch : channels) {
+                    if (matchesCurrentSource(ch) && favorites.contains(ch.url)) count++;
+                }
+            }
+            favoriteCountCache = count;
             favoriteCountCatalogVersion = catalogVersion;
             favoriteCountStoreRevision = revision;
+            favoriteCountSourceFilter = sourceFilter;
         }
         return favoriteCountCache;
     }
 
     private int countRecentChannels() {
         long revision = recentStore == null ? 0L : recentStore.revision();
-        if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
+        if (recentCountCatalogVersion != catalogVersion
+                || recentCountStoreRevision != revision
+                || !sourceFilter.equals(recentCountSourceFilter)) {
             int count = 0;
             if (recentStore != null) {
-                Set<String> recent = recentStore.snapshotUrls(); // At most 100 URLs.
-                if (channelUrlSetVersion == catalogVersion) {
+                Set<String> recent = recentStore.snapshotUrls();
+                if (channelUrlSetVersion == catalogVersion
+                        && sourceFilter.equals(countryStatsSourceFilter)) {
                     for (String url : recent) if (channelUrlCache.contains(url)) count++;
                 } else {
-                    for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                    for (Channel ch : channels) {
+                        if (matchesCurrentSource(ch) && recent.contains(ch.url)) count++;
+                    }
                 }
             }
             recentCountCache = count;
             recentCountCatalogVersion = catalogVersion;
             recentCountStoreRevision = revision;
+            recentCountSourceFilter = sourceFilter;
         }
         return recentCountCache;
     }
@@ -760,7 +850,7 @@ public class MainActivity extends Activity {
 
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
-                targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
+                targetAdapter.setSelectedChannel(currentChannel);
                 targetAdapter.submitList(filtered, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
@@ -793,28 +883,55 @@ public class MainActivity extends Activity {
         playerInfoParams.bottomMargin = dp(18);
         page.addView(playerInfoDetail, playerInfoParams);
 
-        page.addView(sourceCard("VAVOO", "V", "Playlist M3U", "Le catalogue vient d’une playlist M3U. Seule une chaîne vavoo:// sélectionnée passe par resolveStream().", CYAN));
-        LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist M3U", "Les URLs HTTP(S) de la playlist sont envoyées directement au lecteur natif.", PURPLE), gap);
+        page.addView(sourceCard("VAVOO", "V", "M3U local + résolution à la demande",
+                "Le catalogue VAVOO provient du M3U intégré. Le résolveur VAVOO ne sert qu'au clic sur une chaîne concernée.", CYAN));
+        LinearLayout.LayoutParams gap = lp(-1, -2);
+        gap.topMargin = dp(12);
+        page.addView(sourceCard("IPTV-org France", "FR", "Playlist publique",
+                "Chaînes françaises à URLs directes, chargées dans la base SQLite.", PURPLE), gap);
+        LinearLayout.LayoutParams cardGap = lp(-1, -2);
+        cardGap.topMargin = dp(12);
+        page.addView(sourceCard("Pluto TV France", "P", "FAST • M3U public",
+                "Bouquet Pluto TV France via une playlist communautaire maintenue publiquement.", CYAN), cardGap);
+        LinearLayout.LayoutParams samsungGap = lp(-1, -2);
+        samsungGap.topMargin = dp(12);
+        page.addView(sourceCard("Samsung TV Plus France", "S+", "FAST • M3U public",
+                "Bouquet Samsung TV Plus France via une playlist communautaire maintenue publiquement.", PURPLE), samsungGap);
+        LinearLayout.LayoutParams worldGap = lp(-1, -2);
+        worldGap.topMargin = dp(12);
+        page.addView(sourceCard("Free-TV International", "🌐", "Chaînes internationales gratuites",
+                "Playlist internationale de chaînes gratuites, distincte des autres bouquets.", CYAN), worldGap);
 
         SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
-        TextView m3uTitle = label("SOURCES DES PLAYLISTS M3U", 10, CYAN, true);
+        TextView m3uTitle = label("CONFIGURATION DES PLAYLISTS M3U", 10, CYAN, true);
         LinearLayout.LayoutParams m3uTitleParams = lp(-1, -2);
         m3uTitleParams.topMargin = dp(20);
         m3uTitleParams.bottomMargin = dp(8);
         page.addView(m3uTitle, m3uTitleParams);
-        page.addView(label("Laisse une URL vide pour utiliser le M3U intégré à l’application. URL acceptées : https://…, asset://nom.m3u ou file://…", 10, MUTED, false), lp(-1, -2));
+        page.addView(label("Laisse un champ vide pour garder sa source par défaut. VAVOO utilise le M3U intégré si son champ est vide. URL acceptées : https://…, asset://nom.m3u ou file://…", 10, MUTED, false), lp(-1, -2));
 
-        EditText vavooM3uUrl = m3uUrlField(m3uPrefs.getString("vavoo_url", ""), "Playlist M3U VAVOO (facultatif)");
+        EditText vavooM3uUrl = m3uUrlField(m3uPrefs.getString("vavoo_url", ""), "URL M3U VAVOO (facultatif)");
         LinearLayout.LayoutParams vavooUrlParams = lp(-1, 46);
         vavooUrlParams.topMargin = dp(8);
         page.addView(vavooM3uUrl, vavooUrlParams);
-        EditText iptvM3uUrl = m3uUrlField(m3uPrefs.getString("iptv_org_url", ""), "Playlist M3U IPTV-ORG (facultatif)");
+        EditText iptvM3uUrl = m3uUrlField(m3uPrefs.getString("iptv_org_url", ""), "URL M3U IPTV-org France (facultatif)");
         LinearLayout.LayoutParams iptvUrlParams = lp(-1, 46);
         iptvUrlParams.topMargin = dp(8);
         page.addView(iptvM3uUrl, iptvUrlParams);
+        EditText plutoM3uUrl = m3uUrlField(m3uPrefs.getString("pluto_url", ""), "URL M3U Pluto TV France (facultatif)");
+        LinearLayout.LayoutParams plutoUrlParams = lp(-1, 46);
+        plutoUrlParams.topMargin = dp(8);
+        page.addView(plutoM3uUrl, plutoUrlParams);
+        EditText samsungM3uUrl = m3uUrlField(m3uPrefs.getString("samsung_url", ""), "URL M3U Samsung TV Plus France (facultatif)");
+        LinearLayout.LayoutParams samsungUrlParams = lp(-1, 46);
+        samsungUrlParams.topMargin = dp(8);
+        page.addView(samsungM3uUrl, samsungUrlParams);
+        EditText freeTvM3uUrl = m3uUrlField(m3uPrefs.getString("free_tv_url", ""), "URL M3U Free-TV International (facultatif)");
+        LinearLayout.LayoutParams freeTvUrlParams = lp(-1, 46);
+        freeTvUrlParams.topMargin = dp(8);
+        page.addView(freeTvM3uUrl, freeTvUrlParams);
 
-        TextView saveM3uUrls = buttonText("Enregistrer les URLs M3U", true);
+        TextView saveM3uUrls = buttonText("Enregistrer les playlists M3U", true);
         LinearLayout.LayoutParams saveM3uParams = lp(-1, 46);
         saveM3uParams.topMargin = dp(10);
         page.addView(saveM3uUrls, saveM3uParams);
@@ -822,9 +939,13 @@ public class MainActivity extends Activity {
             m3uPrefs.edit()
                     .putString("vavoo_url", safe(vavooM3uUrl.getText() == null ? "" : vavooM3uUrl.getText().toString()))
                     .putString("iptv_org_url", safe(iptvM3uUrl.getText() == null ? "" : iptvM3uUrl.getText().toString()))
+                    .putString("pluto_url", safe(plutoM3uUrl.getText() == null ? "" : plutoM3uUrl.getText().toString()))
+                    .putString("samsung_url", safe(samsungM3uUrl.getText() == null ? "" : samsungM3uUrl.getText().toString()))
+                    .putString("free_tv_url", safe(freeTvM3uUrl.getText() == null ? "" : freeTvM3uUrl.getText().toString()))
                     .apply();
             M3UParser.clearMemoryCache();
-            Toast.makeText(this, "URLs M3U enregistrées. Appuie sur Actualiser pour recharger la source.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Playlists enregistrées : actualisation en arrière-plan.", Toast.LENGTH_LONG).show();
+            loadChannels(true);
         });
 
         LinearLayout statusCard = vertical();
@@ -838,7 +959,7 @@ public class MainActivity extends Activity {
         details.setPadding(0, dp(10), 0, dp(4));
         statusCard.addView(details);
 
-        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser " + sourceFilter, true);
+        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser toutes les sources M3U", true);
         LinearLayout.LayoutParams rp = lp(-1, 48); rp.topMargin = dp(16); page.addView(refresh, rp);
         refresh.setOnClickListener(v -> loadChannels(true));
         if (loadingCatalog) refresh.setAlpha(0.65f);
@@ -852,12 +973,12 @@ public class MainActivity extends Activity {
             .setPositiveButton("Effacer", (dialog, which) -> {
                 CatalogCache.clear(MainActivity.this);
                 M3UParser.clearMemoryCache();
-                Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
-                channels.clear();
-                markCatalogChanged();
                 activeCountry = "Tous les pays";
+                favoritesOnly = false;
+                recentOnly = false;
                 lastRenderedFilterKey = "";
-                renderPage();
+                if (channelViewModel != null) channelViewModel.clearLocalDatabase();
+                Toast.makeText(this, "Base SQLite effacée. Les playlists seront rechargées en arrière-plan.", Toast.LENGTH_LONG).show();
             }).show());
 
         TextView note = label("Le catalogue est lu depuis une playlist M3U locale ou distante. Les références VAVOO sont résolues uniquement au clic sur une chaîne.", 10, MUTED, false);
@@ -901,118 +1022,57 @@ public class MainActivity extends Activity {
     }
 
     private String sourceStatus(String source) {
-        boolean loading = "VAVOO".equals(source) ? loadingVavoo : loadingIptv;
-        if (loading) return "playlist M3U en lecture";
-        if (source.equals(sourceFilter) && !channels.isEmpty()) return "M3U chargé · " + channels.size();
-        String key = "VAVOO".equals(source) ? "vavoo_url" : "iptv_org_url";
-        String url = getSharedPreferences("m3u_sources", MODE_PRIVATE).getString(key, "");
-        return url == null || url.trim().isEmpty() ? "M3U local intégré" : "URL M3U distante configurée";
+        if (loadingCatalog) return "actualisation en arrière-plan";
+        String id = ChannelRepository.canonicalSourceId(source);
+        int count = 0;
+        for (Channel channel : channels) {
+            if (channel != null && id.equals(channel.catalogSource)) count++;
+        }
+        if (count > 0) return count + " chaînes enregistrées dans SQLite";
+        return "playlist prête à charger en arrière-plan";
     }
 
     private void switchSource(String source) {
-        boolean changed = !source.equals(sourceFilter);
-        if (!changed && "Live TV".equals(activePage) && !channels.isEmpty()) return;
-        loadGeneration.incrementAndGet();
+        String nextSource = ChannelRepository.canonicalSourceId(source);
+        boolean changed = !nextSource.equals(sourceFilter);
+        if (!changed && "Live TV".equals(activePage) && channels.size() > 0) {
+            renderCountryChoices();
+            updateChannelResults();
+            return;
+        }
+
         releaseMediaEngine();
         currentChannel = null;
         playerStage = null;
         activePage = "Live TV";
-        sourceFilter = source;
+        sourceFilter = nextSource;
+
         if (changed) {
-            channels.clear();
-            markCatalogChanged();
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
             categorySearch = "";
-            searchText = "";
-            if (searchInput != null) searchInput.setText("");
+            countryStatsSourceFilter = "";
         }
         updateHeaderTabs();
         renderPage();
-        if (changed || channels.isEmpty()) loadChannels();
+        // Switching source only filters the already cached Room rows. It never
+        // starts a catalogue download. The ViewModel owns refresh scheduling.
     }
 
-    private void loadChannels() { loadChannels(false); }
+    private void loadChannels() {
+        loadChannels(false);
+    }
 
     private void loadChannels(boolean forceRefresh) {
-        final String requestedSource = "IPTV-ORG".equals(sourceFilter) ? "IPTV-ORG" : "VAVOO";
-        final boolean requestVavoo = "VAVOO".equals(requestedSource);
-        if (requestVavoo ? loadingVavoo : loadingIptv) return;
-
-        if (requestVavoo) loadingVavoo = true; else loadingIptv = true;
-        loadingCatalog = loadingVavoo || loadingIptv;
-        final String assetName = requestVavoo ? "vavoo_catalog.m3u" : "iptv_org_catalog.m3u";
-        final SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
-        final String playlistUrl = safe(m3uPrefs.getString(
-                requestVavoo ? "vavoo_url" : "iptv_org_url", ""));
+        if (channelViewModel == null) return;
+        loadingCatalog = true;
         catalogStatus = forceRefresh
-                ? requestedSource + " · actualisation de la playlist M3U…"
-                : requestedSource + " · ouverture de la playlist M3U…";
+                ? "Actualisation des playlists M3U en arrière-plan…"
+                : "Vérification du cache local et des playlists…";
         updateStatus();
-
-        if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
-        if ("Paramètres".equals(activePage)) renderSettings();
-
-        final int currentGen = loadGeneration.incrementAndGet();
-        io.execute(() -> {
-            ArrayList<Channel> loaded = new ArrayList<>();
-            String error = "";
-            try {
-                loaded = M3UParser.load(MainActivity.this, requestedSource, assetName,
-                        playlistUrl, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry,
-                        forceRefresh);
-            } catch (Exception e) {
-                error = e.getMessage() == null ? "impossible de lire la playlist M3U" : e.getMessage();
-            }
-
-            final ArrayList<Channel> result = loaded;
-            final String loadError = error;
-            runOnUiThread(() -> {
-                if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
-                loadingCatalog = loadingVavoo || loadingIptv;
-                if (activityDestroyed) return;
-
-                if (currentGen != loadGeneration.get()) {
-                    if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
-                    else updateStatus();
-                    return;
-                }
-                if (!requestedSource.equals(sourceFilter)) {
-                    updateStatus();
-                    return;
-                }
-
-                if (!result.isEmpty()) {
-                    channels.clear();
-                    channels.addAll(result);
-                    markCatalogChanged();
-                    String origin = playlistUrl.isEmpty() ? "M3U local" : "M3U distant";
-                    catalogStatus = requestedSource + " · " + result.size()
-                            + " chaînes · " + origin + " · sans chargement du catalogue API";
-                } else if (!channels.isEmpty()) {
-                    catalogStatus = requestedSource + " · playlist inaccessible, chaînes précédentes conservées";
-                } else {
-                    catalogStatus = requestedSource + " · playlist M3U vide ou inaccessible"
-                            + (loadError.isEmpty() ? "" : " · " + loadError);
-                }
-                updateStatus();
-                updateHeaderTabs();
-                if (fullscreenPlayback) {
-                    renderCountryChoices();
-                    updateChannelResults();
-                } else if ("Paramètres".equals(activePage)) {
-                    renderSettings();
-                } else {
-                    renderPage();
-                }
-                if (result.isEmpty() && channels.isEmpty()) {
-                    Toast.makeText(MainActivity.this,
-                            requestedSource + " : impossible de lire la playlist M3U.",
-                            Toast.LENGTH_LONG).show();
-                }
-            });
-        });
+        if (forceRefresh) channelViewModel.refreshAllSources();
+        else channelViewModel.refreshIfNeeded();
     }
 
     private void updateStatus() {
@@ -1196,7 +1256,7 @@ public class MainActivity extends Activity {
         // Back leaves fullscreen and returns directly to the existing native catalogue.
         releaseMediaEngine();
         currentChannel = null;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(null);
         playerStage = null;
         renderPage();
     }
@@ -1204,12 +1264,13 @@ public class MainActivity extends Activity {
     private void play(Channel ch) {
         if (ch == null) return;
         currentChannel = ch;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.url);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(ch);
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
         if (previewStatus != null) previewStatus.setText("Ouverture du direct…");
         if (previewDetail != null) previewDetail.setText(
-                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
+                "SOURCE  " + ChannelRepository.displayName(this, ch.catalogSource)
+                        + "     ·     PAYS  " + safeCountry(ch.country));
 
         // Don't rebuild the country pane every time a channel is chosen. The
         // full catalogue can contain ten thousand rows and this was causing stutter.
@@ -1225,7 +1286,7 @@ public class MainActivity extends Activity {
 
         final NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
         nativeView.setChannelName(ch.name);
-        nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+        nativeView.setSourceLabel(ChannelRepository.displayName(this, ch.catalogSource));
         nativeView.setBackAction(nativeView::hideControls);
         nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
                 this::loadEpgForCurrentChannel);
@@ -1356,7 +1417,7 @@ public class MainActivity extends Activity {
     private void stopPreview() {
         releaseMediaEngine();
         currentChannel = null;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
+        if (channelAdapter != null) channelAdapter.setSelectedChannel(null);
         if (playerStage != null) {
             playerStage.removeAllViews();
             TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);

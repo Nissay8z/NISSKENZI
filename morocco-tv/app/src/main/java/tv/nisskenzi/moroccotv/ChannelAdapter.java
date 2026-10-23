@@ -46,7 +46,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 @Override
                 public boolean areItemsTheSame(@NonNull Channel oldItem,
                                                @NonNull Channel newItem) {
-                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url));
+                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url))
+                            && TextUtils.equals(safe(oldItem.catalogSource), safe(newItem.catalogSource));
                 }
 
                 @Override
@@ -57,6 +58,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
                             && TextUtils.equals(safe(oldItem.country), safe(newItem.country))
                             && oldItem.isVavoo == newItem.isVavoo
+                            && TextUtils.equals(safe(oldItem.epgId), safe(newItem.epgId))
+                            && TextUtils.equals(safe(oldItem.catalogSource), safe(newItem.catalogSource))
                             && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl));
                 }
             };
@@ -67,6 +70,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     private final FavoriteChecker favoriteChecker;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
+    private String selectedSourceId = "";
     private volatile boolean shutDown;
 
     public ChannelAdapter(@NonNull OnChannelClickListener listener,
@@ -76,33 +80,50 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         this.favoriteChecker = favoriteChecker;
     }
 
-    /** Updates the highlighted channel without rebinding the entire catalogue. */
-    public void setSelectedUrl(@Nullable String url) {
-        String next = safe(url);
-        if (TextUtils.equals(selectedUrl, next)) return;
+    /** Updates the selected row using both its stream URL and source identity. */
+    public void setSelectedChannel(@Nullable Channel channel) {
+        String nextUrl = channel == null ? "" : safe(channel.url);
+        String nextSource = channel == null ? "" : safe(channel.catalogSource);
+        if (TextUtils.equals(selectedUrl, nextUrl)
+                && TextUtils.equals(selectedSourceId, nextSource)) return;
 
-        int oldPosition = findPosition(selectedUrl);
-        selectedUrl = next;
-        int newPosition = findPosition(selectedUrl);
-
+        int oldPosition = findPosition(selectedUrl, selectedSourceId);
+        selectedUrl = nextUrl;
+        selectedSourceId = nextSource;
+        int newPosition = findPosition(selectedUrl, selectedSourceId);
         if (oldPosition >= 0) notifyItemChanged(oldPosition);
         if (newPosition >= 0 && newPosition != oldPosition) notifyItemChanged(newPosition);
     }
 
-    /** The favorite toggle is attached to the selected channel; refresh only that row. */
+    /** Backwards-compatible helper for URL-only callers. */
+    public void setSelectedUrl(@Nullable String url) {
+        String value = safe(url);
+        if (value.isEmpty()) { setSelectedChannel(null); return; }
+        for (int i = 0; i < getCurrentList().size(); i++) {
+            Channel channel = getItem(i);
+            if (TextUtils.equals(value, safe(channel.url))) {
+                setSelectedChannel(channel);
+                return;
+            }
+        }
+        setSelectedChannel(null);
+    }
+
+    /** The favorite toggle refreshes only the currently selected row. */
     public void refreshDecorations() {
-        int position = findPosition(selectedUrl);
+        int position = findPosition(selectedUrl, selectedSourceId);
         if (position >= 0) notifyItemChanged(position, "decoration");
     }
 
-    private int findPosition(String url) {
+    private int findPosition(String url, String sourceId) {
         if (url == null || url.isEmpty()) return -1;
         for (int i = 0; i < getCurrentList().size(); i++) {
-            if (TextUtils.equals(url, safe(getItem(i).url))) return i;
+            Channel item = getItem(i);
+            if (TextUtils.equals(url, safe(item.url))
+                    && TextUtils.equals(sourceId, safe(item.catalogSource))) return i;
         }
         return -1;
     }
-
     @NonNull
     @Override
     public ChannelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -194,7 +215,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     @Override
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         Channel channel = getItem(position);
-        holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
+        holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url))
+                        && TextUtils.equals(selectedSourceId, safe(channel.catalogSource)),
                 listener, favoriteChecker, logoLoader, this);
     }
 

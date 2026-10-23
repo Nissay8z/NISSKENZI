@@ -270,13 +270,24 @@ public final class M3UParser {
     }
 
     private static String attribute(String line, String key) {
-        String marker = key + "=";
+        if (line == null || key == null || key.isEmpty()) return "";
         int from = 0;
         while (from < line.length()) {
-            int at = line.indexOf(marker, from);
+            int at = indexOfIgnoreCase(line, key, from);
             if (at < 0) return "";
-            if (at == 0 || Character.isWhitespace(line.charAt(at - 1))) {
-                int start = at + marker.length();
+            boolean boundaryBefore = at == 0 || Character.isWhitespace(line.charAt(at - 1));
+            int equals = at + key.length();
+            boolean boundaryAfter = equals >= line.length()
+                    || Character.isWhitespace(line.charAt(equals))
+                    || line.charAt(equals) == '=';
+            if (boundaryBefore && boundaryAfter) {
+                while (equals < line.length() && Character.isWhitespace(line.charAt(equals))) equals++;
+                if (equals >= line.length() || line.charAt(equals) != '=') {
+                    from = at + key.length();
+                    continue;
+                }
+                int start = equals + 1;
+                while (start < line.length() && Character.isWhitespace(line.charAt(start))) start++;
                 if (start >= line.length()) return "";
                 char quote = line.charAt(start);
                 if (quote == '"' || quote == '\'') {
@@ -286,18 +297,27 @@ public final class M3UParser {
                         char ch = line.charAt(i);
                         if (escaped) { value.append(ch); escaped = false; }
                         else if (ch == '\\') escaped = true;
-                        else if (ch == quote) break;
+                        else if (ch == quote) return value.toString().trim();
                         else value.append(ch);
                     }
                     return value.toString().trim();
                 }
                 int end = start;
-                while (end < line.length() && !Character.isWhitespace(line.charAt(end))) end++;
+                while (end < line.length() && !Character.isWhitespace(line.charAt(end))
+                        && line.charAt(end) != ',') end++;
                 return line.substring(start, end).trim();
             }
-            from = at + marker.length();
+            from = at + key.length();
         }
         return "";
+    }
+
+    private static int indexOfIgnoreCase(String text, String search, int from) {
+        int last = text.length() - search.length();
+        for (int i = Math.max(0, from); i <= last; i++) {
+            if (text.regionMatches(true, i, search, 0, search.length())) return i;
+        }
+        return -1;
     }
 
     private static String stableId(String name, String url) {

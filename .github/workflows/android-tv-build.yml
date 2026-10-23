@@ -37,3 +37,35 @@ jobs:
           path: morocco-tv/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Prepare source bundle for performance review
+        run: |
+          mkdir -p source-review
+          cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/VavooProvider.java source-review/
+          cp morocco-tv/app/src/main/java/tv/nisskenzi/moroccotv/MainActivity.java source-review/
+          cp morocco-tv/app/build.gradle source-review/
+          cp morocco-tv/app/src/main/AndroidManifest.xml source-review/
+          cat > source-review/README.md <<'EOF'
+          # NISSKENZI+ Android TV — source review bundle
+
+          These are the current native Android source files for a speed/performance review. The project uses Java Android Views, not HTML/WebView.
+
+          ## Where the engines are
+          - VavooProvider.java: VAVOO catalogue pagination, API requests/signature handling, channel metadata, and stream resolution.
+          - MainActivity.java: IPTV-org playlist fetching/parsing is currently implemented inside loadChannels(); it also contains the Android TV list rendering, logo loader/cache, and player lifecycle. The VAVOO source selection is there too.
+          - build.gradle: dependency versions and Android build settings.
+          - AndroidManifest.xml: app permissions and TV launcher declarations.
+
+          ## Suggested performance review
+          Inspect blocking I/O, number of network requests, pagination, JSON/M3U parsing, allocations, shared-preferences cache serialization, logo fetching/decoding, UI-thread view creation, lifecycle cancellation, and duplicate network work. Keep VAVOO and IPTV-org catalogues separate. Preserve native Android TV / D-pad navigation and do not replace the UI with HTML/WebView.
+
+          Do not assume the VAVOO service endpoints or signatures are stable; failures need graceful handling and must not crash the app.
+          EOF
+          zip -r nisskenzi-android-tv-engine-source.zip source-review
+      - name: Upload engine source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: nisskenzi-android-tv-engine-source
+          path: nisskenzi-android-tv-engine-source.zip
+          if-no-files-found: error
+          retention-days: 7

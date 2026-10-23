@@ -218,7 +218,8 @@ async function refreshIptvOrgCatalog() {
   const parseRows = (raw, source, enforceMinimum = true) => {
     if (Buffer.byteLength(raw, 'utf8') > maxBytes) throw new Error(source.id + ' dépasse la taille maximale.');
     const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/);
-    if (!lines.some(line => line.trim().toUpperCase() === '#EXTM3U')) {
+    // Standard playlist headers may append x-tvg-url and other M3U options.
+    if (!lines.some(line => line.trim().toUpperCase().startsWith('#EXTM3U'))) {
       throw new Error(source.id + ' ne contient pas d’en-tête #EXTM3U.');
     }
     const rows = [];

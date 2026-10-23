@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextUtils;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -60,8 +61,7 @@ public class MainActivity extends Activity {
     private static final int TEXT = 0xFFFFFFFF;
     private static final int GREEN = 0xFF4CC9F0;
     private static final int YELLOW = 0xFFFFFF00;
-    private static final int MAX_CACHED_CHANNELS = 400;
-    // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
+    // Bound M3U parsing for unusually large or malformed remote playlists.
     private static final int MAX_CATALOG_CHANNELS = 20000;
 
     private LinearLayout root;
@@ -821,6 +821,7 @@ public class MainActivity extends Activity {
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
                 CatalogCache.clear(MainActivity.this);
+                M3UParser.clearMemoryCache();
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
                 channels.clear();
                 markCatalogChanged();
@@ -856,13 +857,11 @@ public class MainActivity extends Activity {
 
     private String sourceStatus(String source) {
         boolean loading = "VAVOO".equals(source) ? loadingVavoo : loadingIptv;
-        if (loading) return "catalogue local en ouverture";
-        if (source.equals(sourceFilter) && !channels.isEmpty()) return "catalogue chargé · " + channels.size();
-        String key = "VAVOO".equals(source) ? "vavoo_channels" : "iptv_org_channels";
-        if (!getSharedPreferences("catalog_cache", MODE_PRIVATE).getString(key, "").isEmpty()) {
-            return "cache disponible";
-        }
-        return "pas encore chargé";
+        if (loading) return "playlist M3U en lecture";
+        if (source.equals(sourceFilter) && !channels.isEmpty()) return "M3U chargé · " + channels.size();
+        String key = "VAVOO".equals(source) ? "vavoo_url" : "iptv_org_url";
+        String url = getSharedPreferences("m3u_sources", MODE_PRIVATE).getString(key, "");
+        return url == null || url.trim().isEmpty() ? "M3U local intégré" : "URL M3U distante configurée";
     }
 
     private void switchSource(String source) {

@@ -64,15 +64,8 @@ public final class IptvOrgProvider {
     public static ArrayList<Channel> loadChannels(Context context, int maximum,
             CountryResolver countryResolver, ProgressListener listener, boolean forceNetwork)
             throws IOException {
-        if (!forceNetwork && context != null) {
-            try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-                ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-                if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) return bundled;
-            } catch (IOException ignored) {
-                // Older or incomplete APK: safely fall back to the original online playlist.
-            }
-        }
+        // The Room-backed repository owns local caching. This provider always
+        // fetches the same GitHub master as the other IPTV-org code path.
         return loadChannels(maximum, countryResolver, listener);
     }
 

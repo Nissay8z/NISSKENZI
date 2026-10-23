@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
         String name=o.optString("name","Chaîne"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Direct");
         if(url.isEmpty())continue;
         boolean cachedVavoo=o.optBoolean("isVavoo",false);
+        if(!group.startsWith("VAVOO · ")&&!group.startsWith("IPTV-ORG · "))continue;
         String cachedCountry=normalizeCountry(o.optString("country",""));
         if(cachedCountry.isEmpty()||"Pays non précisé".equalsIgnoreCase(cachedCountry)||"default".equalsIgnoreCase(cachedCountry)){
           String prefix=cachedVavoo?"VAVOO · ":"IPTV-ORG · ";

@@ -1103,7 +1103,13 @@ public class MainActivity extends Activity {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
 
-                if (activityDestroyed || currentGen != loadGeneration.get()) return;
+                if (activityDestroyed) return;
+                if (currentGen != loadGeneration.get()) {
+                    // If the user returned to this source while its previous request was
+                    // still running, retry now that the old request has released its loading flag.
+                    if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
+                    return;
+                }
 
                 if (requestedSource.equals(sourceFilter)) {
                     if (!result.isEmpty()) {

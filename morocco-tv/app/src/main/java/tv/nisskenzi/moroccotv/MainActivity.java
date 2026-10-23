@@ -69,6 +69,11 @@ public class MainActivity extends Activity {
     private static final int MAX_CACHED_CHANNELS = 400;
     // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
     private static final int MAX_CATALOG_CHANNELS = 20000;
+    private static final String WORLD_REFRESH_PREFS = "world_playlist_refresh";
+    private static final String WORLD_REFRESH_LAST_SUCCESS = "last_success";
+    private static final String WORLD_REFRESH_LAST_ATTEMPT = "last_attempt";
+    private static final long WORLD_REFRESH_INTERVAL_MS = 12L * 60L * 60L * 1000L;
+    private static final long WORLD_REFRESH_RETRY_MS = 30L * 60L * 1000L;
 
     private LinearLayout root;
     private View headerView;
@@ -302,7 +307,7 @@ public class MainActivity extends Activity {
 
         liveTab = buttonText("TV en direct", true);
         vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
+        iptvTab = buttonText("MONDE IPTV", "IPTV-ORG".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
 
         LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
@@ -496,7 +501,8 @@ public class MainActivity extends Activity {
 
         // En-tête de la liste centrale
         LinearLayout middleHeader = horizontal();
-        TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
+        String visibleSourceTitle = "IPTV-ORG".equals(sourceFilter) ? "MONDE IPTV" : sourceFilter;
+        TextView sourceTitle = label(visibleSourceTitle, isTelevision() ? 24 : 18, Color.WHITE, true);
         middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
         countView.setBackground(rounded(0xFF212B38, 15));
@@ -505,7 +511,8 @@ public class MainActivity extends Activity {
         middle.addView(middleHeader, lp(-1, -2));
 
         TextView listSubtitle = label(
-                "Flux direct · " + ("VAVOO".equals(sourceFilter) ? "VAVOO Server" : "IPTV-ORG Playlist"),
+                "Flux direct · " + ("VAVOO".equals(sourceFilter)
+                        ? "VAVOO Server" : "IPTV-org + Free-TV + flux validés"),
                 isTelevision() ? 12 : 9, 0xEEFFFFFF, false);
         LinearLayout.LayoutParams lsp = lp(-1, -2);
         lsp.topMargin = dp(4);
@@ -920,7 +927,9 @@ public class MainActivity extends Activity {
 
         page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Catalogue mondial structuré par pays.", PURPLE), gap);
+        page.addView(sourceCard("IPTV-ORG + PARTENAIRES", "🌐", "Catalogue mondial intégré",
+                "IPTV-org (monde entier), Free-TV sélectionné et flux passés au contrôle en ligne. Les listes sont fusionnées et dédupliquées dans le M3U intégré à l’APK.",
+                PURPLE), gap);
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -954,7 +963,7 @@ public class MainActivity extends Activity {
                 renderPage();
             }).show());
 
-        TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
+        TextView note = label("VAVOO garde son résolveur natif. MONDE IPTV réunit IPTV-org, Free-TV et les flux validés. Pluto TV et Samsung TV Plus sont exclus.", 10, MUTED, false);
         note.setPadding(dp(2), dp(14), dp(2), 0);
         page.addView(note);
     }
@@ -1057,8 +1066,9 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(ready);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · " + ready.size() + " chaînes · catalogue intégré prêt"
+                                : requestedSource + " · " + ready.size() + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
                         if (fullscreenPlayback) {
@@ -1095,8 +1105,9 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(ready);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · " + ready.size() + " chaînes · catalogue intégré prêt"
+                                : requestedSource + " · " + ready.size() + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
                         if (fullscreenPlayback) {
@@ -1106,6 +1117,8 @@ public class MainActivity extends Activity {
                             renderPage();
                         }
                     });
+                    // Local catalogue appears first; networking never blocks startup.
+                    if (!requestVavoo) maybeRefreshWorldPlaylistInBackground();
                     return;
                 }
             }
@@ -1208,9 +1221,13 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(result);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                             ? "MONDE IPTV · " + result.size() + " chaînes · sources actualisées"
+                             : requestedSource + " · " + result.size() + " chaînes chargées";
                     } else if (!channels.isEmpty()) {
-                        catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · catalogue intégré prêt, actualisation reportée"
+                                : requestedSource + " · actualisation reportée, catalogue disponible";
                     } else {
                         catalogStatus = requestedSource + " · aucun flux reçu"
                                 + (loadError.isEmpty() ? "" : " · " + loadError);
@@ -1240,6 +1257,69 @@ public class MainActivity extends Activity {
             if (!result.isEmpty() && !requestVavoo && forceRefresh) {
                 CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
             }
+        });
+    }
+
+    /**
+     * Keeps startup local-first. Public world-playlist sources are refreshed in the
+     * background at most every 12 hours; failures leave the last good catalogue intact.
+     */
+    private void maybeRefreshWorldPlaylistInBackground() {
+        SharedPreferences prefs = getSharedPreferences(WORLD_REFRESH_PREFS, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastSuccess = prefs.getLong(WORLD_REFRESH_LAST_SUCCESS, 0L);
+        long lastAttempt = prefs.getLong(WORLD_REFRESH_LAST_ATTEMPT, 0L);
+        if (now - lastSuccess < WORLD_REFRESH_INTERVAL_MS
+                || now - lastAttempt < WORLD_REFRESH_RETRY_MS) {
+            return;
+        }
+        prefs.edit().putLong(WORLD_REFRESH_LAST_ATTEMPT, now).apply();
+
+        io.execute(() -> {
+            final ArrayList<Channel> refreshed;
+            try {
+                refreshed = IptvOrgProvider.loadChannels(MainActivity.this,
+                        MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry, null, true);
+                if (refreshed == null || refreshed.size() < 1000) {
+                    throw new IllegalStateException("Catalogue mondial incomplet.");
+                }
+                long refreshedAt = System.currentTimeMillis();
+                getSharedPreferences(WORLD_REFRESH_PREFS, MODE_PRIVATE).edit()
+                        .putLong(WORLD_REFRESH_LAST_SUCCESS, refreshedAt)
+                        .putLong(WORLD_REFRESH_LAST_ATTEMPT, refreshedAt)
+                        .apply();
+                CatalogCache.saveQuick(MainActivity.this, refreshed, "IPTV-ORG", MAX_CACHED_CHANNELS);
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (activityDestroyed) return;
+                    if ("IPTV-ORG".equals(sourceFilter) && !channels.isEmpty()) {
+                        catalogStatus = "MONDE IPTV · catalogue intégré conservé; actualisation reportée";
+                        updateStatus();
+                    }
+                });
+                return;
+            }
+
+            runOnUiThread(() -> {
+                if (activityDestroyed) return;
+                catalogStatus = "MONDE IPTV · " + refreshed.size()
+                        + " chaînes · sources mondiales actualisées";
+                if (!"IPTV-ORG".equals(sourceFilter) || !"Live TV".equals(activePage)) {
+                    updateStatus();
+                    return;
+                }
+                channels.clear();
+                channels.addAll(refreshed);
+                markCatalogChanged();
+                updateStatus();
+                updateHeaderTabs();
+                if (fullscreenPlayback) {
+                    renderCountryChoices();
+                    updateChannelResults();
+                } else {
+                    renderPage();
+                }
+            });
         });
     }
 

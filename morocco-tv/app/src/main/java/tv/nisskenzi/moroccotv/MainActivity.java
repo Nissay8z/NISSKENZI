@@ -1346,7 +1346,11 @@ public class MainActivity extends Activity {
                     ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
             nativeView.setChannelName(ch.name);
             nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
-            nativeView.setBackAction(this::exitFullscreenPlayback);
+            // The visible Back button dismisses the on-screen bars. Physical Back
+            // closes the drawer, then hides controls, then exits fullscreen.
+            nativeView.setBackAction(nativeView::hideControls);
+            nativeView.setDrawerChannels(channels, ch.url, this::play,
+                    this::loadEpgForCurrentChannel);
             nativeView.setPlaybackState(Player.STATE_BUFFERING);
 
             player = active;
@@ -1403,6 +1407,21 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
                     Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void loadEpgForCurrentChannel() {
+        final Channel requested = currentChannel;
+        final NativeLivePlayerView target = playerView;
+        if (requested == null || target == null) return;
+        target.setEpgInfo(EpgProvider.Result.loading());
+        io.execute(() -> {
+            EpgProvider.Result result = EpgProvider.lookup(MainActivity.this, requested);
+            runOnUiThread(() -> {
+                if (activityDestroyed || currentChannel != requested || playerView != target
+                        || !target.isChannelDrawerOpen()) return;
+                target.setEpgInfo(result);
+            });
+        });
     }
 
     private void startVlcPlayback(Channel ch, String streamUrl) {
@@ -1496,6 +1515,7 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (fullscreenPlayback) {
+            if (playerView != null && playerView.handleBackPressed()) return;
             exitFullscreenPlayback();
         } else if ("Paramètres".equals(activePage)) {
             setPage("Live TV");

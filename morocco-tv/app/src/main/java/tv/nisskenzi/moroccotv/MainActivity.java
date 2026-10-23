@@ -898,7 +898,7 @@ public class MainActivity extends ComponentActivity {
 
         page.addView(sourceCard("VAVOO", "V", "API VAVOO natif",
                 "La liste des chaînes vient de VavooProvider. Le flux est résolu uniquement lorsque tu sélectionnes une chaîne.", CYAN));
-        LinearLayout gap = lp(-1, -2);
+        LinearLayout.LayoutParams gap = lp(-1, -2);
         gap.topMargin = dp(12);
         page.addView(sourceCard("M3U publics", "◉", "Master GitHub • SQLite",
                 "IPTV-org, Pluto TV, Samsung TV Plus et les autres bouquets publics sont fusionnés dans un seul master.m3u. VAVOO est exclu de ce fichier.", PURPLE), gap);

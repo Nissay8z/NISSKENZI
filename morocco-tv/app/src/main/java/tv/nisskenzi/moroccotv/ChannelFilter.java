@@ -23,6 +23,7 @@ public final class ChannelFilter {
         String countryFilter = safe(activeCountry);
         String source = canonicalSource(sourceFilter);
         boolean allSources = source.isEmpty() || "all".equals(source);
+        boolean publicOnly = "public".equals(source);
         boolean allCountries = countryFilter.isEmpty()
                 || "Tous les pays".equalsIgnoreCase(countryFilter);
         boolean useFavorites = favoritesOnly && favoriteUrls != null;
@@ -35,7 +36,9 @@ public final class ChannelFilter {
             if ((visited++ & 127) == 0 && Thread.currentThread().isInterrupted()) return result;
             if (channel == null) continue;
 
-            if (!allSources && !source.equals(canonicalSource(channel.catalogSource))) continue;
+            String channelSource = canonicalSource(channel.catalogSource);
+            if (publicOnly && "vavoo".equals(channelSource)) continue;
+            if (!allSources && !publicOnly && !source.equals(channelSource)) continue;
             if (!allCountries && !countryFilter.equals(safeCountry(channel.country))) continue;
             if (useFavorites && !favoriteUrls.contains(channel.url)) continue;
             if (useRecent && !recentUrls.contains(channel.url)) continue;
@@ -50,6 +53,9 @@ public final class ChannelFilter {
         if ("vavoo".equals(source)) return "vavoo";
         if ("iptv-org".equals(source) || "iptv org".equals(source)
                 || "iptv-org-fr".equals(source)) return "iptv-org-fr";
+        if ("iptv-org monde arabe".equals(source) || "iptv-org-arab".equals(source)) return "iptv-org-arab";
+        if ("iptv-org afrique".equals(source) || "iptv-org-africa".equals(source)) return "iptv-org-africa";
+        if ("public".equals(source) || "m3u".equals(source) || "m3u publics".equals(source)) return "public";
         if ("pluto tv".equals(source) || "pluto".equals(source)
                 || "pluto-tv-fr".equals(source)) return "pluto-tv-fr";
         if ("samsung".equals(source) || "samsung tv".equals(source)

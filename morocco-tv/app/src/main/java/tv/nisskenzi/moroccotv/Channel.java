@@ -77,9 +77,6 @@ public final class Channel {
         if (isVavoo) return "vavoo";
         String value = safe(group).toLowerCase(Locale.ROOT);
         if (value.startsWith("iptv-org") || value.startsWith("iptv org")) return "iptv-org-fr";
-        if (value.startsWith("pluto tv")) return "pluto-tv-fr";
-        if (value.startsWith("samsung")) return "samsung-tv-fr";
-        if (value.startsWith("free-tv")) return "free-tv-world";
         return "iptv-org-fr";
     }
 

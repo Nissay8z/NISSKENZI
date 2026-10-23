@@ -125,9 +125,11 @@ public class MainActivity extends ComponentActivity {
     private int favoriteCountCache = 0;
     private int favoriteCountCatalogVersion = -1;
     private long favoriteCountStoreRevision = -1L;
+    private String favoriteCountSourceFilter = "";
     private int recentCountCache = 0;
     private int recentCountCatalogVersion = -1;
     private long recentCountStoreRevision = -1L;
+    private String recentCountSourceFilter = "";
 
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "all";
@@ -722,29 +724,45 @@ public class MainActivity extends ComponentActivity {
 
     private int countFavoriteChannels() {
         long revision = favoritesStore == null ? 0L : favoritesStore.revision();
-        if (favoriteCountCatalogVersion != catalogVersion || favoriteCountStoreRevision != revision) {
-            favoriteCountCache = favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+        if (favoriteCountCatalogVersion != catalogVersion
+                || favoriteCountStoreRevision != revision
+                || !sourceFilter.equals(favoriteCountSourceFilter)) {
+            int count = 0;
+            if (favoritesStore != null) {
+                Set<String> favorites = favoritesStore.snapshotUrls();
+                for (Channel ch : channels) {
+                    if (matchesCurrentSource(ch) && favorites.contains(ch.url)) count++;
+                }
+            }
+            favoriteCountCache = count;
             favoriteCountCatalogVersion = catalogVersion;
             favoriteCountStoreRevision = revision;
+            favoriteCountSourceFilter = sourceFilter;
         }
         return favoriteCountCache;
     }
 
     private int countRecentChannels() {
         long revision = recentStore == null ? 0L : recentStore.revision();
-        if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
+        if (recentCountCatalogVersion != catalogVersion
+                || recentCountStoreRevision != revision
+                || !sourceFilter.equals(recentCountSourceFilter)) {
             int count = 0;
             if (recentStore != null) {
-                Set<String> recent = recentStore.snapshotUrls(); // At most 100 URLs.
-                if (channelUrlSetVersion == catalogVersion) {
+                Set<String> recent = recentStore.snapshotUrls();
+                if (channelUrlSetVersion == catalogVersion
+                        && sourceFilter.equals(countryStatsSourceFilter)) {
                     for (String url : recent) if (channelUrlCache.contains(url)) count++;
                 } else {
-                    for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                    for (Channel ch : channels) {
+                        if (matchesCurrentSource(ch) && recent.contains(ch.url)) count++;
+                    }
                 }
             }
             recentCountCache = count;
             recentCountCatalogVersion = catalogVersion;
             recentCountStoreRevision = revision;
+            recentCountSourceFilter = sourceFilter;
         }
         return recentCountCache;
     }

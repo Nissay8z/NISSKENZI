@@ -31,9 +31,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-  private final int bg=Color.rgb(8,10,15), panel=Color.rgb(24,27,35), red=Color.rgb(229,9,20), green=Color.rgb(0,98,51);
+  private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
   private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
-  private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
+  private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
@@ -47,18 +47,18 @@ public class MainActivity extends Activity {
   private void buildHome(){
     root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);root.setPadding(20,14,20,10);setContentView(root);
     LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
-    TextView brand=text("N",27,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(red,14));header.addView(brand,new LinearLayout.LayoutParams(44,44));
+    TextView brand=text("N",28,Color.WHITE,true);brand.setGravity(Gravity.CENTER);brand.setBackground(rounded(0xFF182A54,14));brand.setTextColor(0xFF55D9FF);header.addView(brand,new LinearLayout.LayoutParams(44,44));
     LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.setPadding(12,0,0,0);
-    titles.addView(text("NISSAYSTREAM",20,Color.WHITE,true));titles.addView(text("TON UNIVERS EN DIRECT",9,0xFFADB4C2,true));
+    titles.addView(text("NISSKENZI+",20,Color.WHITE,true));titles.addView(text("TOUT LE DIVERTISSEMENT. EN UNE SEULE APP.",8,0xFFADB4C2,true));
     header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("VAVOO",red);vavoo.setOnClickListener(v->loadVavooChannels());vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
+    TextView importBtn=actionButton("＋",panel);importBtn.setOnClickListener(v->openSourceMenu());header.addView(importBtn); TextView vavoo=actionButton("LIVE TV",red);vavoo.setOnClickListener(v->loadVavooChannels());vavoo.setOnLongClickListener(v->{openVavooSettings();return true;});header.addView(vavoo);
     TextView refresh=actionButton("↻",panel);LinearLayout.LayoutParams refreshP=new LinearLayout.LayoutParams(48,48);refreshP.leftMargin=8;header.addView(refresh,refreshP);refresh.setOnClickListener(v->loadChannels());root.addView(header);
     searchBox=new EditText(this);searchBox.setSingleLine(true);searchBox.setTextSize(14);searchBox.setTextColor(Color.WHITE);searchBox.setHintTextColor(0xFF8993A4);searchBox.setHint("⌕   Rechercher une chaîne…");searchBox.setPadding(18,4,18,4);searchBox.setBackground(rounded(0xFF171B24,14));searchBox.setText(searchQuery);LinearLayout.LayoutParams searchP=new LinearLayout.LayoutParams(-1,50);searchP.topMargin=16;root.addView(searchBox,searchP);searchBox.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int count,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){searchQuery=s.toString();showChannels(null);}public void afterTextChanged(android.text.Editable e){}});
     LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);android.graphics.drawable.GradientDrawable heroBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{0xFF31394B,0xFF171B25,0xFF40161D});heroBg.setCornerRadius(22);hero.setBackground(heroBg);
     LinearLayout.LayoutParams heroP=new LinearLayout.LayoutParams(-1,-2);heroP.topMargin=18;heroP.bottomMargin=10;root.addView(hero,heroP);
     TextView eyebrow=text("À LA UNE  •  DIRECT",10,0xFFFF5964,true);hero.addView(eyebrow);
     TextView title=text("Le direct.\nEn grand.",30,Color.WHITE,true);LinearLayout.LayoutParams titleP=new LinearLayout.LayoutParams(-1,-2);titleP.topMargin=6;hero.addView(title,titleP);
-    TextView desc=text("Tes chaînes et tes playlists, réunies au même endroit.",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
+    TextView desc=text("Live TV • Films • Séries • Animés • Sport • Favoris",13,0xFFD2D7E0,false);LinearLayout.LayoutParams descP=new LinearLayout.LayoutParams(-1,-2);descP.topMargin=6;hero.addView(desc,descP);
     status=text("Chargement des chaînes…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
     LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
     TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
@@ -141,7 +141,7 @@ public class MainActivity extends Activity {
         while((line=r.readLine())!=null){line=line.trim();if(line.startsWith("#EXTINF:")){int comma=line.lastIndexOf(',');name=comma>=0?line.substring(comma+1).trim():"Chaîne importée";logo="";group="Playlist importée";logo=attribute(line,"tvg-logo");group=attribute(line,"group-title");}else if((line.startsWith("http://")||line.startsWith("https://"))&&!line.startsWith("#"))found.add(new Channel(name,line,logo,group));}
         r.close();c.disconnect();if(found.isEmpty())throw new java.io.IOException("La playlist ne contient aucun flux lisible.");
       }catch(Exception e){error=e.getMessage()==null?"Connexion impossible":e.getMessage();}
-      final ArrayList<Channel> result=found;final String err=error;
+      final ArrayList<Channel> result=found;final ArrayList<Channel> allResult=new ArrayList<>(all);final String err=error;
       runOnUiThread(()->{if(result.isEmpty())status.setText("Import impossible : "+err);else status.setText(result.size()+" chaînes importées");showChannels(result);});
     });
   }
@@ -169,7 +169,9 @@ public class MainActivity extends Activity {
       try{
         java.util.List<VavooProvider.VavooChannel> remote=VavooProvider.loadChannels();
         String wanted=getSharedPreferences("sources",MODE_PRIVATE).getString("vavoo_country_filter","France");
+        ArrayList<Channel> all=new ArrayList<>();
         for(VavooProvider.VavooChannel item:remote){
+          all.add(new Channel(item.name,"vavoo://"+item.id,item.logo,item.group,true,item.sourceUrl,item.country));
           boolean matches="Tous les pays".equals(wanted) ||
               ("France".equals(wanted)&&item.country.equalsIgnoreCase("France")) ||
               ("Allemagne".equals(wanted)&&item.country.equalsIgnoreCase("Germany")) ||
@@ -185,6 +187,7 @@ public class MainActivity extends Activity {
       }
       final ArrayList<Channel> result=found;final String err=error;
       runOnUiThread(()->{
+        allVavooChannels.clear();allVavooChannels.addAll(allResult);
         if(result.isEmpty()){
           status.setText("VAVOO : "+err);
           list.removeAllViews();
@@ -264,7 +267,7 @@ public class MainActivity extends Activity {
     ScrollView scroll=new ScrollView(this);LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(0,12,0,8);scroll.addView(rows);channelDrawer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
     if(countries){
       java.util.LinkedHashSet<String> countriesList=new java.util.LinkedHashSet<>();
-      for(Channel item:channels){if(item.isVavoo&&item.vavooCountry!=null&&!item.vavooCountry.trim().isEmpty())countriesList.add(item.vavooCountry);}
+      for(Channel item:allVavooChannels){if(item.isVavoo&&item.vavooCountry!=null&&!item.vavooCountry.trim().isEmpty())countriesList.add(item.vavooCountry);}
       countriesList.add("Tous les pays");
       if(countriesList.isEmpty())for(String country:new String[]{"France","Germany","Spain","Italy","United Kingdom","Tous les pays"})countriesList.add(country);
       for(String country:countriesList){

@@ -860,7 +860,9 @@ public class MainActivity extends Activity {
     }
 
     private boolean isCountryFavorite(String country) {
-        return getFavoriteCountryNames().contains(country);
+        if (country == null || countryFavoritesPrefs == null) return false;
+        Set<String> stored = countryFavoritesPrefs.getStringSet(COUNTRY_FAVORITES_KEY, Collections.emptySet());
+        return stored != null && stored.contains(country);
     }
 
     private void toggleCountryFavorite(String country) {

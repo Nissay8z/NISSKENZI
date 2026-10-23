@@ -226,7 +226,7 @@ public class MainActivity extends ComponentActivity {
             } else {
                 boolean active = b == liveTab ? ("Live TV".equals(activePage) && "all".equals(sourceFilter))
                         : b == vavooTab ? ("Live TV".equals(activePage) && "vavoo".equals(sourceFilter))
-                        : b == iptvTab ? ("Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter))
+                        : b == iptvTab ? ("Live TV".equals(activePage) && "public".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
                 b.setBackground(rounded(active ? 0xFF173D52 : 0xFF242E3B, 22));
                 b.setTextColor(active ? YELLOW : Color.WHITE);
@@ -279,7 +279,7 @@ public class MainActivity extends ComponentActivity {
 
         liveTab = buttonText("Live TV", true);
         vavooTab = buttonText("VAVOO", "vavoo".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "iptv-org-fr".equals(sourceFilter));
+        iptvTab = buttonText("M3U publics", "public".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
 
         LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
@@ -296,7 +296,7 @@ public class MainActivity extends ComponentActivity {
 
         liveTab.setOnClickListener(v -> switchSource("ALL"));
         vavooTab.setOnClickListener(v -> switchSource("VAVOO"));
-        iptvTab.setOnClickListener(v -> switchSource("IPTV-ORG"));
+        iptvTab.setOnClickListener(v -> switchSource("public"));
 
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
@@ -356,7 +356,7 @@ public class MainActivity extends ComponentActivity {
     private void updateHeaderTabs() {
         setTabState(liveTab, "Live TV".equals(activePage) && "all".equals(sourceFilter));
         setTabState(vavooTab, "Live TV".equals(activePage) && "vavoo".equals(sourceFilter));
-        setTabState(iptvTab, "Live TV".equals(activePage) && "iptv-org-fr".equals(sourceFilter));
+        setTabState(iptvTab, "Live TV".equals(activePage) && "public".equals(sourceFilter));
         setTabState(settingsTab, "Paramètres".equals(activePage));
     }
 
@@ -559,6 +559,7 @@ public class MainActivity extends ComponentActivity {
 
     private boolean matchesCurrentSource(Channel channel) {
         return channel != null && ("all".equals(sourceFilter)
+                || ("public".equals(sourceFilter) && !"vavoo".equals(channel.catalogSource))
                 || sourceFilter.equals(channel.catalogSource));
     }
 
@@ -567,6 +568,14 @@ public class MainActivity extends ComponentActivity {
         int count = 0;
         for (Channel channel : channels) if (matchesCurrentSource(channel)) count++;
         return count;
+    }
+
+    private int countPublicChannelsFromIndex() {
+        int total = 0;
+        for (Map.Entry<String, Integer> item : sourceCountCache.entrySet()) {
+            if (!"vavoo".equals(item.getKey())) total += item.getValue();
+        }
+        return total;
     }
 
     private void rebuildCategoryCountsIfNeeded() {
@@ -617,6 +626,10 @@ public class MainActivity extends ComponentActivity {
                 "all".equals(sourceFilter) && !favoritesOnly && !recentOnly
                         && "Tous les pays".equals(activeCountry),
                 v -> switchSource("ALL"));
+        addCategoryRow("M3U publics", countPublicChannelsFromIndex(),
+                "public".equals(sourceFilter) && !favoritesOnly && !recentOnly
+                        && "Tous les pays".equals(activeCountry),
+                v -> switchSource("public"));
         addCategoryRow("Récemment vus", countRecentChannels(), recentOnly,
                 v -> {
                     activeCountry = "Tous les pays";
@@ -1026,10 +1039,13 @@ public class MainActivity extends ComponentActivity {
         String id = ChannelRepository.canonicalSourceId(source);
         int count = 0;
         for (Channel channel : channels) {
-            if (channel != null && id.equals(channel.catalogSource)) count++;
+            if (channel == null) continue;
+            if ("public".equals(id) ? !"vavoo".equals(channel.catalogSource)
+                    : id.equals(channel.catalogSource)) count++;
         }
         if (count > 0) return count + " chaînes enregistrées dans SQLite";
-        return "playlist prête à charger en arrière-plan";
+        if ("vavoo".equals(id)) return "Catalogue via VavooProvider natif";
+        return "Chargé depuis playlist/master.m3u";
     }
 
     private void switchSource(String source) {

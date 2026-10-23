@@ -981,10 +981,11 @@ public class MainActivity extends Activity {
                 }
             } else {
                 try {
-                    loaded.addAll(IptvOrgProvider.loadChannels(MAX_CATALOG_CHANNELS,
+                    loaded.addAll(IptvOrgProvider.loadChannels(MainActivity.this, MAX_CATALOG_CHANNELS,
                             this::knownCountry,
                             partial -> publishCatalogSnapshot(new ArrayList<>(partial),
-                                    requestedSource, currentGen)));
+                                    requestedSource, currentGen),
+                            forceRefresh));
                 } catch (Exception e) {
                     error = e.getMessage() == null
                             ? "playlist IPTV-ORG indisponible" : e.getMessage();
@@ -1042,7 +1043,7 @@ public class MainActivity extends Activity {
             // can restore all countries/channels without waiting for remote pagination.
             // IPTV-org remains cached locally. VAVOO uses the bundled M3U as the
             // canonical startup snapshot, so rebuilding a duplicate JSON catalogue is wasted work.
-            if (!result.isEmpty() && !requestVavoo) {
+            if (!result.isEmpty() && !requestVavoo && forceRefresh) {
                 CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
             }
         });

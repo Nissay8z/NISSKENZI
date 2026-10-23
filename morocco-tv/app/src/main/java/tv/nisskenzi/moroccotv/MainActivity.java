@@ -877,19 +877,47 @@ public class MainActivity extends Activity {
 
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // First paint VAVOO's bundled all-country snapshot: there is no network wait
-            // for the full channel list on a fresh installation. Actual stream resolution
-            // remains delegated to VavooProvider when a channel is selected.
-            if (requestVavoo) {
+            // VAVOO is shipped as a compact, streaming-parsed M3U snapshot. Use it
+            // as the startup catalogue and skip the 35+ page network crawl entirely.
+            // We keep the stream resolver unchanged; only metadata comes from this file.
+            if (requestVavoo && !forceRefresh) {
                 ArrayList<Channel> bundled = VavooSnapshotProvider.readBundled(
                         MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
                 if (bundled.size() >= 500) {
-                    showCachedSnapshot(bundled, requestedSource, currentGen);
+                    CatalogCache.saveQuick(MainActivity.this, bundled, requestedSource, MAX_CACHED_CHANNELS);
+                    final ArrayList<Channel> ready = bundled;
+                    runOnUiThread(() -> {
+                        loadingVavoo = false;
+                        loadingCatalog = loadingVavoo || loadingIptv;
+                        if (activityDestroyed) return;
+                        if (currentGen != loadGeneration.get()) {
+                            if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
+                            return;
+                        }
+                        if (!requestedSource.equals(sourceFilter)) {
+                            updateStatus();
+                            return;
+                        }
+                        channels.clear();
+                        channels.addAll(ready);
+                        markCatalogChanged();
+                        catalogStatus = requestedSource + " · " + ready.size()
+                                + " chaînes · catalogue M3U préchargé";
+                        updateStatus();
+                        updateHeaderTabs();
+                        if (fullscreenPlayback) {
+                            renderCountryChoices();
+                            updateChannelResults();
+                        } else {
+                            renderPage();
+                        }
+                    });
+                    return;
                 }
             }
 
-            // Parse both on-device caches off the UI thread. The quick cache is a
-            // fallback; the complete disk snapshot wins whenever it contains more entries.
+            // Only the fallback/manual-refresh path reads the legacy disk cache and
+            // performs a remote catalogue request. The normal VAVOO start above returns early.
             ArrayList<Channel> quickCached = CatalogCache.readQuick(
                     MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
             showCachedSnapshot(quickCached, requestedSource, currentGen);
@@ -1012,7 +1040,11 @@ public class MainActivity extends Activity {
 
             // Saving the complete catalogue happens off the UI thread; subsequent launches
             // can restore all countries/channels without waiting for remote pagination.
-            if (!result.isEmpty()) CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
+            // IPTV-org remains cached locally. VAVOO uses the bundled M3U as the
+            // canonical startup snapshot, so rebuilding a duplicate JSON catalogue is wasted work.
+            if (!result.isEmpty() && !requestVavoo) {
+                CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
+            }
         });
     }
 

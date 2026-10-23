@@ -9,7 +9,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** IPTV-org channel metadata parser with an embedded-M3U fast path. */
 public final class IptvOrgProvider {
@@ -35,10 +37,20 @@ public final class IptvOrgProvider {
     public static ArrayList<Channel> loadBundledChannels(Context context, int maximum,
             CountryResolver countryResolver) {
         if (context == null) return new ArrayList<>();
+
+        ArrayList<Channel> cached = FastCatalogCache.read(
+                context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_VALID_BUNDLED_CHANNELS);
+        if (!cached.isEmpty()) return cached;
+
         try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
              BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
             ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-            return bundled.size() >= MIN_VALID_BUNDLED_CHANNELS ? bundled : new ArrayList<>();
+            if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) {
+                FastCatalogCache.write(context, "IPTV-ORG", BUNDLED_ASSET,
+                        bundled, maximum, MIN_VALID_BUNDLED_CHANNELS);
+                return bundled;
+            }
+            return new ArrayList<>();
         } catch (IOException ignored) {
             return new ArrayList<>();
         }
@@ -94,6 +106,7 @@ public final class IptvOrgProvider {
         String country = "Pays non précisé";
         String epgId = "";
         int lastPublished = 0;
+        Map<String, String> resolvedCountryCache = new HashMap<>();
 
         while ((line = reader.readLine()) != null) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("Chargement IPTV-org annulé.");
@@ -112,12 +125,18 @@ public final class IptvOrgProvider {
 
                 String rawCountry = attribute(line, "tvg-country");
                 if (rawCountry.isEmpty()) rawCountry = attribute(line, "country");
-                String normalized = countryResolver == null ? "" : countryResolver.resolve(rawCountry);
-                if ((normalized == null || normalized.isEmpty()) && countryResolver != null) {
-                    normalized = countryResolver.resolve(group);
+                String cacheKey = rawCountry.isEmpty() ? "group:" + group : "country:" + rawCountry;
+                String normalized = resolvedCountryCache.get(cacheKey);
+                if (normalized == null) {
+                    normalized = countryResolver == null ? "" : countryResolver.resolve(rawCountry);
+                    if ((normalized == null || normalized.isEmpty()) && countryResolver != null) {
+                        normalized = countryResolver.resolve(group);
+                    }
+                    normalized = normalized == null || normalized.isEmpty()
+                            ? "Pays non précisé" : normalized;
+                    resolvedCountryCache.put(cacheKey, normalized);
                 }
-                country = normalized == null || normalized.isEmpty()
-                        ? "Pays non précisé" : normalized;
+                country = normalized;
             } else if (line.startsWith("http://") || line.startsWith("https://")) {
                 if (loaded.size() >= maximum) break;
                 // Do not rewrite the stream URL or add a resolver: this is the original IPTV-org entry.

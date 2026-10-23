@@ -39,6 +39,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
@@ -117,9 +118,19 @@ public class MainActivity extends Activity {
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
     private int catalogVersion = 0;
+    // Identity token shared by each player instance for the same loaded catalogue.
+    private Object channelCatalogToken = new Object();
     private int countryStatsVersion = -1;
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
+    private final Set<String> channelUrlCache = new HashSet<>();
+    private int channelUrlSetVersion = -1;
+    private int favoriteCountCache = 0;
+    private int favoriteCountCatalogVersion = -1;
+    private long favoriteCountStoreRevision = -1L;
+    private int recentCountCache = 0;
+    private int recentCountCatalogVersion = -1;
+    private long recentCountStoreRevision = -1L;
 
     private String activeCountry = "Tous les pays";
     private String sourceFilter = "VAVOO";
@@ -561,14 +572,26 @@ public class MainActivity extends Activity {
         if (countryStatsVersion != catalogVersion) {
             countryCountCache.clear();
             countryCodeCache.clear();
+            // Thousands of channels share the same handful of countries. Normalize
+            // each distinct country only once; do not run Unicode normalization/regex
+            // for every row on the UI thread whenever the category panel is built.
+            HashMap<String, String> normalizedCountries = new HashMap<>();
+            channelUrlCache.clear();
             for (Channel ch : channels) {
-                String country = safeCountry(ch.country);
+                if (ch != null && !safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
+                String rawCountry = safe(ch.country);
+                String country = normalizedCountries.get(rawCountry);
+                if (country == null) {
+                    country = safeCountry(rawCountry);
+                    normalizedCountries.put(rawCountry, country);
+                }
                 Integer oldCount = countryCountCache.get(country);
                 countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
-                if (!countryCodeCache.containsKey(country) || countryCodeCache.get(country).isEmpty()) {
-                    countryCodeCache.put(country, countryCode(country));
-                }
             }
+            for (String country : countryCountCache.keySet()) {
+                countryCodeCache.put(country, countryCode(country));
+            }
+            channelUrlSetVersion = catalogVersion;
             countryStatsVersion = catalogVersion;
         }
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
@@ -591,6 +614,7 @@ public class MainActivity extends Activity {
 
     private void markCatalogChanged() {
         catalogVersion++;
+        channelCatalogToken = new Object();
         countryStatsVersion = -1;
     }
 
@@ -632,15 +656,32 @@ public class MainActivity extends Activity {
     }
 
     private int countFavoriteChannels() {
-        return favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+        long revision = favoritesStore == null ? 0L : favoritesStore.revision();
+        if (favoriteCountCatalogVersion != catalogVersion || favoriteCountStoreRevision != revision) {
+            favoriteCountCache = favoritesStore == null ? 0 : favoritesStore.countIn(channels);
+            favoriteCountCatalogVersion = catalogVersion;
+            favoriteCountStoreRevision = revision;
+        }
+        return favoriteCountCache;
     }
 
     private int countRecentChannels() {
-        if (recentStore == null) return 0;
-        Set<String> recent = recentStore.snapshotUrls();
-        int count = 0;
-        for (Channel ch : channels) if (recent.contains(ch.url)) count++;
-        return count;
+        long revision = recentStore == null ? 0L : recentStore.revision();
+        if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
+            int count = 0;
+            if (recentStore != null) {
+                Set<String> recent = recentStore.snapshotUrls(); // At most 100 URLs.
+                if (channelUrlSetVersion == catalogVersion) {
+                    for (String url : recent) if (channelUrlCache.contains(url)) count++;
+                } else {
+                    for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                }
+            }
+            recentCountCache = count;
+            recentCountCatalogVersion = catalogVersion;
+            recentCountStoreRevision = revision;
+        }
+        return recentCountCache;
     }
 
     private void scheduleSearchFilter() {
@@ -1388,7 +1429,7 @@ public class MainActivity extends Activity {
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setBackAction(nativeView::hideControls);
-            nativeView.setDrawerChannels(channels, ch.url, this::play,
+            nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
                     this::loadEpgForCurrentChannel);
             nativeView.setPlaybackState(Player.STATE_BUFFERING);
 

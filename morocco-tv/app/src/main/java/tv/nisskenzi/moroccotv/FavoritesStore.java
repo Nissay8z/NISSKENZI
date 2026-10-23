@@ -13,6 +13,7 @@ import java.util.Set;
 public final class FavoritesStore {
     private final SharedPreferences preferences;
     private final HashSet<String> favoriteUrls = new HashSet<>();
+    private long revision = 0L;
 
     public FavoritesStore(SharedPreferences preferences) {
         this.preferences = preferences;
@@ -24,6 +25,7 @@ public final class FavoritesStore {
         for (Map.Entry<String, ?> entry : preferences.getAll().entrySet()) {
             if (Boolean.TRUE.equals(entry.getValue())) favoriteUrls.add(entry.getKey());
         }
+        revision++;
     }
 
     public synchronized boolean contains(String url) {
@@ -41,12 +43,15 @@ public final class FavoritesStore {
             nowFavorite = true;
             preferences.edit().putBoolean(url, true).apply();
         }
+        revision++;
         return nowFavorite;
     }
 
     public synchronized Set<String> snapshotUrls() {
         return new HashSet<>(favoriteUrls);
     }
+
+    public synchronized long revision() { return revision; }
 
     public synchronized int countIn(List<Channel> channels) {
         int count = 0;

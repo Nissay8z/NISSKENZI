@@ -13,6 +13,8 @@ import java.io.InputStreamReader;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Reads the prebuilt all-country VAVOO metadata catalogue.
@@ -35,12 +37,26 @@ public final class VavooSnapshotProvider {
 
     public static ArrayList<Channel> readBundled(Context context, int maximum,
                                                   CountryResolver countryResolver) {
+        // The packaged M3U revision is checked using only its first few comment lines.
+        // On repeat launches, restore the already-parsed binary snapshot instead of
+        // reparsing roughly ten thousand rows from M3U on each source switch.
+        ArrayList<Channel> cached = FastCatalogCache.read(
+                context, "VAVOO", M3U_ASSET_NAME, maximum, 500);
+        if (cached.size() >= 500) return cached;
+
         ArrayList<Channel> m3u = readM3u(context, maximum, countryResolver);
-        if (m3u.size() >= 500) return m3u;
+        if (m3u.size() >= 500) {
+            FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, m3u, maximum, 500);
+            return m3u;
+        }
 
         // Transitional fallback for old APKs/builds that contain only the JSON snapshot.
         ArrayList<Channel> legacy = readLegacyJson(context, maximum, countryResolver);
-        return legacy.size() > m3u.size() ? legacy : m3u;
+        ArrayList<Channel> best = legacy.size() > m3u.size() ? legacy : m3u;
+        if (best.size() >= 500) {
+            FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, best, maximum, 500);
+        }
+        return best;
     }
 
     private static ArrayList<Channel> readM3u(Context context, int maximum,
@@ -55,6 +71,8 @@ public final class VavooSnapshotProvider {
             String group = "VAVOO Live";
             String country = "";
             long bytes = 0L;
+            // VAVOO has thousands of rows but only a small number of countries.
+            Map<String, String> normalizedCountryCache = new HashMap<>();
 
             while ((line = reader.readLine()) != null) {
                 bytes += line.length() + 1L;
@@ -94,7 +112,14 @@ public final class VavooSnapshotProvider {
                 }
 
                 if (!sourceUrl.isEmpty() && !name.trim().isEmpty()) {
-                    String resolvedCountry = resolveCountry(country, group, countryResolver);
+                    String rawCountry = safe(country);
+                    String resolvedCountry;
+                    if (!rawCountry.isEmpty() && normalizedCountryCache.containsKey(rawCountry)) {
+                        resolvedCountry = normalizedCountryCache.get(rawCountry);
+                    } else {
+                        resolvedCountry = resolveCountry(country, group, countryResolver);
+                        if (!rawCountry.isEmpty()) normalizedCountryCache.put(rawCountry, resolvedCountry);
+                    }
                     String stable = id.trim().isEmpty() ? stableId(name, resolvedCountry) : id.trim();
                     String finalGroup = group.startsWith("VAVOO · ") ? group : "VAVOO · " + group;
                     result.add(new Channel(name, "vavoo://" + stable, logo, finalGroup,

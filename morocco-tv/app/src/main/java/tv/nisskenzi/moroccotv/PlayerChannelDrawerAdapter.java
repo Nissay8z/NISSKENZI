@@ -15,7 +15,10 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.Locale;
 
 /** Lightweight, virtualized list used only by the fullscreen left-side channel drawer. */
@@ -24,7 +27,11 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         void onChannelSelected(Channel channel);
     }
 
+    private static final Map<Object, Map<String, Integer>> INDEX_CACHE = new WeakHashMap<>();
+
     private List<Channel> channels = Collections.emptyList();
+    private Map<String, Integer> positionByUrl = Collections.emptyMap();
+    private Object indexedCatalogToken;
     private String selectedUrl = "";
     private OnChannelSelected listener;
 
@@ -33,18 +40,36 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         setHasStableIds(true);
     }
 
-    public void setChannels(List<Channel> next, String selected) {
-        channels = next == null ? Collections.emptyList() : next;
+    public void setChannels(List<Channel> next, String selected, Object catalogToken) {
+        List<Channel> resolved = next == null ? Collections.emptyList() : next;
+        if (channels != resolved || indexedCatalogToken != catalogToken) {
+            channels = resolved;
+            synchronized (INDEX_CACHE) {
+                Map<String, Integer> cached = INDEX_CACHE.get(catalogToken);
+                if (cached == null) {
+                    HashMap<String, Integer> built = new HashMap<>(
+                            Math.max(16, channels.size() * 4 / 3));
+                    for (int i = 0; i < channels.size(); i++) {
+                        String url = safe(channels.get(i).url);
+                        if (!url.isEmpty() && !built.containsKey(url)) built.put(url, i);
+                    }
+                    cached = Collections.unmodifiableMap(built);
+                    if (catalogToken != null) INDEX_CACHE.put(catalogToken, cached);
+                }
+                positionByUrl = cached;
+            }
+            indexedCatalogToken = catalogToken;
+        } else {
+            channels = resolved;
+        }
         selectedUrl = safe(selected);
         notifyDataSetChanged();
     }
 
+    /** O(1) lookup: opening the left drawer must not scan thousands of rows. */
     public int selectedPosition() {
-        if (selectedUrl.isEmpty()) return 0;
-        for (int i = 0; i < channels.size(); i++) {
-            if (selectedUrl.equals(safe(channels.get(i).url))) return i;
-        }
-        return 0;
+        Integer position = positionByUrl.get(selectedUrl);
+        return position == null ? 0 : position;
     }
 
     public void setSelectedUrl(String url) {

@@ -963,7 +963,7 @@ public class MainActivity extends Activity {
                 renderPage();
             }).show());
 
-        TextView note = label("VAVOO garde son résolveur natif. MONDE IPTV réunit IPTV-org, Free-TV et les flux validés. Pluto TV et Samsung TV Plus sont exclus.", 10, MUTED, false);
+        TextView note = label("VAVOO garde son résolveur natif. MONDE IPTV fusionne IPTV-org, Free-TV et les flux validés, avec les chaînes gratuites disponibles selon le pays.", 10, MUTED, false);
         note.setPadding(dp(2), dp(14), dp(2), 0);
         page.addView(note);
     }

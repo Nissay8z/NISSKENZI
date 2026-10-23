@@ -21,8 +21,8 @@ USER_AGENT = "NISSKENZI-Android-embedded-IPTV-org/1.0"
 
 def attribute(extinf: str, key: str) -> str:
     pattern = re.compile(
-        r"(?<![\\w-])" + re.escape(key)
-        + r"\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s,]+))",
+        r"(?<![\w-])" + re.escape(key)
+        + r"\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s,]+))",
         re.IGNORECASE,
     )
     match = pattern.search(extinf)
@@ -126,7 +126,7 @@ def build_embedded_playlist(text: str) -> tuple[str, int]:
         block = []
 
     for raw in lines:
-        line = raw.strip().lstrip("\\ufeff")
+        line = raw.strip().lstrip("\ufeff")
         if not line or line.startswith("#EXTM3U"):
             continue
         if line.startswith("#EXTINF:"):
@@ -146,7 +146,7 @@ def build_embedded_playlist(text: str) -> tuple[str, int]:
         raise RuntimeError(
             f"Playlist refusée : seulement {count} chaînes valides (minimum {MIN_CHANNELS})."
         )
-    return "\\n".join(output) + "\\n", count
+    return "\n".join(output) + "\n", count
 
 
 def main() -> None:
@@ -154,7 +154,7 @@ def main() -> None:
     playlist, count = build_embedded_playlist(download_source())
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = OUTPUT_PATH.with_suffix(".m3u.tmp")
-    temp.write_text(playlist, encoding="utf-8", newline="\\n")
+    temp.write_text(playlist, encoding="utf-8", newline="\n")
     temp.replace(OUTPUT_PATH)
     print(f"{count} chaînes validées dans {OUTPUT_PATH}; pays et groupe-title conservés.")
 

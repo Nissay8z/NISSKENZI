@@ -39,25 +39,24 @@ public final class ChannelRepository {
     public static final class Source {
         public final String id;
         public final String name;
-        public final String defaultUrl;
+        public final String assetName;
 
-        Source(String id, String name, String defaultUrl) {
+        Source(String id, String name, String assetName) {
             this.id = id;
             this.name = name;
-            this.defaultUrl = defaultUrl;
+            this.assetName = assetName;
         }
     }
 
-    private static final String IPTV_ORG_MASTER_URL =
-            "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/master.m3u";
+    private static final String IPTV_ORG_ASSET = "iptv_org_catalog.m3u";
 
     private static final List<Source> SOURCES;
     static {
         ArrayList<Source> sources = new ArrayList<>();
-        // VAVOO is loaded from its native API and resolved only when a channel is played.
+        // VAVOO is loaded through the native API, never from a generated M3U.
         sources.add(new Source("vavoo", "VAVOO", ""));
-        // Global IPTV-org catalogue; its country metadata feeds the left-hand filters.
-        sources.add(new Source("iptv-org-fr", "IPTV-org", IPTV_ORG_MASTER_URL));
+        // IPTV-org is packaged into the APK so playback and categories work offline.
+        sources.add(new Source("iptv-org-fr", "IPTV-org", IPTV_ORG_ASSET));
         SOURCES = Collections.unmodifiableList(sources);
     }
 
@@ -71,7 +70,7 @@ public final class ChannelRepository {
     private final ExecutorService mappingExecutor = Executors.newSingleThreadExecutor();
     private final MutableLiveData<List<Channel>> channels = new MutableLiveData<>(Collections.emptyList());
     private final MutableLiveData<String> status = new MutableLiveData<>(
-            "Catalogue local prêt · actualisation réseau en arrière-plan");
+            "Catalogue local prêt · IPTV-org est inclus dans l’application");
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     private ChannelRepository(@NonNull Context context) {
@@ -148,8 +147,8 @@ public final class ChannelRepository {
     /** Manual refresh runs entirely off the main/UI thread. */
     public void refreshAllAsync(boolean force) {
         status.postValue(force
-                ? "Actualisation de VAVOO et IPTV-org en arrière-plan…"
-                : "Vérification du cache local et des deux catalogues…");
+                ? "Actualisation du catalogue VAVOO et relecture du catalogue IPTV-org intégré…"
+                : "Vérification du cache local et des catalogues intégrés…");
         for (Source source : SOURCES) {
             ioExecutor.execute(() -> refreshOne(source, force));
         }
@@ -251,7 +250,7 @@ public final class ChannelRepository {
                 parsed = loadVavooNativeChannels();
             } else {
                 parsed = M3UParser.load(appContext, source.id, source.name,
-                        "", source.defaultUrl, MAX_CHANNELS_PER_SOURCE, this::resolveCountry, force);
+                        source.assetName, "", MAX_CHANNELS_PER_SOURCE, this::resolveCountry, force);
             }
             if (parsed.isEmpty()) {
                 status.postValue(source.name + " · catalogue vide, cache local conservé");

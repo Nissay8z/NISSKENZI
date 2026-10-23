@@ -440,7 +440,7 @@ public class MainActivity extends Activity {
   private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
   public final class HomeBridge {
     @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
-    @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
+    @JavascriptInterface public void refresh(){runOnUiThread(()->{loadChannels();loadXtreamCatalog();});}
     @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
     @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}

@@ -36,8 +36,10 @@ import org.videolan.libvlc.Media;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
 import java.text.Normalizer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -87,6 +89,19 @@ public class MainActivity extends Activity {
     private TextView previewTitle;
     private TextView previewStatus;
     private TextView previewDetail;
+    private TextView liveTimeView;
+    private TextView liveDateView;
+    private TextView epgStatusView;
+    private TextView epgNowView;
+    private TextView epgNextView;
+    private TextView fullscreenButton;
+    private final Handler headerClockHandler = new Handler(Looper.getMainLooper());
+    private final Runnable headerClockRunnable = new Runnable() {
+        @Override public void run() {
+            updateHeaderClock();
+            headerClockHandler.postDelayed(this, 1000L);
+        }
+    };
 
     private NativeLivePlayerView playerView;
     private ExoPlayer player;
@@ -253,7 +268,39 @@ public class MainActivity extends Activity {
         header.addView(back, lp(isTelevision() ? 44 : 38, isTelevision() ? 48 : 40));
         back.setOnClickListener(v -> onBackPressed());
 
-        liveTab = buttonText("Live TV", true);
+        // Native Android branding inspired by the supplied IPTV mock-up.
+        // Everything is a real Android View, not a WebView or an HTML page.
+        if (isTelevision()) {
+            LinearLayout brand = horizontal();
+            brand.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams brandP = lp(-2, 48);
+            brandP.leftMargin = dp(10);
+            brandP.rightMargin = dp(12);
+            header.addView(brand, brandP);
+
+            TextView tvIcon = label("TV", 17, Color.WHITE, true);
+            tvIcon.setGravity(Gravity.CENTER);
+            GradientDrawable iconGradient = new GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    new int[]{0xFF2563EB, 0xFF4F46E5});
+            iconGradient.setCornerRadius(dp(12));
+            tvIcon.setBackground(iconGradient);
+            brand.addView(tvIcon, lp(42, 42));
+
+            LinearLayout brandText = vertical();
+            brandText.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams brandTextP = lp(-2, -2);
+            brandTextP.leftMargin = dp(9);
+            brand.addView(brandText, brandTextP);
+            TextView brandTitle = label("NISSKENZI+", 16, Color.WHITE, true);
+            brandTitle.setLetterSpacing(0.05f);
+            brandText.addView(brandTitle, lp(-2, -2));
+            TextView brandSubtitle = label("IPTV PLAYER", 9, CYAN, true);
+            brandSubtitle.setLetterSpacing(0.15f);
+            brandText.addView(brandSubtitle, lp(-2, -2));
+        }
+
+        liveTab = buttonText("TV en direct", true);
         vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
         iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
@@ -295,6 +342,23 @@ public class MainActivity extends Activity {
             }
             @Override public void afterTextChanged(Editable e) {}
         });
+
+        if (isTelevision()) {
+            LinearLayout clockBlock = vertical();
+            clockBlock.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams clockP = lp(112, -2);
+            clockP.rightMargin = dp(12);
+            header.addView(clockBlock, clockP);
+            liveTimeView = label("--:--:--", 15, 0xFFE2E8F0, true);
+            liveTimeView.setGravity(Gravity.RIGHT);
+            clockBlock.addView(liveTimeView, lp(-1, -2));
+            liveDateView = label("Chargement de la date…", 9, MUTED, false);
+            liveDateView.setGravity(Gravity.RIGHT);
+            clockBlock.addView(liveDateView, lp(-1, -2));
+            updateHeaderClock();
+            headerClockHandler.removeCallbacks(headerClockRunnable);
+            headerClockHandler.postDelayed(headerClockRunnable, 1000L);
+        }
 
         header.addView(settingsTab, lp(isTelevision() ? 46 : 40, isTelevision() ? 48 : 40));
         settingsTab.setOnClickListener(v -> setPage("Paramètres"));
@@ -376,7 +440,7 @@ public class MainActivity extends Activity {
         // --- COLONNE GAUCHE : Catégories, Récemment vus, Favoris et Filtres pays ---
         LinearLayout left = vertical();
         left.setPadding(dp(18), dp(16), dp(14), dp(12));
-        body.addView(left, new LinearLayout.LayoutParams(0, -1, 3.0f));
+        body.addView(left, new LinearLayout.LayoutParams(0, -1, 2.5f));
 
         View dividerOne = new View(this);
         dividerOne.setBackgroundColor(LINE);
@@ -385,7 +449,7 @@ public class MainActivity extends Activity {
         // --- COLONNE DU MILIEU : Liste compacte de chaînes avec index, logo et nom ---
         LinearLayout middle = vertical();
         middle.setPadding(dp(16), dp(16), dp(16), dp(12));
-        body.addView(middle, new LinearLayout.LayoutParams(0, -1, 3.25f));
+        body.addView(middle, new LinearLayout.LayoutParams(0, -1, 3.1f));
 
         View dividerTwo = new View(this);
         dividerTwo.setBackgroundColor(LINE);
@@ -394,7 +458,7 @@ public class MainActivity extends Activity {
         // --- COLONNE DROITE : Lecteur/Aperçu noir au-dessus et actions Favori en dessous ---
         LinearLayout right = vertical();
         right.setPadding(dp(18), dp(18), dp(20), dp(14));
-        body.addView(right, new LinearLayout.LayoutParams(0, -1, 3.75f));
+        body.addView(right, new LinearLayout.LayoutParams(0, -1, 4.4f));
 
         TextView catTitle = label("CATEGORIES & PAYS", isTelevision() ? 11 : 9, Color.WHITE, true);
         catTitle.setLetterSpacing(0.08f);
@@ -495,9 +559,23 @@ public class MainActivity extends Activity {
                 currentChannel != null && isFavorite(currentChannel));
         actions.addView(favorite, new LinearLayout.LayoutParams(0, -1, 1f));
 
+        fullscreenButton = buttonText("⛶ Plein écran", false);
+        fullscreenButton.setEnabled(currentChannel != null);
+        fullscreenButton.setAlpha(currentChannel == null ? 0.55f : 1f);
+        LinearLayout.LayoutParams fullscreenP = new LinearLayout.LayoutParams(0, -1, 1.2f);
+        fullscreenP.leftMargin = dp(6);
+        actions.addView(fullscreenButton, fullscreenP);
+        fullscreenButton.setOnClickListener(v -> {
+            if (currentChannel == null) {
+                Toast.makeText(this, "Sélectionnez une chaîne d’abord.", Toast.LENGTH_SHORT).show();
+            } else {
+                enterFullscreenPlayback();
+            }
+        });
+
         TextView stop = buttonText("■ Arrêter", false);
         LinearLayout.LayoutParams stopP = lp(-2, -1);
-        stopP.leftMargin = dp(8);
+        stopP.leftMargin = dp(6);
         actions.addView(stop, stopP);
 
         favorite.setOnClickListener(v -> {
@@ -518,8 +596,45 @@ public class MainActivity extends Activity {
                 ? "La lecture s'intègre directement ici."
                 : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
                 isTelevision() ? 13 : 10, Color.WHITE, false);
-        previewDetail.setPadding(0, dp(12), 0, 0);
+        previewDetail.setPadding(0, dp(10), 0, 0);
+        previewDetail.setMaxLines(2);
+        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
         right.addView(previewDetail, lp(-1, -2));
+
+        // Real XMLTV data, fetched by EpgProvider; no mock programmes or demo streams.
+        LinearLayout epgBox = vertical();
+        epgBox.setPadding(dp(14), dp(12), dp(14), dp(12));
+        epgBox.setBackground(outlined(0xCC111925, 14, 0x663B4B61));
+        LinearLayout.LayoutParams epgBoxP = lp(-1, -2);
+        epgBoxP.topMargin = dp(14);
+        right.addView(epgBox, epgBoxP);
+
+        TextView epgHeading = label("GUIDE DES PROGRAMMES · EPG", isTelevision() ? 11 : 9, CYAN, true);
+        epgHeading.setLetterSpacing(0.07f);
+        epgBox.addView(epgHeading, lp(-1, -2));
+
+        epgStatusView = label(currentChannel == null
+                ? "Sélectionnez une chaîne pour rechercher son programme"
+                : "Chargement du guide…", 10, MUTED, false);
+        epgStatusView.setMaxLines(2);
+        epgStatusView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgStatusP = lp(-1, -2);
+        epgStatusP.topMargin = dp(6);
+        epgBox.addView(epgStatusView, epgStatusP);
+
+        epgNowView = label("EN COURS  ·  —", isTelevision() ? 12 : 10, Color.WHITE, true);
+        epgNowView.setMaxLines(2);
+        epgNowView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgNowP = lp(-1, -2);
+        epgNowP.topMargin = dp(9);
+        epgBox.addView(epgNowView, epgNowP);
+
+        epgNextView = label("À SUIVRE  ·  —", isTelevision() ? 11 : 9, MUTED, false);
+        epgNextView.setMaxLines(2);
+        epgNextView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgNextP = lp(-1, -2);
+        epgNextP.topMargin = dp(7);
+        epgBox.addView(epgNextView, epgNextP);
 
         if (currentChannel == null) {
             TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);
@@ -1387,8 +1502,14 @@ public class MainActivity extends Activity {
         if (previewDetail != null) previewDetail.setText(
                 "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
         renderCountryChoices();
-        enterFullscreenPlayback();
+        if (fullscreenButton != null) {
+            fullscreenButton.setEnabled(true);
+            fullscreenButton.setAlpha(1f);
+        }
+        // Keep the three-column TV interface visible while the native player
+        // runs inside the right-hand panel. Fullscreen stays an explicit action.
         startPlayback(ch);
+        loadEpgForCurrentChannel();
     }
 
     private void startPlayback(Channel ch) {
@@ -1492,16 +1613,43 @@ public class MainActivity extends Activity {
     private void loadEpgForCurrentChannel() {
         final Channel requested = currentChannel;
         final NativeLivePlayerView target = playerView;
-        if (requested == null || target == null) return;
-        target.setEpgInfo(EpgProvider.Result.loading());
+        if (requested == null) {
+            updateInlineEpg(null);
+            return;
+        }
+        EpgProvider.Result loading = EpgProvider.Result.loading();
+        updateInlineEpg(loading);
+        if (target != null) target.setEpgInfo(loading);
         io.execute(() -> {
             EpgProvider.Result result = EpgProvider.lookup(MainActivity.this, requested);
             runOnUiThread(() -> {
-                if (activityDestroyed || currentChannel != requested || playerView != target
-                        || !target.isChannelDrawerOpen()) return;
-                target.setEpgInfo(result);
+                if (activityDestroyed || currentChannel != requested) return;
+                updateInlineEpg(result);
+                if (target != null && playerView == target && target.isChannelDrawerOpen()) {
+                    target.setEpgInfo(result);
+                }
             });
         });
+    }
+
+    private void updateInlineEpg(EpgProvider.Result result) {
+        if (epgStatusView == null || epgNowView == null || epgNextView == null) return;
+        if (result == null) {
+            epgStatusView.setText("Sélectionnez une chaîne pour rechercher son programme");
+            epgNowView.setText("EN COURS  ·  —");
+            epgNextView.setText("À SUIVRE  ·  —");
+            return;
+        }
+        epgStatusView.setText(result.status.isEmpty() ? "Guide XMLTV" : result.status);
+        epgNowView.setText("EN COURS  ·  " + (result.now.isEmpty() ? "Aucun programme trouvé" : result.now));
+        epgNextView.setText("À SUIVRE  ·  " + (result.next.isEmpty() ? "Programme non renseigné" : result.next));
+    }
+
+    private void updateHeaderClock() {
+        if (liveTimeView == null || liveDateView == null) return;
+        Date now = new Date();
+        liveTimeView.setText(new SimpleDateFormat("HH:mm:ss", Locale.FRANCE).format(now));
+        liveDateView.setText(new SimpleDateFormat("EEEE d MMM", Locale.FRANCE).format(now));
     }
 
     private void startVlcPlayback(Channel ch, String streamUrl) {
@@ -1583,7 +1731,12 @@ public class MainActivity extends Activity {
         }
         if (previewTitle != null) previewTitle.setText("Aperçu du direct");
         if (previewStatus != null) previewStatus.setText("Sélectionnez une chaîne pour démarrer");
-        if (previewDetail != null) previewDetail.setText("La lecture s'intègre directement ici.");
+        if (previewDetail != null) previewDetail.setText("Le lecteur natif est prêt pour la prochaine chaîne.");
+        if (fullscreenButton != null) {
+            fullscreenButton.setEnabled(false);
+            fullscreenButton.setAlpha(0.55f);
+        }
+        updateInlineEpg(null);
         updateChannelResults();
         renderCountryChoices();
     }
@@ -1613,6 +1766,7 @@ public class MainActivity extends Activity {
         if (filterJob != null) filterJob.cancel(true);
         filterExecutor.shutdownNow();
         if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
+        headerClockHandler.removeCallbacks(headerClockRunnable);
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();

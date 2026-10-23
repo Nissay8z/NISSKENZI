@@ -929,11 +929,10 @@ public class MainActivity extends Activity {
 
         final int currentGen = loadGeneration.incrementAndGet();
 
+        final AtomicBoolean remoteFinished = new AtomicBoolean(false);
+        final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
+        final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            final AtomicBoolean remoteFinished = new AtomicBoolean(false);
-            final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
-            final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
-
             // A full on-disk catalogue is restored in the background first. The small
             // SharedPreferences cache still supplies an immediate first paint on startup.
             ArrayList<Channel> diskCached = readFullCatalogCache(requestedSource);

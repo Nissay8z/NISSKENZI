@@ -6,165 +6,159 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-/** IPTV-org channel metadata parser with an embedded-M3U fast path. */
+/**
+ * Fast access to the bundled worldwide M3U. All public repositories are merged
+ * into this one asset at build/refresh time; VAVOO remains a separate native source.
+ */
 public final class IptvOrgProvider {
     public interface CountryResolver {
         String resolve(String rawCountry);
     }
 
     public interface ProgressListener {
-        /** Called on the loader thread with an independent snapshot, not the mutating working list. */
+        /** Called with a final immutable snapshot on the loader thread. */
         void onChannelsUpdated(List<Channel> snapshot);
     }
 
-    private static final String PLAYLIST_URL = "https://iptv-org.github.io/iptv/index.country.m3u";
-    private static final String BUNDLED_ASSET = "iptv_org_catalog.m3u";
-    private static final int CONNECT_TIMEOUT_MS = 10_000;
-    private static final int READ_TIMEOUT_MS = 20_000;
-    private static final int PUBLISH_INTERVAL = 1_500;
+    private static final String BUNDLED_ASSET = WorldPlaylistRegistry.MERGED_M3U_ASSET;
     private static final int MIN_VALID_BUNDLED_CHANNELS = 1_000;
 
     private IptvOrgProvider() {}
 
-    /** Reads the preloaded M3U only; returns empty for a missing or partial asset. */
+    /** Return the already-parsed binary snapshot, or parse the embedded M3U once. */
     public static ArrayList<Channel> loadBundledChannels(Context context, int maximum,
             CountryResolver countryResolver) {
-        if (context == null) return new ArrayList<>();
+        if (context == null || maximum < 1) return new ArrayList<>();
 
         ArrayList<Channel> cached = FastCatalogCache.read(
                 context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_VALID_BUNDLED_CHANNELS);
-        if (!cached.isEmpty()) return cached;
+        if (cached.size() >= MIN_VALID_BUNDLED_CHANNELS) return cached;
 
-        try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-            ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
+        try {
+            WorldPlaylistRegistry registry = WorldPlaylistRegistry.load(context);
+            ArrayList<Channel> bundled = readBundledM3u(
+                    context, maximum, countryResolver, registry);
             if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) {
                 FastCatalogCache.write(context, "IPTV-ORG", BUNDLED_ASSET,
                         bundled, maximum, MIN_VALID_BUNDLED_CHANNELS);
                 return bundled;
             }
-            return new ArrayList<>();
         } catch (IOException ignored) {
-            return new ArrayList<>();
+            // A missing/partial asset falls back to the guarded network refresh below.
         }
+        return new ArrayList<>();
     }
 
     /**
-     * Normal startup uses the packaged M3U, parsed off the UI thread, and
-     * returns the complete list in one snapshot to avoid repeated big UI diffs.
-     * Explicit refresh bypasses the asset and uses the original public playlist.
+     * Normal startup is local-first. An explicit refresh fetches all configured
+     * worldwide sources and only updates the binary cache after validation passes.
      */
     public static ArrayList<Channel> loadChannels(Context context, int maximum,
             CountryResolver countryResolver, ProgressListener listener, boolean forceNetwork)
             throws IOException {
-        if (!forceNetwork && context != null) {
-            try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-                ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-                if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) return bundled;
-            } catch (IOException ignored) {
-                // Older or incomplete APK: safely fall back to the original online playlist.
-            }
+        if (context == null) throw new IOException("Context Android requis.");
+
+        if (!forceNetwork) {
+            ArrayList<Channel> bundled = loadBundledChannels(context, maximum, countryResolver);
+            if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) return bundled;
         }
-        return loadChannels(maximum, countryResolver, listener);
+        return WorldPlaylistProvider.load(context, maximum, countryResolver, listener);
     }
 
-    /** Explicit live refresh; keeps the original IPTV-org source URL unchanged. */
+    /**
+     * Kept only for source compatibility with older callers. The modular source
+     * registry is an Android asset, so a Context is required for network refresh.
+     */
+    @Deprecated
     public static ArrayList<Channel> loadChannels(int maximum, CountryResolver countryResolver,
                                                    ProgressListener listener) throws IOException {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) new URL(PLAYLIST_URL).openConnection();
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(READ_TIMEOUT_MS);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", "NISSKENZI+/2.4 (Android TV)");
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), "UTF-8"), 64 * 1024)) {
-                return parsePlaylist(reader, maximum, countryResolver, listener);
-            }
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
+        throw new IOException(
+                "Un Context Android est requis pour charger les sources mondiales configurées.");
     }
 
-    private static ArrayList<Channel> parsePlaylist(BufferedReader reader, int maximum,
-            CountryResolver countryResolver, ProgressListener listener) throws IOException {
+    private static ArrayList<Channel> readBundledM3u(Context context, int maximum,
+            CountryResolver countryResolver, WorldPlaylistRegistry registry) throws IOException {
         ArrayList<Channel> loaded = new ArrayList<>();
-        String line;
-        String name = "Chaîne";
-        String logo = "";
-        String group = "Pays non précisé";
-        String country = "Pays non précisé";
-        String epgId = "";
-        int lastPublished = 0;
-        Map<String, String> resolvedCountryCache = new HashMap<>();
+        try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
+             BufferedReader reader = new BufferedReader(
+                     new InputStreamReader(input, StandardCharsets.UTF_8), 32 * 1024)) {
+            String line;
+            String name = "Chaîne";
+            String logo = "";
+            String epgId = "";
+            String group = "Direct";
+            String country = "Pays non précisé";
+            WorldPlaylistSource source = registry.sourceById("iptv-org");
 
-        while ((line = reader.readLine()) != null) {
-            if (Thread.currentThread().isInterrupted()) throw new IOException("Chargement IPTV-org annulé.");
-            if (line.startsWith("#EXTINF:")) {
-                int comma = line.lastIndexOf(',');
-                name = comma >= 0 ? line.substring(comma + 1).trim() : "Chaîne";
-                logo = "";
-                group = "Pays non précisé";
-                country = "Pays non précisé";
-                epgId = attribute(line, "tvg-id");
-
-                String logoValue = attribute(line, "tvg-logo");
-                if (!logoValue.isEmpty()) logo = logoValue;
-                String groupValue = attribute(line, "group-title");
-                if (!groupValue.isEmpty()) group = groupValue;
-
-                String rawCountry = attribute(line, "tvg-country");
-                if (rawCountry.isEmpty()) rawCountry = attribute(line, "country");
-                String cacheKey = rawCountry.isEmpty() ? "group:" + group : "country:" + rawCountry;
-                String normalized = resolvedCountryCache.get(cacheKey);
-                if (normalized == null) {
-                    normalized = countryResolver == null ? "" : countryResolver.resolve(rawCountry);
-                    if ((normalized == null || normalized.isEmpty()) && countryResolver != null) {
-                        normalized = countryResolver.resolve(group);
-                    }
-                    normalized = normalized == null || normalized.isEmpty()
-                            ? "Pays non précisé" : normalized;
-                    resolvedCountryCache.put(cacheKey, normalized);
+            while ((line = reader.readLine()) != null) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IOException("Chargement du catalogue intégré annulé.");
                 }
-                country = normalized;
-            } else if (line.startsWith("http://") || line.startsWith("https://")) {
+                line = line.trim();
+                if (line.startsWith("#EXTINF:")) {
+                    int comma = WorldPlaylistParser.titleSeparator(line);
+                    name = comma >= 0 ? line.substring(comma + 1).trim() : "";
+                    if (name.isEmpty()) name = WorldPlaylistParser.attribute(line, "tvg-name");
+                    if (name.isEmpty()) name = "Chaîne";
+                    logo = WorldPlaylistParser.attribute(line, "tvg-logo");
+                    epgId = WorldPlaylistParser.attribute(line, "tvg-id");
+                    group = WorldPlaylistParser.attribute(line, "group-title");
+                    if (group.isEmpty()) group = "Direct";
+
+                    String sourceTag = WorldPlaylistParser.attribute(line, "nisskenzi-source");
+                    WorldPlaylistSource tagged = registry.sourceById(sourceTag);
+                    if (tagged != null) source = tagged;
+                    else source = registry.sourceById("iptv-org");
+
+                    String rawCountry = WorldPlaylistParser.attribute(line, "tvg-country");
+                    if (rawCountry.isEmpty()) {
+                        rawCountry = WorldPlaylistParser.attribute(line, "country");
+                    }
+                    country = resolveCountry(rawCountry, group, source, countryResolver);
+                    continue;
+                }
+
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (!(line.regionMatches(true, 0, "http://", 0, 7)
+                        || line.regionMatches(true, 0, "https://", 0, 8))) continue;
                 if (loaded.size() >= maximum) break;
-                // Do not rewrite the stream URL or add a resolver: this is the original IPTV-org entry.
-                loaded.add(new Channel(name, line.trim(), logo,
-                        "IPTV-ORG · " + group, false, null, country, epgId));
 
-                if (listener != null && loaded.size() - lastPublished >= PUBLISH_INTERVAL) {
-                    lastPublished = loaded.size();
-                    try {
-                        listener.onChannelsUpdated(new ArrayList<>(loaded));
-                    } catch (RuntimeException ignored) {
-                        // A progress listener must not break playlist parsing.
-                    }
-                }
+                String visibleGroup = (source == null ? "IPTV-org mondial" : source.name)
+                        + " · " + group;
+                if (registry.isBlocked(name, visibleGroup, line)) continue;
+
+                // This is the exact public stream URL; it is not sent through VAVOO.
+                loaded.add(new Channel(name, line, logo, visibleGroup,
+                        false, null, country, epgId));
+                name = "Chaîne";
+                logo = "";
+                epgId = "";
+                group = "Direct";
+                country = "Pays non précisé";
             }
         }
         return loaded;
     }
 
-    private static String attribute(String line, String key) {
-        int startAt = line.indexOf(key + "=");
-        if (startAt < 0) return "";
-        int start = startAt + key.length() + 1;
-        if (start < line.length() && line.charAt(start) == '"') {
-            int end = line.indexOf('"', start + 1);
-            return end > start ? line.substring(start + 1, end).trim() : "";
+    private static String resolveCountry(String rawCountry, String group,
+            WorldPlaylistSource source, CountryResolver resolver) {
+        String raw = safe(rawCountry);
+        if (!raw.isEmpty()) {
+            String mapped = resolver == null ? "" : safe(resolver.resolve(raw));
+            return mapped.isEmpty() ? raw : mapped;
         }
-        int end = line.indexOf(' ', start);
-        return end < 0 ? line.substring(start).trim() : line.substring(start, end).trim();
+        if (source != null && source.countryFromGroup && !group.isEmpty() && resolver != null) {
+            String mapped = safe(resolver.resolve(group));
+            if (!mapped.isEmpty()) return mapped;
+        }
+        return "Pays non précisé";
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 }

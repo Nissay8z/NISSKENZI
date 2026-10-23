@@ -181,39 +181,228 @@ async function loadCatalogFromBase(base, signature) {
 }
 
 async function refreshIptvOrgCatalog() {
-  const response = await fetch(IPTV_PLAYLIST_URL, {
-    headers: { 'User-Agent': 'NISSKENZI+ catalog snapshot updater', 'Accept': 'audio/x-mpegurl, application/vnd.apple.mpegurl, */*' },
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!response.ok) throw new Error(`IPTV-org playlist HTTP ${response.status}`);
-  const raw = await response.text();
-  const normalized = raw.endsWith('\n') ? raw : raw + '\n';
-  const channelCount = (normalized.match(/^#EXTINF:/gm) || []).length;
-  if (!normalized.trimStart().startsWith('#EXTM3U') || channelCount < 1000) {
-    throw new Error(`IPTV-org playlist invalide/incomplète: ${channelCount} entrées détectées.`);
+  const manifestPath = path.join(ROOT, 'morocco-tv/app/src/main/assets/world_playlist_sources.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const sources = (manifest.sources || [])
+    .filter(source => source.enabled !== false)
+    .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+  if (!sources.length) throw new Error('Aucune source mondiale configurée.');
+
+  const normalizeSearch = value => String(value || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const blocked = new Set((manifest.blockedTerms || [])
+    .map(value => normalizeSearch(value)).filter(Boolean));
+  const maxChannels = Math.max(1000, Math.min(30000, Number(manifest.maxChannels || 20000)));
+  const maxBytes = Math.max(1024 * 1024, Math.min(64 * 1024 * 1024,
+    Number(manifest.maxPlaylistBytes || 40 * 1024 * 1024)));
+  const minimumMerged = Math.max(100, Number(manifest.minimumMergedChannels || 1000));
+
+  const attribute = (line, key) => {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = line.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s,]+))`, 'i'));
+    return match ? String(match[1] ?? match[2] ?? match[3] ?? '').trim() : '';
+  };
+  const titleOf = line => {
+    let quoted = false;
+    let quote = '';
+    for (let i = 0; i < line.length; i++) {
+      if (quoted) {
+        if (line[i] === quote && line[i - 1] !== '\\\\') quoted = false;
+      } else if (line[i] === '"' || line[i] === "'") {
+        quoted = true; quote = line[i];
+      } else if (line[i] === ',') return line.slice(i + 1).trim();
+    }
+    return '';
+  };
+  const safe = value => String(value || '').replace(/[\r\n"]/g, ' ').replace(/\s+/g, ' ').trim();
+  const parseRows = (raw, source, enforceMinimum = true) => {
+    if (Buffer.byteLength(raw, 'utf8') > maxBytes) throw new Error(source.id + ' dépasse la taille maximale.');
+    const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/);
+    // Standard playlist headers may append x-tvg-url and other M3U options.
+    if (!lines.some(line => line.trim().toUpperCase().startsWith('#EXTM3U'))) {
+      throw new Error(source.id + ' ne contient pas d’en-tête #EXTM3U.');
+    }
+    const rows = [];
+    let extinf = '';
+    let extras = [];
+    for (const original of lines) {
+      const line = original.trim();
+      if (!line || /^#EXTM3U$/i.test(line)) continue;
+      if (line.startsWith('#EXTINF:')) { extinf = line; extras = []; continue; }
+      if (line.startsWith('#')) {
+        if (extinf && /^#EXTVLCOPT:/i.test(line)) extras.push(line);
+        continue;
+      }
+      if (!/^https?:\/\//i.test(line) || !extinf) { extinf = ''; extras = []; continue; }
+      const name = safe(titleOf(extinf) || attribute(extinf, 'tvg-name') || 'Chaîne');
+      const logo = safe(attribute(extinf, 'tvg-logo'));
+      const tvgId = safe(attribute(extinf, 'tvg-id'));
+      const group = safe(attribute(extinf, 'group-title') || source.name);
+      let country = safe(attribute(extinf, 'tvg-country') || attribute(extinf, 'country'));
+      if (!country && source.countryFromGroup) {
+        country = group.split(/[|;›»→➾⟾]/)[0].trim();
+      }
+      // Many public lists encode ISO-3166 country codes in tvg-id (for example,
+      // AlJazeeraEnglish.qa@HD). Resolve those to readable French country names
+      // so the Android TV country filter remains useful across every repository.
+      if (!country) {
+        const suffix = tvgId.match(/\\.([a-z]{2})(?:@[^.]*)?$/i);
+        if (suffix) {
+          const code = suffix[1].toUpperCase();
+          country = code === 'XK' ? 'Kosovo'
+            : (new Intl.DisplayNames(['fr'], { type: 'region' }).of(code) || code);
+        }
+      }
+      const haystack = normalizeSearch([name, group, line].join(' '));
+      if (blocked.size && [...blocked].some(term => haystack.includes(term))) {
+        extinf = ''; extras = []; continue;
+      }
+      rows.push({
+        sourceId: source.id, priority: Number(source.priority || 0),
+        name, logo, tvgId, country, group, url: line, extras: [...extras],
+        originalExtinf: extinf
+      });
+      if (rows.length > maxChannels * 2) throw new Error(source.id + ' dépasse le nombre maximal d’entrées.');
+      extinf = ''; extras = [];
+    }
+    const minimum = Math.max(1, Number(source.minimumChannels || 1));
+    if (enforceMinimum && rows.length < minimum) {
+      throw new Error(source.id + ' ne contient que ' + rows.length + ' chaînes valides (minimum ' + minimum + ').');
+    }
+    return rows;
+  };
+
+  // Keep the last known complete catalogue available if an optional upstream is down.
+  let existingRows = [];
+  try {
+    const existing = fs.readFileSync(IPTV_OUT, 'utf8');
+    if (existing.includes('#EXTM3U')) {
+      const oldFallback = {
+        id: 'iptv-org', name: 'IPTV-org mondial', priority: 50,
+        minimumChannels: 1, enabled: true, required: true, countryFromGroup: true
+      };
+      const parsed = parseRows(existing, oldFallback, false);
+      existingRows = parsed.map(row => {
+        const declared = attribute(row.originalExtinf, 'nisskenzi-source') || 'iptv-org';
+        const source = sources.find(item => item.id === declared);
+        return { ...row, sourceId: source ? source.id : 'iptv-org',
+          priority: source ? Number(source.priority || 0) : 50 };
+      });
+    }
+  } catch { /* first generation or corrupt old asset: validate all fresh sources below */ }
+
+  const loaded = new Map();
+  const failures = [];
+  for (const source of sources) {
+    try {
+      const response = await fetch(source.url, {
+        headers: {
+          'User-Agent': 'NISSKENZI+ worldwide playlist merger',
+          'Accept': 'audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, */*',
+        },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const raw = await response.text();
+      const rows = parseRows(raw, source, true);
+      loaded.set(source.id, rows);
+      console.log(source.id + ': ' + rows.length + ' chaînes acceptées.');
+    } catch (error) {
+      const oldRows = existingRows.filter(row => row.sourceId === source.id);
+      if (oldRows.length >= Math.max(1, Number(source.minimumChannels || 1))) {
+        loaded.set(source.id, oldRows);
+        console.warn(source.id + ' indisponible; conservation de ' + oldRows.length + ' entrées existantes.');
+      } else if (source.required) {
+        throw new Error('Source obligatoire ' + source.id + ' indisponible: ' + error.message);
+      } else {
+        failures.push(source.id + ': ' + error.message);
+        console.warn('Source facultative ignorée ' + source.id + ': ' + error.message);
+      }
+    }
   }
 
-  // Stable content fingerprint lets Android invalidate its binary cache only when
-  // the playlist actually changes. The parser ignores this standard M3U comment.
-  const digest = crypto.createHash('sha256').update(normalized, 'utf8').digest('hex').slice(0, 24);
-  const newline = normalized.indexOf('\n');
-  const playlist = newline < 0
-    ? `${normalized.trimEnd()}\n#NISSKENZI-IPTV-CATALOG sha256="${digest}" channels="${channelCount}"\n`
-    : `${normalized.slice(0, newline)}\n#NISSKENZI-IPTV-CATALOG sha256="${digest}" channels="${channelCount}"\n${normalized.slice(newline + 1)}`;
+  const requiredSources = sources.filter(source => source.required);
+  for (const source of requiredSources) {
+    if (!loaded.has(source.id)) throw new Error('La source obligatoire ' + source.id + ' n’a pas été chargée.');
+  }
+
+  const identity = row => {
+    const id = normalizeSearch(row.tvgId);
+    if (id) return 'id:' + id;
+    return 'name:' + normalizeSearch(row.name) + '|' + normalizeSearch(row.country);
+  };
+  const merged = new Map();
+  const byUrl = new Set();
+  const selectedSources = sources.filter(source => loaded.has(source.id))
+    .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+  for (const source of selectedSources) {
+    const seenInSource = new Set();
+    for (const row of loaded.get(source.id) || []) {
+      const dedupeKey = identity(row);
+      const urlKey = row.url.trim();
+      if (!urlKey || seenInSource.has(urlKey)) continue;
+      seenInSource.add(urlKey);
+      const existing = merged.get(dedupeKey);
+      if (!existing) {
+        if (merged.size >= maxChannels) continue;
+        merged.set(dedupeKey, row);
+      } else if (row.priority > existing.priority) {
+        merged.set(dedupeKey, row);
+      }
+    }
+  }
+
+  const rows = [...merged.values()];
+  const countryCount = new Set(rows.map(row => row.country).filter(Boolean).map(normalizeSearch)).size;
+  if (rows.length < minimumMerged) {
+    throw new Error('Fusion refusée: seulement ' + rows.length + ' chaînes valides.');
+  }
+  if (countryCount < 8) {
+    throw new Error('Fusion refusée: seulement ' + countryCount + ' pays identifiés.');
+  }
+
+  rows.sort((a, b) => (a.country || '').localeCompare(b.country || '')
+    || a.name.localeCompare(b.name) || a.url.localeCompare(b.url));
+  const escapeAttr = value => safe(value);
+  const rowLines = rows.flatMap(row => [
+    '#EXTINF:-1 nisskenzi-source="' + escapeAttr(row.sourceId)
+      + '" tvg-id="' + escapeAttr(row.tvgId)
+      + '" tvg-name="' + escapeAttr(row.name)
+      + '" tvg-logo="' + escapeAttr(row.logo)
+      + '" tvg-country="' + escapeAttr(row.country)
+      + '" group-title="' + escapeAttr(row.group) + '",' + escapeAttr(row.name),
+    ...row.extras,
+    row.url,
+  ]);
+  const content = ['#EXTM3U', ...rowLines].join('\n') + '\n';
+  const digest = crypto.createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 24);
+  const output = [
+    '#EXTM3U',
+    '#NISSKENZI-IPTV-CATALOG sha256="' + digest + '" channels="' + rows.length
+      + '" countries="' + countryCount + '" sources="' + selectedSources.length + '"',
+    ...rowLines,
+    '',
+  ].join('\n');
 
   let existing = '';
   try { existing = fs.readFileSync(IPTV_OUT, 'utf8'); } catch {}
-  if (existing === playlist) {
-    console.log(`Catalogue IPTV-org inchangé: ${channelCount} entrées M3U.`);
-    return;
+  if (existing === output) {
+    console.log('Catalogue mondial inchangé: ' + rows.length + ' chaînes / ' + countryCount + ' pays.');
+  } else {
+    fs.writeFileSync(IPTV_OUT, output, 'utf8');
+    console.log('Catalogue mondial fusionné: ' + rows.length + ' chaînes / ' + countryCount + ' pays.');
   }
-  fs.writeFileSync(IPTV_OUT, playlist, 'utf8');
-  console.log(`Catalogue IPTV-org actualisé: ${channelCount} entrées M3U. Fichier: ${IPTV_OUT}`);
+  if (failures.length) console.warn('Sources facultatives indisponibles: ' + failures.join('; '));
 }
 
 async function main() {
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  // Update the direct IPTV-org playlist independently; keep the last good asset if its CDN is down.
+  // Android CI may refresh only the merged public playlist without calling VAVOO.
+  if (process.argv.includes('--world-only')) {
+    await refreshIptvOrgCatalog();
+    return;
+  }
+  // Update the worldwide public playlist independently; keep the last good asset if an upstream is down.
   try {
     await refreshIptvOrgCatalog();
   } catch (error) {

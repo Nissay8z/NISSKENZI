@@ -7,7 +7,6 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,13 +30,11 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.util.VLCVideoLayout;
-
 import java.text.Normalizer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -67,6 +64,13 @@ public class MainActivity extends Activity {
     private static final int MAX_CACHED_CHANNELS = 400;
     // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
     private static final int MAX_CATALOG_CHANNELS = 20000;
+    private static final String WORLD_REFRESH_PREFS = "world_playlist_refresh";
+    private static final String COUNTRY_FAVORITES_PREFS = "country_favorites";
+    private static final String COUNTRY_FAVORITES_KEY = "favorite_country_names";
+    private static final String WORLD_REFRESH_LAST_SUCCESS = "last_success";
+    private static final String WORLD_REFRESH_LAST_ATTEMPT = "last_attempt";
+    private static final long WORLD_REFRESH_INTERVAL_MS = 12L * 60L * 60L * 1000L;
+    private static final long WORLD_REFRESH_RETRY_MS = 30L * 60L * 1000L;
 
     private LinearLayout root;
     private View headerView;
@@ -87,6 +91,19 @@ public class MainActivity extends Activity {
     private TextView previewTitle;
     private TextView previewStatus;
     private TextView previewDetail;
+    private TextView liveTimeView;
+    private TextView liveDateView;
+    private TextView epgStatusView;
+    private TextView epgNowView;
+    private TextView epgNextView;
+    private TextView fullscreenButton;
+    private final Handler headerClockHandler = new Handler(Looper.getMainLooper());
+    private final Runnable headerClockRunnable = new Runnable() {
+        @Override public void run() {
+            updateHeaderClock();
+            headerClockHandler.postDelayed(this, 1000L);
+        }
+    };
 
     private NativeLivePlayerView playerView;
     private ExoPlayer player;
@@ -96,9 +113,6 @@ public class MainActivity extends Activity {
     private View playerStagePlaceholder;
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
     private int playerStageOriginalIndex = -1;
-    private LibVLC libVLC;
-    private org.videolan.libvlc.MediaPlayer vlcPlayer;
-    private VLCVideoLayout vlcVideoLayout;
     private Channel currentChannel;
     private volatile String activePage = "Live TV";
     private volatile String catalogStatus = "Préparation du catalogue…";
@@ -117,6 +131,7 @@ public class MainActivity extends Activity {
     private Runnable pendingSearchFilter;
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
+    private SharedPreferences countryFavoritesPrefs;
     private int catalogVersion = 0;
     // Identity token shared by each player instance for the same loaded catalogue.
     private Object channelCatalogToken = new Object();
@@ -139,6 +154,7 @@ public class MainActivity extends Activity {
     private String lastRenderedFilterKey = "";
     private boolean favoritesOnly = false;
     private boolean recentOnly = false;
+    private boolean favoriteCountriesOnly = false;
 
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newFixedThreadPool(2);
@@ -147,6 +163,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         favoritesStore = new FavoritesStore(getSharedPreferences("favorites", MODE_PRIVATE));
         recentStore = new RecentChannelsStore(getSharedPreferences("recent", MODE_PRIVATE));
+        countryFavoritesPrefs = getSharedPreferences(COUNTRY_FAVORITES_PREFS, MODE_PRIVATE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
@@ -231,7 +248,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildHome() {
-        if (player != null || vlcPlayer != null) releasePlayer();
+        if (player != null) releasePlayer();
         root = vertical();
         GradientDrawable backdrop = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -253,9 +270,41 @@ public class MainActivity extends Activity {
         header.addView(back, lp(isTelevision() ? 44 : 38, isTelevision() ? 48 : 40));
         back.setOnClickListener(v -> onBackPressed());
 
-        liveTab = buttonText("Live TV", true);
+        // Native Android branding inspired by the supplied IPTV mock-up.
+        // Everything is a real Android View, not a WebView or an HTML page.
+        if (isTelevision()) {
+            LinearLayout brand = horizontal();
+            brand.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams brandP = lp(-2, 48);
+            brandP.leftMargin = dp(10);
+            brandP.rightMargin = dp(12);
+            header.addView(brand, brandP);
+
+            TextView tvIcon = label("TV", 17, Color.WHITE, true);
+            tvIcon.setGravity(Gravity.CENTER);
+            GradientDrawable iconGradient = new GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    new int[]{0xFF2563EB, 0xFF4F46E5});
+            iconGradient.setCornerRadius(dp(12));
+            tvIcon.setBackground(iconGradient);
+            brand.addView(tvIcon, lp(42, 42));
+
+            LinearLayout brandText = vertical();
+            brandText.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams brandTextP = lp(-2, -2);
+            brandTextP.leftMargin = dp(9);
+            brand.addView(brandText, brandTextP);
+            TextView brandTitle = label("NISSKENZI+", 16, Color.WHITE, true);
+            brandTitle.setLetterSpacing(0.05f);
+            brandText.addView(brandTitle, lp(-2, -2));
+            TextView brandSubtitle = label("IPTV PLAYER", 9, CYAN, true);
+            brandSubtitle.setLetterSpacing(0.15f);
+            brandText.addView(brandSubtitle, lp(-2, -2));
+        }
+
+        liveTab = buttonText("TV en direct", true);
         vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
+        iptvTab = buttonText("MONDE IPTV", "IPTV-ORG".equals(sourceFilter));
         settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
 
         LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
@@ -295,6 +344,23 @@ public class MainActivity extends Activity {
             }
             @Override public void afterTextChanged(Editable e) {}
         });
+
+        if (isTelevision()) {
+            LinearLayout clockBlock = vertical();
+            clockBlock.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams clockP = lp(112, -2);
+            clockP.rightMargin = dp(12);
+            header.addView(clockBlock, clockP);
+            liveTimeView = label("--:--:--", 15, 0xFFE2E8F0, true);
+            liveTimeView.setGravity(Gravity.RIGHT);
+            clockBlock.addView(liveTimeView, lp(-1, -2));
+            liveDateView = label("Chargement de la date…", 9, MUTED, false);
+            liveDateView.setGravity(Gravity.RIGHT);
+            clockBlock.addView(liveDateView, lp(-1, -2));
+            updateHeaderClock();
+            headerClockHandler.removeCallbacks(headerClockRunnable);
+            headerClockHandler.postDelayed(headerClockRunnable, 1000L);
+        }
 
         header.addView(settingsTab, lp(isTelevision() ? 46 : 40, isTelevision() ? 48 : 40));
         settingsTab.setOnClickListener(v -> setPage("Paramètres"));
@@ -376,7 +442,7 @@ public class MainActivity extends Activity {
         // --- COLONNE GAUCHE : Catégories, Récemment vus, Favoris et Filtres pays ---
         LinearLayout left = vertical();
         left.setPadding(dp(18), dp(16), dp(14), dp(12));
-        body.addView(left, new LinearLayout.LayoutParams(0, -1, 3.0f));
+        body.addView(left, new LinearLayout.LayoutParams(0, -1, 2.5f));
 
         View dividerOne = new View(this);
         dividerOne.setBackgroundColor(LINE);
@@ -385,7 +451,7 @@ public class MainActivity extends Activity {
         // --- COLONNE DU MILIEU : Liste compacte de chaînes avec index, logo et nom ---
         LinearLayout middle = vertical();
         middle.setPadding(dp(16), dp(16), dp(16), dp(12));
-        body.addView(middle, new LinearLayout.LayoutParams(0, -1, 3.25f));
+        body.addView(middle, new LinearLayout.LayoutParams(0, -1, 3.1f));
 
         View dividerTwo = new View(this);
         dividerTwo.setBackgroundColor(LINE);
@@ -394,7 +460,7 @@ public class MainActivity extends Activity {
         // --- COLONNE DROITE : Lecteur/Aperçu noir au-dessus et actions Favori en dessous ---
         LinearLayout right = vertical();
         right.setPadding(dp(18), dp(18), dp(20), dp(14));
-        body.addView(right, new LinearLayout.LayoutParams(0, -1, 3.75f));
+        body.addView(right, new LinearLayout.LayoutParams(0, -1, 4.4f));
 
         TextView catTitle = label("CATEGORIES & PAYS", isTelevision() ? 11 : 9, Color.WHITE, true);
         catTitle.setLetterSpacing(0.08f);
@@ -432,7 +498,8 @@ public class MainActivity extends Activity {
 
         // En-tête de la liste centrale
         LinearLayout middleHeader = horizontal();
-        TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
+        String visibleSourceTitle = "IPTV-ORG".equals(sourceFilter) ? "MONDE IPTV" : sourceFilter;
+        TextView sourceTitle = label(visibleSourceTitle, isTelevision() ? 24 : 18, Color.WHITE, true);
         middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
         countView.setBackground(rounded(0xFF212B38, 15));
@@ -441,7 +508,8 @@ public class MainActivity extends Activity {
         middle.addView(middleHeader, lp(-1, -2));
 
         TextView listSubtitle = label(
-                "Flux direct · " + ("VAVOO".equals(sourceFilter) ? "VAVOO Server" : "IPTV-ORG Playlist"),
+                "Flux direct · " + ("VAVOO".equals(sourceFilter)
+                        ? "VAVOO Server" : "IPTV-org + Free-TV + flux validés"),
                 isTelevision() ? 12 : 9, 0xEEFFFFFF, false);
         LinearLayout.LayoutParams lsp = lp(-1, -2);
         lsp.topMargin = dp(4);
@@ -455,7 +523,7 @@ public class MainActivity extends Activity {
         channelResults.setHasFixedSize(true);
         channelResults.setItemViewCacheSize(8);
         channelResults.setItemAnimator(null);
-        channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
+        channelAdapter = new ChannelAdapter(this::handleChannelListClick, this::isFavorite);
         channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
         channelResults.setAdapter(channelAdapter);
         channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
@@ -495,9 +563,23 @@ public class MainActivity extends Activity {
                 currentChannel != null && isFavorite(currentChannel));
         actions.addView(favorite, new LinearLayout.LayoutParams(0, -1, 1f));
 
+        fullscreenButton = buttonText("⛶ Plein écran", false);
+        fullscreenButton.setEnabled(currentChannel != null);
+        fullscreenButton.setAlpha(currentChannel == null ? 0.55f : 1f);
+        LinearLayout.LayoutParams fullscreenP = new LinearLayout.LayoutParams(0, -1, 1.2f);
+        fullscreenP.leftMargin = dp(6);
+        actions.addView(fullscreenButton, fullscreenP);
+        fullscreenButton.setOnClickListener(v -> {
+            if (currentChannel == null) {
+                Toast.makeText(this, "Sélectionnez une chaîne d’abord.", Toast.LENGTH_SHORT).show();
+            } else {
+                enterFullscreenPlayback();
+            }
+        });
+
         TextView stop = buttonText("■ Arrêter", false);
         LinearLayout.LayoutParams stopP = lp(-2, -1);
-        stopP.leftMargin = dp(8);
+        stopP.leftMargin = dp(6);
         actions.addView(stop, stopP);
 
         favorite.setOnClickListener(v -> {
@@ -518,8 +600,45 @@ public class MainActivity extends Activity {
                 ? "La lecture s'intègre directement ici."
                 : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
                 isTelevision() ? 13 : 10, Color.WHITE, false);
-        previewDetail.setPadding(0, dp(12), 0, 0);
+        previewDetail.setPadding(0, dp(10), 0, 0);
+        previewDetail.setMaxLines(2);
+        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
         right.addView(previewDetail, lp(-1, -2));
+
+        // Real XMLTV data, fetched by EpgProvider; no mock programmes or demo streams.
+        LinearLayout epgBox = vertical();
+        epgBox.setPadding(dp(14), dp(12), dp(14), dp(12));
+        epgBox.setBackground(outlined(0xCC111925, 14, 0x663B4B61));
+        LinearLayout.LayoutParams epgBoxP = lp(-1, -2);
+        epgBoxP.topMargin = dp(14);
+        right.addView(epgBox, epgBoxP);
+
+        TextView epgHeading = label("GUIDE DES PROGRAMMES · EPG", isTelevision() ? 11 : 9, CYAN, true);
+        epgHeading.setLetterSpacing(0.07f);
+        epgBox.addView(epgHeading, lp(-1, -2));
+
+        epgStatusView = label(currentChannel == null
+                ? "Sélectionnez une chaîne pour rechercher son programme"
+                : "Chargement du guide…", 10, MUTED, false);
+        epgStatusView.setMaxLines(2);
+        epgStatusView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgStatusP = lp(-1, -2);
+        epgStatusP.topMargin = dp(6);
+        epgBox.addView(epgStatusView, epgStatusP);
+
+        epgNowView = label("EN COURS  ·  —", isTelevision() ? 12 : 10, Color.WHITE, true);
+        epgNowView.setMaxLines(2);
+        epgNowView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgNowP = lp(-1, -2);
+        epgNowP.topMargin = dp(9);
+        epgBox.addView(epgNowView, epgNowP);
+
+        epgNextView = label("À SUIVRE  ·  —", isTelevision() ? 11 : 9, MUTED, false);
+        epgNextView.setMaxLines(2);
+        epgNextView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams epgNextP = lp(-1, -2);
+        epgNextP.topMargin = dp(7);
+        epgBox.addView(epgNextView, epgNextP);
 
         if (currentChannel == null) {
             TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);
@@ -537,11 +656,12 @@ public class MainActivity extends Activity {
         countryChoices.removeAllViews();
 
         addCategoryRow("Tous", channels.size(),
-                !favoritesOnly && !recentOnly && "Tous les pays".equals(activeCountry),
+                !favoritesOnly && !recentOnly && !favoriteCountriesOnly && "Tous les pays".equals(activeCountry),
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = false;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -550,6 +670,7 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -558,9 +679,21 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
+        if ("IPTV-ORG".equals(sourceFilter)) {
+            addCategoryRow("★ Pays favoris", getFavoriteCountryNames().size(), favoriteCountriesOnly,
+                    v -> {
+                        activeCountry = "Tous les pays";
+                        favoritesOnly = false;
+                        recentOnly = false;
+                        favoriteCountriesOnly = true;
+                        renderCountryChoices();
+                        updateChannelResults();
+                    });
+        }
 
         View divider = new View(this);
         divider.setBackgroundColor(LINE);
@@ -595,20 +728,32 @@ public class MainActivity extends Activity {
             countryStatsVersion = catalogVersion;
         }
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
-        Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
+        Collections.sort(names, (a, b) -> {
+            if ("IPTV-ORG".equals(sourceFilter)) {
+                boolean favoriteA = isCountryFavorite(a);
+                boolean favoriteB = isCountryFavorite(b);
+                if (favoriteA != favoriteB) return favoriteA ? -1 : 1;
+            }
+            return String.CASE_INSENSITIVE_ORDER.compare(a, b);
+        });
         String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
         for (String country : names) {
             if (!query.isEmpty() && !country.toLowerCase(Locale.ROOT).contains(query)) continue;
             String title = flag(country, countryCodeCache.get(country)) + "  " + country;
-            addCategoryRow(title, countryCountCache.get(country),
-                    country.equals(activeCountry) && !favoritesOnly && !recentOnly,
-                    v -> {
-                        activeCountry = country;
-                        favoritesOnly = false;
-                        recentOnly = false;
-                        renderCountryChoices();
-                        updateChannelResults();
-                    });
+            boolean selected = country.equals(activeCountry) && !favoritesOnly && !recentOnly && !favoriteCountriesOnly;
+            View.OnClickListener selectCountry = v -> {
+                activeCountry = country;
+                favoritesOnly = false;
+                recentOnly = false;
+                favoriteCountriesOnly = false;
+                renderCountryChoices();
+                updateChannelResults();
+            };
+            if ("IPTV-ORG".equals(sourceFilter)) {
+                addCountryRow(title, country, countryCountCache.get(country), selected, selectCountry);
+            } else {
+                addCategoryRow(title, countryCountCache.get(country), selected, selectCountry);
+            }
         }
     }
 
@@ -645,6 +790,86 @@ public class MainActivity extends Activity {
             row.setScaleY(focused ? 1.025f : 1f);
         });
         row.setOnClickListener(click);
+    }
+
+    private void addCountryRow(String title, String country, int count, boolean selected,
+                               View.OnClickListener click) {
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(13), dp(8), dp(8), dp(8));
+        row.setBackground(rounded(selected ? 0xFF164A60 : 0xFF1D2632, 8));
+        row.setFocusable(true);
+        row.setClickable(true);
+
+        TextView name = label(title, isTelevision() ? 14 : 11,
+                selected ? YELLOW : Color.WHITE, true);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        boolean favorite = isCountryFavorite(country);
+        TextView star = label(favorite ? "★" : "☆", isTelevision() ? 18 : 15,
+                favorite ? YELLOW : MUTED, true);
+        star.setGravity(Gravity.CENTER);
+        star.setFocusable(true);
+        star.setClickable(true);
+        star.setContentDescription((favorite ? "Retirer " : "Ajouter ") + country + " "
+                + (favorite ? "des pays favoris" : "aux pays favoris"));
+        star.setBackground(rounded(0x00151D28, 8));
+        row.addView(star, lp(32, isTelevision() ? 32 : 28));
+        star.setOnFocusChangeListener((view, focused) -> {
+            star.setBackground(rounded(focused ? 0xFF164A60 : 0x00151D28, 8));
+            star.setTextColor(focused || isCountryFavorite(country) ? YELLOW : MUTED);
+        });
+        star.setOnClickListener(v -> {
+            toggleCountryFavorite(country);
+            renderCountryChoices();
+            updateChannelResults();
+        });
+
+        TextView number = label(String.valueOf(count), isTelevision() ? 14 : 11,
+                selected ? YELLOW : Color.WHITE, true);
+        number.setGravity(Gravity.CENTER);
+        row.addView(number, lp(30, -2));
+        LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 45 : 38);
+        rowP.bottomMargin = dp(6);
+        countryChoices.addView(row, rowP);
+        row.setOnFocusChangeListener((view, focused) -> {
+            row.setBackground(outlined(focused || selected ? 0xFF164A60 : 0xFF1D2632,
+                    8, focused ? 0xFF4CC9F0 : (selected ? 0xFF4CC9F0 : 0x00FFFFFF)));
+            name.setTextColor(focused || selected ? YELLOW : Color.WHITE);
+            number.setTextColor(focused || selected ? YELLOW : Color.WHITE);
+            row.setScaleX(focused ? 1.025f : 1f);
+            row.setScaleY(focused ? 1.025f : 1f);
+        });
+        row.setOnClickListener(click);
+    }
+
+    private Set<String> getFavoriteCountryNames() {
+        if (countryFavoritesPrefs == null) {
+            countryFavoritesPrefs = getSharedPreferences(COUNTRY_FAVORITES_PREFS, MODE_PRIVATE);
+        }
+        Set<String> stored = countryFavoritesPrefs.getStringSet(COUNTRY_FAVORITES_KEY, Collections.emptySet());
+        return new HashSet<>(stored == null ? Collections.emptySet() : stored);
+    }
+
+    private Set<String> getFavoriteCountryKeys() {
+        HashSet<String> keys = new HashSet<>();
+        for (String country : getFavoriteCountryNames()) keys.add(countryKey(country));
+        return keys;
+    }
+
+    private boolean isCountryFavorite(String country) {
+        if (country == null || countryFavoritesPrefs == null) return false;
+        Set<String> stored = countryFavoritesPrefs.getStringSet(COUNTRY_FAVORITES_KEY, Collections.emptySet());
+        return stored != null && stored.contains(country);
+    }
+
+    private void toggleCountryFavorite(String country) {
+        if (country == null || country.trim().isEmpty()) return;
+        Set<String> names = getFavoriteCountryNames();
+        if (!names.remove(country)) names.add(country);
+        countryFavoritesPrefs.edit().putStringSet(COUNTRY_FAVORITES_KEY, new HashSet<>(names)).apply();
     }
 
     private ArrayList<String> readRecentUrls() {
@@ -707,8 +932,11 @@ public class MainActivity extends Activity {
         final String requestedSearch = searchText;
         final boolean requestedFavorites = favoritesOnly;
         final boolean requestedRecent = recentOnly;
+        final boolean requestedFavoriteCountries = favoriteCountriesOnly;
+        final Set<String> favoriteCountrySnapshot = getFavoriteCountryKeys();
         final String filterKey = requestedSource + "|" + requestedCountry + "|" + safe(requestedSearch)
-                + "|" + requestedFavorites + "|" + requestedRecent;
+                + "|" + requestedFavorites + "|" + requestedRecent + "|" + requestedFavoriteCountries
+                + "|" + favoriteCountrySnapshot.hashCode();
         final boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
         lastRenderedFilterKey = filterKey;
 
@@ -724,6 +952,16 @@ public class MainActivity extends Activity {
             ArrayList<Channel> filtered = ChannelFilter.filter(channelSnapshot, requestedSource,
                     requestedCountry, requestedSearch, requestedFavorites, requestedRecent,
                     favoriteSnapshot, recentSnapshot);
+            if (requestedFavoriteCountries) {
+                ArrayList<Channel> countryFavorites = new ArrayList<>();
+                for (Channel channel : filtered) {
+                    if (channel != null && favoriteCountrySnapshot.contains(countryKey(safeCountry(channel.country)))) {
+                        countryFavorites.add(channel);
+                    }
+                }
+                filtered = countryFavorites;
+            }
+            final ArrayList<Channel> filteredResult = filtered;
 
             runOnUiThread(() -> {
                 if (activityDestroyed || requestId != filterGeneration.get()
@@ -731,8 +969,8 @@ public class MainActivity extends Activity {
                         || !requestedSource.equals(sourceFilter)
                         || !"Live TV".equals(activePage)) return;
 
-                if (countView != null) countView.setText(filtered.size() + " chaînes");
-                if (filtered.isEmpty()) {
+                if (countView != null) countView.setText(filteredResult.size() + " chaînes");
+                if (filteredResult.isEmpty()) {
                     targetAdapter.submitList(Collections.emptyList());
                     targetRecycler.setVisibility(View.GONE);
                     channelEmptyView.setVisibility(View.VISIBLE);
@@ -767,7 +1005,7 @@ public class MainActivity extends Activity {
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
                 targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-                targetAdapter.submitList(filtered, () -> {
+                targetAdapter.submitList(filteredResult, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
                     if (filtersChanged && targetAdapter.getItemCount() > 0) {
@@ -786,26 +1024,22 @@ public class MainActivity extends Activity {
         contentHost.addView(scroll, new FrameLayout.LayoutParams(-1,-1));
 
         page.addView(label("Paramètres", 26, TEXT, true));
-        TextView intro = label("Gestion des moteurs de catalogues et des lecteurs multimédias.", 11, MUTED, false);
+        TextView intro = label("Gestion des catalogues et de la lecture vidéo.", 11, MUTED, false);
         LinearLayout.LayoutParams ip = lp(-1,-2); ip.topMargin=dp(6); ip.bottomMargin=dp(20); page.addView(intro,ip);
 
         TextView playerHeading = label("LECTEUR VIDÉO", 9, MUTED, true);
         page.addView(playerHeading);
-
-        TextView playerMode = buttonText("Lecteur préféré : " + preferredPlayerLabel(), true);
+        TextView playerMode = buttonText("Lecteur unique : Media3", false);
+        playerMode.setFocusable(false);
         LinearLayout.LayoutParams pmp = lp(-1, 48); pmp.topMargin = dp(8); page.addView(playerMode, pmp);
-        
-        TextView playerHelp = label("Media3 est léger. VLC apporte un moteur alternatif pour les flux complexes.", 10, MUTED, false);
+        TextView playerHelp = label("Un seul lecteur intégré, sans fenêtre proposant de changer de moteur.", 10, MUTED, false);
         LinearLayout.LayoutParams php = lp(-1,-2); php.topMargin = dp(6); php.bottomMargin = dp(18); page.addView(playerHelp, php);
-        playerMode.setOnClickListener(v -> {
-            setVlcPreference(!useVlcPlayer());
-            renderSettings();
-            Toast.makeText(this, "Lecteur préféré : " + preferredPlayerLabel(), Toast.LENGTH_SHORT).show();
-        });
 
         page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Catalogue mondial structuré par pays.", PURPLE), gap);
+        page.addView(sourceCard("IPTV-ORG + PARTENAIRES", "🌐", "Catalogue mondial intégré",
+                "IPTV-org (monde entier), Free-TV sélectionné et flux passés au contrôle en ligne. Les listes sont fusionnées et dédupliquées dans le M3U intégré à l’APK.",
+                PURPLE), gap);
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -839,7 +1073,7 @@ public class MainActivity extends Activity {
                 renderPage();
             }).show());
 
-        TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
+        TextView note = label("VAVOO garde son résolveur natif. MONDE IPTV fusionne IPTV-org, Free-TV et les flux validés, avec les chaînes gratuites disponibles selon le pays.", 10, MUTED, false);
         note.setPadding(dp(2), dp(14), dp(2), 0);
         page.addView(note);
     }
@@ -890,6 +1124,7 @@ public class MainActivity extends Activity {
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
+            favoriteCountriesOnly = false;
             categorySearch = "";
             searchText = "";
             if (searchInput != null) searchInput.setText("");
@@ -942,8 +1177,9 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(ready);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · " + ready.size() + " chaînes · catalogue intégré prêt"
+                                : requestedSource + " · " + ready.size() + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
                         if (fullscreenPlayback) {
@@ -980,8 +1216,9 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(ready);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · " + ready.size() + " chaînes · catalogue intégré prêt"
+                                : requestedSource + " · " + ready.size() + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
                         if (fullscreenPlayback) {
@@ -991,6 +1228,8 @@ public class MainActivity extends Activity {
                             renderPage();
                         }
                     });
+                    // Local catalogue appears first; networking never blocks startup.
+                    if (!requestVavoo) maybeRefreshWorldPlaylistInBackground();
                     return;
                 }
             }
@@ -1093,9 +1332,13 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(result);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                             ? "MONDE IPTV · " + result.size() + " chaînes · sources actualisées"
+                             : requestedSource + " · " + result.size() + " chaînes chargées";
                     } else if (!channels.isEmpty()) {
-                        catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
+                        catalogStatus = "IPTV-ORG".equals(requestedSource)
+                                ? "MONDE IPTV · catalogue intégré prêt, actualisation reportée"
+                                : requestedSource + " · actualisation reportée, catalogue disponible";
                     } else {
                         catalogStatus = requestedSource + " · aucun flux reçu"
                                 + (loadError.isEmpty() ? "" : " · " + loadError);
@@ -1125,6 +1368,69 @@ public class MainActivity extends Activity {
             if (!result.isEmpty() && !requestVavoo && forceRefresh) {
                 CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
             }
+        });
+    }
+
+    /**
+     * Keeps startup local-first. Public world-playlist sources are refreshed in the
+     * background at most every 12 hours; failures leave the last good catalogue intact.
+     */
+    private void maybeRefreshWorldPlaylistInBackground() {
+        SharedPreferences prefs = getSharedPreferences(WORLD_REFRESH_PREFS, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastSuccess = prefs.getLong(WORLD_REFRESH_LAST_SUCCESS, 0L);
+        long lastAttempt = prefs.getLong(WORLD_REFRESH_LAST_ATTEMPT, 0L);
+        if (now - lastSuccess < WORLD_REFRESH_INTERVAL_MS
+                || now - lastAttempt < WORLD_REFRESH_RETRY_MS) {
+            return;
+        }
+        prefs.edit().putLong(WORLD_REFRESH_LAST_ATTEMPT, now).apply();
+
+        io.execute(() -> {
+            final ArrayList<Channel> refreshed;
+            try {
+                refreshed = IptvOrgProvider.loadChannels(MainActivity.this,
+                        MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry, null, true);
+                if (refreshed == null || refreshed.size() < 1000) {
+                    throw new IllegalStateException("Catalogue mondial incomplet.");
+                }
+                long refreshedAt = System.currentTimeMillis();
+                getSharedPreferences(WORLD_REFRESH_PREFS, MODE_PRIVATE).edit()
+                        .putLong(WORLD_REFRESH_LAST_SUCCESS, refreshedAt)
+                        .putLong(WORLD_REFRESH_LAST_ATTEMPT, refreshedAt)
+                        .apply();
+                CatalogCache.saveQuick(MainActivity.this, refreshed, "IPTV-ORG", MAX_CACHED_CHANNELS);
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (activityDestroyed) return;
+                    if ("IPTV-ORG".equals(sourceFilter) && !channels.isEmpty()) {
+                        catalogStatus = "MONDE IPTV · catalogue intégré conservé; actualisation reportée";
+                        updateStatus();
+                    }
+                });
+                return;
+            }
+
+            runOnUiThread(() -> {
+                if (activityDestroyed) return;
+                catalogStatus = "MONDE IPTV · " + refreshed.size()
+                        + " chaînes · sources mondiales actualisées";
+                if (!"IPTV-ORG".equals(sourceFilter) || !"Live TV".equals(activePage)) {
+                    updateStatus();
+                    return;
+                }
+                channels.clear();
+                channels.addAll(refreshed);
+                markCatalogChanged();
+                updateStatus();
+                updateHeaderTabs();
+                if (fullscreenPlayback) {
+                    renderCountryChoices();
+                    updateChannelResults();
+                } else {
+                    renderPage();
+                }
+            });
         });
     }
 
@@ -1305,18 +1611,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean useVlcPlayer() {
-        return getSharedPreferences("settings", MODE_PRIVATE).getBoolean("use_vlc_player", false);
-    }
-
-    private void setVlcPreference(boolean enabled) {
-        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("use_vlc_player", enabled).apply();
-    }
-
-    private String preferredPlayerLabel() {
-        return useVlcPlayer() ? "VLC (compatibilité étendue)" : "Media3 (léger)";
-    }
-
     private void enterFullscreenPlayback() {
         if (fullscreenPlayback || playerStage == null || contentHost == null
                 || !"Live TV".equals(activePage)) return;
@@ -1377,6 +1671,13 @@ public class MainActivity extends Activity {
         if (channelResults != null) channelResults.requestFocus();
     }
 
+    private void handleChannelListClick(Channel ch) {
+        if (ch == null) return;
+        // A single selection starts the channel and immediately shows the existing player fullscreen.
+        play(ch);
+        enterFullscreenPlayback();
+    }
+
     private void play(Channel ch) {
         if (ch == null) return;
         currentChannel = ch;
@@ -1387,15 +1688,20 @@ public class MainActivity extends Activity {
         if (previewDetail != null) previewDetail.setText(
                 "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
         renderCountryChoices();
-        enterFullscreenPlayback();
+        if (fullscreenButton != null) {
+            fullscreenButton.setEnabled(true);
+            fullscreenButton.setAlpha(1f);
+        }
+        // Keep the three-column TV interface visible while the native player
+        // runs inside the right-hand panel. Fullscreen stays an explicit action.
         startPlayback(ch);
+        loadEpgForCurrentChannel();
     }
 
     private void startPlayback(Channel ch) {
         releaseMediaEngine();
         if (playerStage != null) playerStage.removeAllViews();
         if (ch.isVavoo) {
-            Toast.makeText(this, "Résolution du flux VAVOO…", Toast.LENGTH_SHORT).show();
             io.execute(() -> {
                 try {
                     String resolved = VavooProvider.resolveStream(ch.vavooSourceUrl);
@@ -1405,7 +1711,18 @@ public class MainActivity extends Activity {
                     });
                 } catch (Exception e) {
                     String message = e.getMessage() == null ? "Résolution VAVOO impossible" : e.getMessage();
-                    runOnUiThread(() -> { if (currentChannel == ch) Toast.makeText(MainActivity.this, "VAVOO : " + message, Toast.LENGTH_LONG).show(); });
+                    runOnUiThread(() -> {
+                        if (currentChannel != ch) return;
+                        if (previewStatus != null) previewStatus.setText("Flux VAVOO indisponible");
+                        if (previewDetail != null) previewDetail.setText(message);
+                        if (playerStage != null) {
+                            playerStage.removeAllViews();
+                            TextView error = label("Flux VAVOO indisponible", 15, MUTED, true);
+                            error.setGravity(Gravity.CENTER);
+                            error.setBackgroundColor(Color.BLACK);
+                            playerStage.addView(error, new FrameLayout.LayoutParams(-1, -1));
+                        }
+                    });
                 }
             });
         } else {
@@ -1415,8 +1732,7 @@ public class MainActivity extends Activity {
 
     private void startResolvedPlayback(Channel ch, String streamUrl) {
         if (playerStage == null || currentChannel != ch) return;
-        if (useVlcPlayer()) startVlcPlayback(ch, streamUrl);
-        else startMedia3Playback(ch, streamUrl);
+        startMedia3Playback(ch, streamUrl);
     }
 
     private void startMedia3Playback(Channel ch, String streamUrl) {
@@ -1425,7 +1741,7 @@ public class MainActivity extends Activity {
             ExoPlayer active = LivePlaybackFactory.create(this,
                     ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
             nativeView.setChannelName(ch.name);
-            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "MONDE IPTV");
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setBackAction(nativeView::hideControls);
@@ -1457,23 +1773,11 @@ public class MainActivity extends Activity {
 
                 @Override public void onPlayerError(PlaybackException e) {
                     if (currentChannel == ch && playerView == nativeView) {
-                        nativeView.setErrorMessage("Flux indisponible · un autre lecteur peut être nécessaire");
-                        if (previewStatus != null) {
-                            previewStatus.setText("Flux indisponible · essayez l’autre lecteur");
+                        nativeView.setErrorMessage("Flux indisponible");
+                        if (previewStatus != null) previewStatus.setText("Flux indisponible");
+                        if (previewDetail != null) {
+                            previewDetail.setText("Ce flux ne répond pas avec le lecteur intégré.");
                         }
-                    }
-                    Toast.makeText(MainActivity.this,
-                            "Media3 : lecture impossible (" + e.getErrorCodeName() + ").",
-                            Toast.LENGTH_LONG).show();
-                    if (!useVlcPlayer()) {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Essayer un autre lecteur ?")
-                            .setMessage("Ce flux semble nécessiter un moteur vidéo plus compatible. VLC est disponible en option.")
-                            .setNegativeButton("Pas maintenant", null)
-                            .setPositiveButton("Essayer VLC", (dialog, which) -> {
-                                setVlcPreference(true);
-                                startPlayback(ch);
-                            }).show();
                     }
                 }
             });
@@ -1484,67 +1788,51 @@ public class MainActivity extends Activity {
             if (nativeView != null) {
                 nativeView.setErrorMessage("Démarrage impossible");
             }
-            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
-                    Toast.LENGTH_LONG).show();
+            if (previewStatus != null) previewStatus.setText("Démarrage de la lecture impossible");
+            if (previewDetail != null) previewDetail.setText("Vérifiez que le flux est toujours disponible.");
         }
     }
 
     private void loadEpgForCurrentChannel() {
         final Channel requested = currentChannel;
         final NativeLivePlayerView target = playerView;
-        if (requested == null || target == null) return;
-        target.setEpgInfo(EpgProvider.Result.loading());
+        if (requested == null) {
+            updateInlineEpg(null);
+            return;
+        }
+        EpgProvider.Result loading = EpgProvider.Result.loading();
+        updateInlineEpg(loading);
+        if (target != null) target.setEpgInfo(loading);
         io.execute(() -> {
             EpgProvider.Result result = EpgProvider.lookup(MainActivity.this, requested);
             runOnUiThread(() -> {
-                if (activityDestroyed || currentChannel != requested || playerView != target
-                        || !target.isChannelDrawerOpen()) return;
-                target.setEpgInfo(result);
+                if (activityDestroyed || currentChannel != requested) return;
+                updateInlineEpg(result);
+                if (target != null && playerView == target && target.isChannelDrawerOpen()) {
+                    target.setEpgInfo(result);
+                }
             });
         });
     }
 
-    private void startVlcPlayback(Channel ch, String streamUrl) {
-        try {
-            ArrayList<String> options = new ArrayList<>();
-            options.add("--network-caching=1500");
-            options.add("--no-drop-late-frames");
-            options.add("--no-skip-frames");
-            libVLC = new LibVLC(this, options);
-            org.videolan.libvlc.MediaPlayer active = new org.videolan.libvlc.MediaPlayer(libVLC);
-            vlcPlayer = active;
-            vlcVideoLayout = new VLCVideoLayout(this);
-            playerStage.addView(vlcVideoLayout, new FrameLayout.LayoutParams(-1, -1));
-            active.attachViews(vlcVideoLayout, null, false, false);
-            active.setEventListener(event -> {
-                if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                    runOnUiThread(() -> {
-                        if (vlcPlayer != active || currentChannel != ch) return;
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("VLC n’a pas pu lire le flux")
-                            .setMessage("Le flux est peut-être indisponible. Souhaitez-vous tenter le lecteur Media3 ?")
-                            .setNegativeButton("Fermer", null)
-                            .setPositiveButton("Essayer Media3", (dialog, which) -> {
-                                setVlcPreference(false);
-                                startPlayback(ch);
-                            }).show();
-                    });
-                }
-            });
-            Media media = new Media(libVLC, Uri.parse(streamUrl));
-            media.setHWDecoderEnabled(true, false);
-            media.addOption(":network-caching=1500");
-            active.setMedia(media);
-            media.release();
-            active.play();
-        } catch (Exception e) {
-            releaseMediaEngine();
-            Toast.makeText(this, "Impossible de démarrer VLC : " + safe(e.getMessage()), Toast.LENGTH_LONG).show();
-            if (currentChannel == ch && playerStage != null) {
-                setVlcPreference(false);
-                startMedia3Playback(ch, streamUrl);
-            }
+    private void updateInlineEpg(EpgProvider.Result result) {
+        if (epgStatusView == null || epgNowView == null || epgNextView == null) return;
+        if (result == null) {
+            epgStatusView.setText("Sélectionnez une chaîne pour rechercher son programme");
+            epgNowView.setText("EN COURS  ·  —");
+            epgNextView.setText("À SUIVRE  ·  —");
+            return;
         }
+        epgStatusView.setText(result.status.isEmpty() ? "Guide XMLTV" : result.status);
+        epgNowView.setText("EN COURS  ·  " + (result.now.isEmpty() ? "Aucun programme trouvé" : result.now));
+        epgNextView.setText("À SUIVRE  ·  " + (result.next.isEmpty() ? "Programme non renseigné" : result.next));
+    }
+
+    private void updateHeaderClock() {
+        if (liveTimeView == null || liveDateView == null) return;
+        Date now = new Date();
+        liveTimeView.setText(new SimpleDateFormat("HH:mm:ss", Locale.FRANCE).format(now));
+        liveDateView.setText(new SimpleDateFormat("EEEE d MMM", Locale.FRANCE).format(now));
     }
 
     private void releaseMediaEngine() {
@@ -1555,18 +1843,6 @@ public class MainActivity extends Activity {
         if (playerView != null) {
             try { playerView.setPlayer(null); if (playerStage != null) playerStage.removeView(playerView); } catch (Exception ignored) {}
             playerView = null;
-        }
-        if (vlcPlayer != null) {
-            try { vlcPlayer.stop(); vlcPlayer.detachViews(); vlcPlayer.release(); } catch (Exception ignored) {}
-            vlcPlayer = null;
-        }
-        if (libVLC != null) {
-            try { libVLC.release(); } catch (Exception ignored) {}
-            libVLC = null;
-        }
-        if (vlcVideoLayout != null) {
-            try { if (playerStage != null) playerStage.removeView(vlcVideoLayout); } catch (Exception ignored) {}
-            vlcVideoLayout = null;
         }
     }
 
@@ -1583,7 +1859,12 @@ public class MainActivity extends Activity {
         }
         if (previewTitle != null) previewTitle.setText("Aperçu du direct");
         if (previewStatus != null) previewStatus.setText("Sélectionnez une chaîne pour démarrer");
-        if (previewDetail != null) previewDetail.setText("La lecture s'intègre directement ici.");
+        if (previewDetail != null) previewDetail.setText("Le lecteur natif est prêt pour la prochaine chaîne.");
+        if (fullscreenButton != null) {
+            fullscreenButton.setEnabled(false);
+            fullscreenButton.setAlpha(0.55f);
+        }
+        updateInlineEpg(null);
         updateChannelResults();
         renderCountryChoices();
     }
@@ -1599,7 +1880,7 @@ public class MainActivity extends Activity {
             exitFullscreenPlayback();
         } else if ("Paramètres".equals(activePage)) {
             setPage("Live TV");
-        } else if (player != null || vlcPlayer != null) {
+        } else if (player != null) {
             stopPreview();
         } else {
             super.onBackPressed();
@@ -1613,6 +1894,7 @@ public class MainActivity extends Activity {
         if (filterJob != null) filterJob.cancel(true);
         filterExecutor.shutdownNow();
         if (pendingSearchFilter != null) uiHandler.removeCallbacks(pendingSearchFilter);
+        headerClockHandler.removeCallbacks(headerClockRunnable);
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();

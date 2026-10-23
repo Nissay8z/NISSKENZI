@@ -4,8 +4,7 @@ import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/** Immutable data model for a live channel. Search text is precomputed to avoid
- * allocating and normalizing channel strings on every remote-control key press. */
+/** Immutable row model passed from the local catalogue into the native UI/player. */
 public final class Channel {
     public final String name;
     public final String url;
@@ -13,16 +12,19 @@ public final class Channel {
     public final String group;
     public final String vavooSourceUrl;
     public final String country;
+    /** True only when playback must call VavooProvider.resolveStream(). */
     public final boolean isVavoo;
-    /** XMLTV id from tvg-id, empty for sources that do not expose a guide identifier. */
+    /** Original XMLTV identifier from tvg-id, when supplied by the playlist. */
     public final String epgId;
+    /** Stable catalogue identity such as vavoo, iptv-org-fr, pluto-tv-fr. */
+    public final String catalogSource;
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern PUNCTUATION_AND_SPACE = Pattern.compile("[\\p{Punct}\\s]+");
     private final String searchIndex;
 
     public Channel(String name, String url, String logo, String group,
                    boolean isVavoo, String sourceUrl, String country) {
-        this(name, url, logo, group, isVavoo, sourceUrl, country, "");
+        this(name, url, logo, group, isVavoo, sourceUrl, country, "", null);
     }
 
     public Channel(String name, String url, String logo, String group,
@@ -30,9 +32,17 @@ public final class Channel {
         this(name, url, logo, group, isVavoo, sourceUrl, country, epgId, null);
     }
 
-    /** Package-private constructor used by FastCatalogCache to reuse the stored search index. */
+    /** Compatibility constructor used by FastCatalogCache. */
     Channel(String name, String url, String logo, String group, boolean isVavoo,
             String sourceUrl, String country, String epgId, String cachedSearchIndex) {
+        this(name, url, logo, group, isVavoo, sourceUrl, country, epgId,
+                inferSourceId(isVavoo, group), cachedSearchIndex);
+    }
+
+    /** Full constructor used by M3UParser and the SQLite/Room mapping layer. */
+    public Channel(String name, String url, String logo, String group,
+                   boolean isVavoo, String sourceUrl, String country, String epgId,
+                   String catalogSource, String cachedSearchIndex) {
         this.name = safe(name);
         this.url = safe(url);
         this.logo = safe(logo);
@@ -42,8 +52,11 @@ public final class Channel {
         this.vavooSourceUrl = safe(sourceUrl);
         String cleanCountry = safe(country);
         this.country = cleanCountry.isEmpty() ? "Pays non précisé" : cleanCountry;
+        String source = safe(catalogSource);
+        this.catalogSource = source.isEmpty() ? inferSourceId(isVavoo, group) : source;
         this.searchIndex = cachedSearchIndex == null
-                ? normalizeSearch(this.name + " " + this.group + " " + this.country)
+                ? normalizeSearch(this.name + " " + this.group + " " + this.country
+                        + " " + this.catalogSource)
                 : cachedSearchIndex;
     }
 
@@ -58,6 +71,16 @@ public final class Channel {
                 .replaceAll("")
                 .toLowerCase(Locale.ROOT);
         return PUNCTUATION_AND_SPACE.matcher(normalized).replaceAll(" ").trim();
+    }
+
+    private static String inferSourceId(boolean isVavoo, String group) {
+        if (isVavoo) return "vavoo";
+        String value = safe(group).toLowerCase(Locale.ROOT);
+        if (value.startsWith("iptv-org") || value.startsWith("iptv org")) return "iptv-org-fr";
+        if (value.startsWith("pluto tv")) return "pluto-tv-fr";
+        if (value.startsWith("samsung")) return "samsung-tv-fr";
+        if (value.startsWith("free-tv")) return "free-tv-world";
+        return "iptv-org-fr";
     }
 
     private static String safe(String value) {

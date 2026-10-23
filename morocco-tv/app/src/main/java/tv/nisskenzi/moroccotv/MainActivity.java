@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -71,6 +72,7 @@ public class MainActivity extends Activity {
     private static final String WORLD_REFRESH_LAST_ATTEMPT = "last_attempt";
     private static final long WORLD_REFRESH_INTERVAL_MS = 12L * 60L * 60L * 1000L;
     private static final long WORLD_REFRESH_RETRY_MS = 30L * 60L * 1000L;
+    private static final long CHANNEL_DOUBLE_CLICK_MS = 600L;
 
     private LinearLayout root;
     private View headerView;
@@ -114,6 +116,8 @@ public class MainActivity extends Activity {
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
     private int playerStageOriginalIndex = -1;
     private Channel currentChannel;
+    private String lastChannelClickUrl = "";
+    private long lastChannelClickAt = 0L;
     private volatile String activePage = "Live TV";
     private volatile String catalogStatus = "Préparation du catalogue…";
     private volatile boolean loadingCatalog = false;
@@ -523,7 +527,7 @@ public class MainActivity extends Activity {
         channelResults.setHasFixedSize(true);
         channelResults.setItemViewCacheSize(8);
         channelResults.setItemAnimator(null);
-        channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
+        channelAdapter = new ChannelAdapter(this::handleChannelListClick, this::isFavorite);
         channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
         channelResults.setAdapter(channelAdapter);
         channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
@@ -1669,6 +1673,29 @@ public class MainActivity extends Activity {
         if (headerView != null) headerView.setVisibility(View.VISIBLE);
         if (statusView != null) statusView.setVisibility(View.VISIBLE);
         if (channelResults != null) channelResults.requestFocus();
+    }
+
+    private void handleChannelListClick(Channel ch) {
+        if (ch == null) return;
+        long now = SystemClock.elapsedRealtime();
+        String clickedUrl = ch.url == null ? "" : ch.url;
+        boolean doubleClick = !clickedUrl.isEmpty()
+                && clickedUrl.equals(lastChannelClickUrl)
+                && now >= lastChannelClickAt
+                && now - lastChannelClickAt <= CHANNEL_DOUBLE_CLICK_MS;
+        lastChannelClickUrl = clickedUrl;
+        lastChannelClickAt = now;
+
+        if (doubleClick) {
+            // The first press already selected/started this channel. Do not restart
+            // the stream on the second press; promote the existing player to full screen.
+            if (currentChannel == null || !clickedUrl.equals(currentChannel.url)) {
+                play(ch);
+            }
+            enterFullscreenPlayback();
+            return;
+        }
+        play(ch);
     }
 
     private void play(Channel ch) {

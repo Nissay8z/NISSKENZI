@@ -3,343 +3,882 @@ package tv.nisskenzi.moroccotv;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
-import android.os.Bundle;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.*;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.webkit.WebSettings;
-import android.webkit.JavascriptInterface;
-import android.text.TextUtils;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
+
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Native Android Live TV app. The UI is built with Android Views; no WebView or HTML UI.
+ */
 public class MainActivity extends Activity {
-  private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
-  private LinearLayout root; private TextView status, nowTitle; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private volatile String activeSection="Live TV"; private volatile String catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
-  private final ArrayList<Channel> channels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor();
-  private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
-  private TextView actionButton(String label,int color){
-    TextView button=text(label,13,Color.WHITE,true);
-    button.setGravity(Gravity.CENTER);
-    button.setPadding(18,12,18,12);
-    button.setBackground(rounded(color,10));
-    button.setFocusable(true);
-    return button;
-  }
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
-  private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
-  private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
-    android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
-    d.setColor(color);d.setCornerRadius(radius);return d;
-  }
-  private void buildHome(){
-    activeSection="Live TV";homeWebReady=false;
-    root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(bg);
-    homeWebView=new WebView(this);homeWebView.setBackgroundColor(bg);
-    WebSettings webSettings=homeWebView.getSettings();webSettings.setJavaScriptEnabled(true);webSettings.setDomStorageEnabled(true);webSettings.setAllowFileAccess(true);webSettings.setAllowFileAccessFromFileURLs(false);webSettings.setAllowUniversalAccessFromFileURLs(false);webSettings.setSupportZoom(false);
-    homeWebView.addJavascriptInterface(new HomeBridge(),"NisskenziBridge");
-    homeWebView.setWebViewClient(new WebViewClient(){@Override public void onPageFinished(WebView view,String url){homeWebReady=true;renderChannelsToWeb();}});
-    root.addView(homeWebView,new LinearLayout.LayoutParams(-1,0,1));
-    status=text("",10,Color.WHITE,false);status.setVisibility(View.GONE);root.addView(status,new LinearLayout.LayoutParams(1,1));
-    setContentView(root);
-    homeWebView.loadUrl("file:///android_asset/nisskenzi_home.html");
-  }
-  private void loadCachedChannels(){
-    try{
-      String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("merged_channels","");
-      if(raw.isEmpty())return;
-      JSONArray arr=new JSONArray(raw);
-      ArrayList<Channel> cached=new ArrayList<>();
-      for(int i=0;i<arr.length();i++){
-        JSONObject o=arr.optJSONObject(i);if(o==null)continue;
-        String name=o.optString("name","Chaîne"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Direct");
-        if(url.isEmpty())continue;
-        boolean cachedVavoo=o.optBoolean("isVavoo",false);
-        if(!group.startsWith("VAVOO · ")&&!group.startsWith("IPTV-ORG · "))continue;
-        String cachedCountry=normalizeCountry(o.optString("country",""));
-        if(cachedCountry.isEmpty()||"Pays non précisé".equalsIgnoreCase(cachedCountry)||"default".equalsIgnoreCase(cachedCountry)){
-          String prefix=cachedVavoo?"VAVOO · ":"IPTV-ORG · ";
-          String derived=group.startsWith(prefix)?group.substring(prefix.length()):group;
-          cachedCountry=normalizeCountry(derived);
+    private static final int BG = 0xFF080D16;
+    private static final int PANEL = 0xFF0E1726;
+    private static final int PANEL2 = 0xFF121F32;
+    private static final int LINE = 0xFF20334C;
+    private static final int CYAN = 0xFF38D5FF;
+    private static final int PURPLE = 0xFF9166FF;
+    private static final int MUTED = 0xFF8EA3BF;
+    private static final int TEXT = 0xFFF3F6FD;
+    private static final int GREEN = 0xFF40D79D;
+    private static final int YELLOW = 0xFFF5CE6B;
+
+    private LinearLayout root;
+    private FrameLayout contentHost;
+    private TextView statusView;
+    private TextView countView;
+    private LinearLayout countryChoices;
+    private LinearLayout channelResults;
+    private EditText searchInput;
+    private TextView liveTab;
+    private TextView settingsTab;
+
+    private PlayerView playerView;
+    private ExoPlayer player;
+    private Channel currentChannel;
+    private volatile String activePage = "Live TV";
+    private volatile String catalogStatus = "Chargement des catalogues VAVOO + IPTV-ORG…";
+    private boolean loadingCatalog = false;
+    private String activeCountry = "Tous les pays";
+    private String sourceFilter = "Toutes";
+    private String searchText = "";
+
+    private final ArrayList<Channel> channels = new ArrayList<>();
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService logoIo = Executors.newFixedThreadPool(2);
+    private final Map<String, Bitmap> logoCache = Collections.synchronizedMap(new HashMap<>());
+
+    private static class Channel {
+        String name, url, logo, group, vavooSourceUrl, country;
+        boolean isVavoo;
+        Channel(String n, String u, String l, String g, boolean v, String source, String countryName) {
+            name=n; url=u; logo=l; group=g; isVavoo=v; vavooSourceUrl=source; country=countryName;
         }
-        if(cachedCountry.isEmpty()||"default".equalsIgnoreCase(cachedCountry))cachedCountry="Pays non précisé";
-        cached.add(new Channel(name,url,logo,group,cachedVavoo,o.optString("sourceUrl",""),cachedCountry));
-      }
-      if(!cached.isEmpty()){
-        channels.clear();channels.addAll(cached);
-        showChannels(new ArrayList<>(cached));
-        status.setText(cached.size()+" chaînes en cache · actualisation en arrière-plan…");
-      }
-    }catch(Exception ignored){}
-  }
-  private void saveCachedChannels(ArrayList<Channel> items){
-    try{
-      JSONArray arr=new JSONArray();
-      for(Channel ch:items){
-        JSONObject o=new JSONObject();
-        o.put("name",ch.name==null?"Chaîne":ch.name);
-        o.put("url",ch.url==null?"":ch.url);
-        o.put("logo",ch.logo==null?"":ch.logo);
-        o.put("group",ch.group==null?"Direct":ch.group);
-        o.put("isVavoo",ch.isVavoo);
-        o.put("sourceUrl",ch.vavooSourceUrl==null?"":ch.vavooSourceUrl);
-        o.put("country",ch.vavooCountry==null?"":ch.vavooCountry);
-        arr.put(o);
-      }
-      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("merged_channels",arr.toString()).putLong("updated_at",System.currentTimeMillis()).apply();
-    }catch(Exception ignored){}
-  }
-  private static String countryKey(String value){
-    if(value==null)return "";
-    String normalized=java.text.Normalizer.normalize(value.trim(),java.text.Normalizer.Form.NFD);
-    normalized=normalized.replaceAll("\\p{M}+","").toLowerCase(java.util.Locale.ROOT);
-    return normalized.replaceAll("[^a-z0-9]+"," ").trim();
-  }
-  private static final java.util.Map<String,String> COUNTRY_ALIASES=buildCountryAliases();
-  private static java.util.Map<String,String> buildCountryAliases(){
-    java.util.HashMap<String,String> map=new java.util.HashMap<>();
-    for(String code:java.util.Locale.getISOCountries()){
-      java.util.Locale loc=new java.util.Locale("",code);
-      String french=loc.getDisplayCountry(java.util.Locale.FRENCH);
-      String english=loc.getDisplayCountry(java.util.Locale.ENGLISH);
-      if(french==null||french.trim().isEmpty())continue;
-      map.put(countryKey(code),french);
-      map.put(countryKey(french),french);
-      map.put(countryKey(english),french);
     }
-    map.put(countryKey("UK"),"Royaume-Uni");
-    map.put(countryKey("Great Britain"),"Royaume-Uni");
-    map.put(countryKey("USA"),"États-Unis");
-    map.put(countryKey("United States of America"),"États-Unis");
-    map.put(countryKey("South Korea"),"Corée du Sud");
-    map.put(countryKey("Republic of Korea"),"Corée du Sud");
-    map.put(countryKey("North Korea"),"Corée du Nord");
-    map.put(countryKey("Ivory Coast"),"Côte d’Ivoire");
-    map.put(countryKey("Czech Republic"),"Tchéquie");
-    map.put(countryKey("Russia"),"Russie");
-    map.put(countryKey("Syria"),"Syrie");
-    map.put(countryKey("Iran"),"Iran");
-    map.put(countryKey("Moldova"),"Moldavie");
-    map.put(countryKey("Vietnam"),"Viêt Nam");
-    map.put(countryKey("Turkey"),"Turquie");
-    map.put(countryKey("Türkiye"),"Turquie");
-    map.put(countryKey("Taiwan"),"Taïwan");
-    map.put(countryKey("Vatican City"),"Vatican");
-    map.put(countryKey("Palestine"),"Palestine");
-    map.put(countryKey("Kosovo"),"Kosovo");
-    return map;
-  }
-  private static final java.util.Map<String,String> COUNTRY_CODES=buildCountryCodes();
-  private static java.util.Map<String,String> buildCountryCodes(){
-    java.util.HashMap<String,String> map=new java.util.HashMap<>();
-    for(String code:java.util.Locale.getISOCountries()){
-      java.util.Locale loc=new java.util.Locale("",code);
-      String french=loc.getDisplayCountry(java.util.Locale.FRENCH);
-      String english=loc.getDisplayCountry(java.util.Locale.ENGLISH);
-      map.put(countryKey(code),code);
-      map.put(countryKey(french),code);
-      map.put(countryKey(english),code);
+
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        buildHome();
+        loadCachedChannels();
+        loadChannels();
     }
-    map.put(countryKey("UK"),"GB");map.put(countryKey("Great Britain"),"GB");
-    map.put(countryKey("USA"),"US");map.put(countryKey("United States of America"),"US");
-    map.put(countryKey("South Korea"),"KR");map.put(countryKey("Republic of Korea"),"KR");
-    map.put(countryKey("North Korea"),"KP");map.put(countryKey("Ivory Coast"),"CI");
-    map.put(countryKey("Czech Republic"),"CZ");map.put(countryKey("Russia"),"RU");
-    map.put(countryKey("Moldova"),"MD");map.put(countryKey("Vietnam"),"VN");
-    map.put(countryKey("Turkey"),"TR");map.put(countryKey("Türkiye"),"TR");
-    map.put(countryKey("Taiwan"),"TW");map.put(countryKey("Vatican City"),"VA");
-    map.put(countryKey("Palestine"),"PS");map.put(countryKey("Kosovo"),"XK");
-    return map;
-  }
-  private String countryCode(String country){
-    String canonical=COUNTRY_CODES.get(countryKey(country));
-    if(canonical==null)canonical=COUNTRY_CODES.get(countryKey(normalizeCountry(country)));
-    return canonical==null?"":canonical;
-  }
-  private String normalizeCountry(String raw){
-    if(raw==null)return "";
-    String first=raw.trim().split("[,;]")[0].trim();
-    if(first.isEmpty())return "";
-    String canonical=COUNTRY_ALIASES.get(countryKey(first));
-    return canonical==null?first:canonical;
-  }
-  private void loadChannels(){
-    status.setText("Chargement des catalogues VAVOO + IPTV-ORG…");catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
-    io.execute(()->{
-      ArrayList<Channel> merged=new ArrayList<>();
-      ArrayList<Channel> vavooAll=new ArrayList<>();
-      String vavooError="",iptvError="";
-      try{
-        for(VavooProvider.VavooChannel item:VavooProvider.loadChannels()){
-          String vavooCountry=normalizeCountry(item.country);
-          if(vavooCountry.isEmpty()||"default".equalsIgnoreCase(vavooCountry))vavooCountry=normalizeCountry(item.group);
-          if(vavooCountry.isEmpty()||"default".equalsIgnoreCase(vavooCountry))vavooCountry="Pays non précisé";
-          Channel ch=new Channel(item.name,"vavoo://"+item.id,item.logo,
-            "VAVOO · "+(item.group==null||item.group.trim().isEmpty()?"Direct":item.group),
-            true,item.sourceUrl,vavooCountry.isEmpty()?"Pays non précisé":vavooCountry);
-          vavooAll.add(ch);
-          merged.add(ch);
-        }
-      }catch(Exception e){vavooError=e.getMessage()==null?"catalogue VAVOO indisponible":e.getMessage();}
-      try{
-        URL u=new URL("https://iptv-org.github.io/iptv/index.country.m3u");
-        HttpURLConnection conn=(HttpURLConnection)u.openConnection();
-        conn.setConnectTimeout(15000);conn.setReadTimeout(35000);
-        conn.setRequestProperty("User-Agent","NISSKENZI+/1.6");
-        BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"));
-        String line,name="Chaîne",logo="",group="Pays non précisé",country="Pays non précisé";
-        while((line=reader.readLine())!=null){
-          if(line.startsWith("#EXTINF:")){
-            int comma=line.lastIndexOf(',');
-            name=comma>=0?line.substring(comma+1).trim():"Chaîne";
-            logo="";group="Pays non précisé";country="Pays non précisé";
-            int a=line.indexOf("tvg-logo=\"");
-            if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
-            int g=line.indexOf("group-title=\"");
-            if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
-            // In IPTV-ORG's index.country.m3u the group-title is the broadcast country.
-            String groupedCountry=normalizeCountry(group);
-            if(!groupedCountry.isEmpty()&&!"Pays non précisé".equalsIgnoreCase(groupedCountry))country=groupedCountry;
-            else{country=normalizeCountry(attribute(line,"tvg-country"));if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));}
-            if(country.isEmpty())country="Pays non précisé";
-          }else if(line.startsWith("http://")||line.startsWith("https://")){
-            String url=line.trim();
-            merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,country));
-          }
-        }
-        reader.close();conn.disconnect();
-      }catch(Exception e){iptvError=e.getMessage()==null?"playlist IPTV-ORG indisponible":e.getMessage();}
-      final ArrayList<Channel> all=new ArrayList<>(merged);
-      final String ve=vavooError,ie=iptvError;
-      runOnUiThread(()->{
-        channels.clear();channels.addAll(all);
-        if(!all.isEmpty())saveCachedChannels(all);
-        showChannels(new ArrayList<>(all));
-        String msg=all.size()+" chaînes réunies";
-        if(!ve.isEmpty())msg+=" · VAVOO indisponible";
-        if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
-        status.setText(msg);catalogStatus=msg+"\nVAVOO : "+(ve.isEmpty()?"catalogue chargé · "+vavooAll.size()+" chaînes":"indisponible · "+ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"playlist internationale chargée":"indisponible · "+ie);
-        if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("setCatalogStatus("+JSONObject.quote(catalogStatus)+");",null);
-        if(all.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
-      });
-    });
-  }
-  private String attribute(String line,String key){int a=line.indexOf(key+"=");if(a<0)return "";int start=a+key.length()+1;if(start<line.length()&&line.charAt(start)=='"')start++;int end=line.indexOf('"',start);return end>start?line.substring(start,end):"";}
-  private void showChannels(ArrayList<Channel> result){
-    if(result!=null){channels.clear();channels.addAll(result);}
-    renderChannelsToWeb();
-  }
-  private void renderChannelsToWeb(){
-    if(homeWebView==null||!homeWebReady)return;
-    try{
-      homeWebView.evaluateJavascript("beginChannels();",null);
-      final int chunkSize=300;
-      for(int start=0;start<channels.size();start+=chunkSize){
-        JSONArray chunk=new JSONArray();
-        int end=Math.min(channels.size(),start+chunkSize);
-        for(int i=start;i<end;i++){
-          Channel ch=channels.get(i);JSONObject o=new JSONObject();
-          o.put("name",ch.name==null?"Chaîne":ch.name);o.put("url",ch.url==null?"":ch.url);
-          o.put("logo",ch.logo==null?"":ch.logo);o.put("group",ch.group==null?"Direct":ch.group);
-          o.put("country",ch.vavooCountry==null||ch.vavooCountry.trim().isEmpty()?"Pays non précisé":ch.vavooCountry);o.put("countryCode",countryCode(ch.vavooCountry));
-          o.put("isVavoo",ch.isVavoo);o.put("favorite",isFavorite(ch));chunk.put(o);
-        }
-        homeWebView.evaluateJavascript("appendChannelChunk("+JSONObject.quote(chunk.toString())+");",null);
-      }
-      homeWebView.evaluateJavascript("finishChannels();",null);
-    }catch(Exception ignored){}
-  }
-  public final class HomeBridge {
-    @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();});}
-    @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
-    @JavascriptInterface public void setCurrentPage(String page){activeSection=page==null?"Accueil":page;}
-    @JavascriptInterface public String getCatalogStatus(){return catalogStatus;}
-    @JavascriptInterface public void playChannel(int index){runOnUiThread(()->{if(index>=0&&index<channels.size())play(channels.get(index));});}
-    @JavascriptInterface public void toggleFavorite(int index){runOnUiThread(()->{if(index>=0&&index<channels.size()){MainActivity.this.toggleFavorite(channels.get(index));if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("updateChannelFavorite("+index+","+isFavorite(channels.get(index))+");",null);}});}
-  }
-  private boolean isFavorite(Channel ch){return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);}
-  private void toggleFavorite(Channel ch){SharedPreferences p=getSharedPreferences("favorites",MODE_PRIVATE);p.edit().putBoolean(ch.url,!p.getBoolean(ch.url,false)).apply();}
-  private FrameLayout playerStage;
-  private void play(Channel ch){
-    currentChannel=ch;
-    if(homeWebView!=null){try{homeWebView.stopLoading();homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}homeWebView=null;homeWebReady=false;}
-    if(player!=null){player.release();player=null;}
-    root.removeAllViews();root.setPadding(0,0,0,0);root.setOrientation(LinearLayout.VERTICAL);
-    LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);top.setPadding(18,10,18,10);top.setBackgroundColor(0xFF090B10);
-    TextView back=actionButton("‹  ACCUEIL",panel);back.setFocusable(true);back.setOnClickListener(v->returnHome());top.addView(back);
-    nowTitle=text(ch.name,17,Color.WHITE,true);nowTitle.setSingleLine(true);nowTitle.setEllipsize(TextUtils.TruncateAt.END);nowTitle.setPadding(14,0,14,0);top.addView(nowTitle,new LinearLayout.LayoutParams(0,-2,1));
-    TextView favorite=actionButton(isFavorite(ch)?"★":"☆",isFavorite(ch)?0xFF775A12:panel);LinearLayout.LayoutParams favP=new LinearLayout.LayoutParams(-2,-2);favP.leftMargin=8;top.addView(favorite,favP);favorite.setOnClickListener(v->{toggleFavorite(ch);favorite.setText(isFavorite(ch)?"★":"☆");favorite.setBackground(rounded(isFavorite(ch)?0xFF775A12:panel,10));});
-    root.addView(top,new LinearLayout.LayoutParams(-1,-2));
-    playerStage=new FrameLayout(this);playerStage.setBackgroundColor(Color.BLACK);
-    playerView=new PlayerView(this);playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);playerView.setShutterBackgroundColor(Color.BLACK);
-    playerStage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
-    root.addView(playerStage,new LinearLayout.LayoutParams(-1,0,1));
-    LinearLayout controls=new LinearLayout(this);controls.setGravity(Gravity.CENTER_VERTICAL);controls.setPadding(18,8,18,8);controls.setBackgroundColor(0xFF090B10);
-    TextView live=text("●  EN DIRECT",11,0xFFFF4D5A,true);controls.addView(live,new LinearLayout.LayoutParams(0,-2,1));
-    TextView retry=actionButton("↻ RELANCER",panel);retry.setOnClickListener(v->startPlayback(ch));controls.addView(retry);
-    TextView info=actionButton("ⓘ",panel);LinearLayout.LayoutParams infoP=new LinearLayout.LayoutParams(-2,-2);infoP.leftMargin=8;controls.addView(info,infoP);info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name).setMessage("Groupe : "+ch.group+"\n\nSource : "+(ch.isVavoo?"VAVOO":"flux externe")+"\n\nLa disponibilité dépend de la source et de ses conditions d’accès.").setPositiveButton("OK",null).show());
-    root.addView(controls,new LinearLayout.LayoutParams(-1,-2));
-    startPlayback(ch);
-  }
-  private void startPlayback(Channel ch){
-    if(player!=null){player.release();player=null;}
-    DefaultHttpDataSource.Factory httpDataSourceFactory=new DefaultHttpDataSource.Factory()
-      .setUserAgent(ch.isVavoo?"VAVOO/2.6":"NISSKENZI+/1.7")
-      .setAllowCrossProtocolRedirects(true);
-    DefaultDataSource.Factory dataSourceFactory=new DefaultDataSource.Factory(this,httpDataSourceFactory);
-    ExoPlayer activePlayer=new ExoPlayer.Builder(this)
-      .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory)).build();
-    player=activePlayer;
-    playerView.setPlayer(activePlayer);
-    activePlayer.addListener(new Player.Listener(){
-      @Override public void onPlayerError(PlaybackException e){
-        Toast.makeText(MainActivity.this,"Lecture impossible ("+e.getErrorCodeName()+"). Le flux peut être indisponible ou incompatible.",Toast.LENGTH_LONG).show();
-      }
-    });
-    if(ch.isVavoo){
-      Toast.makeText(this,"Résolution du flux VAVOO…",Toast.LENGTH_SHORT).show();
-      io.execute(()->{
-        try{
-          String resolved=VavooProvider.resolveStream(ch.vavooSourceUrl);
-          runOnUiThread(()->{
-            if(player!=activePlayer||currentChannel!=ch)return;
-            activePlayer.setMediaItem(MediaItem.fromUri(resolved));
-            activePlayer.prepare();
-            activePlayer.setPlayWhenReady(true);
-          });
-        }catch(Exception e){
-          String message=e.getMessage()==null?"Résolution VAVOO impossible":e.getMessage();
-          runOnUiThread(()->{if(player==activePlayer)Toast.makeText(MainActivity.this,"VAVOO : "+message,Toast.LENGTH_LONG).show();});
-        }
-      });
-    }else{
-      activePlayer.setMediaItem(MediaItem.fromUri(ch.url));
-      activePlayer.prepare();
-      activePlayer.setPlayWhenReady(true);
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
-  }
-  private void returnHome(){if(player!=null){player.release();player=null;}playerStage=null;currentChannel=null;buildHome();showChannels(new ArrayList<>(channels));}
-  @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){return super.dispatchKeyEvent(event);}
-  @Override public void onBackPressed(){if(player!=null){returnHome();}else if(homeWebView!=null&&homeWebReady&&!"Live TV".equals(activeSection)){homeWebView.evaluateJavascript("setPage('Live TV')",null);activeSection="Live TV";}else super.onBackPressed();}
-  @Override protected void onDestroy(){if(player!=null)player.release();if(homeWebView!=null){try{homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}}io.shutdownNow();super.onDestroy();}
+
+    private GradientDrawable rounded(int color, int radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radiusDp));
+        return d;
+    }
+
+    private GradientDrawable outlined(int color, int radiusDp, int strokeColor) {
+        GradientDrawable d = rounded(color, radiusDp);
+        d.setStroke(dp(1), strokeColor);
+        return d;
+    }
+
+    private TextView label(String text, float size, int color, boolean bold) {
+        TextView v = new TextView(this);
+        v.setText(text);
+        v.setTextSize(size);
+        v.setTextColor(color);
+        if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return v;
+    }
+
+    private TextView buttonText(String text, boolean selected) {
+        TextView b = label(text, 12, selected ? Color.WHITE : MUTED, true);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(13), dp(10), dp(13), dp(10));
+        b.setBackground(rounded(selected ? 0xFF25204A : PANEL2, 10));
+        b.setFocusable(true);
+        return b;
+    }
+
+    private LinearLayout vertical() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        return l;
+    }
+
+    private LinearLayout horizontal() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        return l;
+    }
+
+    private LinearLayout.LayoutParams lp(int width, int height) {
+        return new LinearLayout.LayoutParams(width < 0 ? width : dp(width), height < 0 ? height : dp(height));
+    }
+
+    private void buildHome() {
+        if (homePlayerExists()) releasePlayer();
+        root = vertical();
+        root.setBackgroundColor(BG);
+        setContentView(root);
+
+        LinearLayout header = horizontal();
+        header.setPadding(dp(15), dp(12), dp(15), dp(12));
+        header.setBackgroundColor(0xFF070C15);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
+        root.addView(header, hp);
+
+        TextView mark = label("N", 24, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(rounded(0xFF246FEE, 12));
+        header.addView(mark, lp(42, 42));
+
+        LinearLayout brand = vertical();
+        brand.setPadding(dp(10), 0, dp(12), 0);
+        brand.addView(label("NISSKENZI+", 17, TEXT, true));
+        TextView tagline = label("LIVE TV · MONDE ENTIER", 8, MUTED, true);
+        tagline.setLetterSpacing(0.12f);
+        brand.addView(tagline);
+        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+
+        liveTab = buttonText("▶  Live TV", "Live TV".equals(activePage));
+        settingsTab = buttonText("⚙  Paramètres", "Paramètres".equals(activePage));
+        LinearLayout.LayoutParams navp = lp(-2, 42);
+        navp.leftMargin = dp(5);
+        header.addView(liveTab, navp);
+        header.addView(settingsTab, navp);
+        liveTab.setOnClickListener(v -> setPage("Live TV"));
+        settingsTab.setOnClickListener(v -> setPage("Paramètres"));
+
+        contentHost = new FrameLayout(this);
+        root.addView(contentHost, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        statusView = label(catalogStatus, 10, MUTED, false);
+        statusView.setMaxLines(2);
+        statusView.setEllipsize(TextUtils.TruncateAt.END);
+        statusView.setPadding(dp(15), dp(7), dp(15), dp(7));
+        statusView.setBackgroundColor(0xFF070C15);
+        root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
+        renderPage();
+    }
+
+    private boolean homePlayerExists() {
+        return root != null && playerView != null;
+    }
+
+    private void setPage(String p) {
+        activePage = p;
+        if (liveTab != null) {
+            boolean live = "Live TV".equals(p);
+            liveTab.setTextColor(live ? Color.WHITE : MUTED);
+            liveTab.setBackground(rounded(live ? 0xFF25204A : PANEL2, 10));
+            settingsTab.setTextColor(live ? MUTED : Color.WHITE);
+            settingsTab.setBackground(rounded(live ? PANEL2 : 0xFF25204A, 10));
+        }
+        renderPage();
+    }
+
+    private void renderPage() {
+        if (contentHost == null) return;
+        contentHost.removeAllViews();
+        if ("Paramètres".equals(activePage)) renderSettings();
+        else renderLivePage();
+    }
+
+    private void renderLivePage() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        LinearLayout page = vertical();
+        page.setPadding(dp(16), dp(15), dp(16), dp(18));
+        scroll.addView(page);
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout titleRow = horizontal();
+        TextView title = label("Télévision en direct", 22, TEXT, true);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        countView = label(channels.size() + " chaînes", 10, MUTED, true);
+        countView.setPadding(dp(10), dp(8), dp(10), dp(8));
+        countView.setBackground(rounded(PANEL, 9));
+        titleRow.addView(countView);
+        page.addView(titleRow);
+        TextView subtitle = label("Catalogue mondial · VAVOO + IPTV-ORG", 11, MUTED, false);
+        LinearLayout.LayoutParams subp = lp(-1, -2); subp.topMargin = dp(4);
+        page.addView(subtitle, subp);
+
+        LinearLayout searchRow = horizontal();
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams srp = lp(-1, 45); srp.topMargin = dp(14); srp.bottomMargin = dp(12);
+        page.addView(searchRow, srp);
+        searchInput = new EditText(this);
+        searchInput.setSingleLine(true);
+        searchInput.setTextColor(TEXT);
+        searchInput.setHintTextColor(MUTED);
+        searchInput.setTextSize(12);
+        searchInput.setHint("⌕  Rechercher une chaîne ou un pays…");
+        searchInput.setPadding(dp(12), 0, dp(12), 0);
+        searchInput.setBackground(outlined(PANEL, 10, LINE));
+        searchInput.setText(searchText);
+        searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, -1, 1));
+        TextView refresh = buttonText("↻", false);
+        LinearLayout.LayoutParams rfp = lp(44, 44); rfp.leftMargin = dp(8);
+        searchRow.addView(refresh, rfp);
+        refresh.setOnClickListener(v -> loadChannels());
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s,int st,int count,int after) {}
+            @Override public void onTextChanged(CharSequence s,int st,int before,int count) {
+                searchText = s == null ? "" : s.toString();
+                updateChannelResults();
+            }
+            @Override public void afterTextChanged(Editable e) {}
+        });
+
+        LinearLayout countryTitle = horizontal();
+        countryTitle.addView(label("PAYS DISPONIBLES", 9, MUTED, true));
+        page.addView(countryTitle);
+        HorizontalScrollView countriesScroll = new HorizontalScrollView(this);
+        countriesScroll.setHorizontalScrollBarEnabled(false);
+        countryChoices = horizontal();
+        countryChoices.setPadding(0, dp(8), 0, dp(8));
+        countriesScroll.addView(countryChoices);
+        LinearLayout.LayoutParams csp = lp(-1, 48);
+        page.addView(countriesScroll, csp);
+        renderCountryChoices();
+
+        LinearLayout sourceTitle = horizontal();
+        sourceTitle.addView(label("SOURCE", 9, MUTED, true));
+        page.addView(sourceTitle);
+        HorizontalScrollView sourceScroll = new HorizontalScrollView(this);
+        sourceScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout sources = horizontal();
+        sources.setPadding(0, dp(7), 0, dp(10));
+        for (String source : new String[]{"Toutes", "VAVOO", "IPTV-ORG"}) {
+            TextView chip = buttonText(source.equals("Toutes") ? "Toutes les sources" : source, source.equals(sourceFilter));
+            LinearLayout.LayoutParams cp = lp(-2, 36); cp.rightMargin = dp(7);
+            sources.addView(chip, cp);
+            chip.setOnClickListener(v -> { sourceFilter = source; renderPage(); });
+        }
+        sourceScroll.addView(sources);
+        page.addView(sourceScroll, lp(-1, 45));
+
+        channelResults = vertical();
+        page.addView(channelResults, lp(-1, -2));
+        updateChannelResults();
+    }
+
+    private void renderCountryChoices() {
+        if (countryChoices == null) return;
+        countryChoices.removeAllViews();
+        TextView all = buttonText("🌐 Tous les pays  " + channels.size(), "Tous les pays".equals(activeCountry));
+        LinearLayout.LayoutParams allp = lp(-2, 36); allp.rightMargin = dp(7);
+        countryChoices.addView(all, allp);
+        all.setOnClickListener(v -> { activeCountry = "Tous les pays"; renderPage(); });
+
+        Map<String, Integer> counts = new HashMap<>();
+        Map<String, String> codes = new HashMap<>();
+        for (Channel ch : channels) {
+            String country = safeCountry(ch.country);
+            counts.put(country, counts.containsKey(country) ? counts.get(country) + 1 : 1);
+            if (!codes.containsKey(country) || codes.get(country).isEmpty()) codes.put(country, countryCode(country));
+        }
+        ArrayList<String> names = new ArrayList<>(counts.keySet());
+        Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
+        for (String country : names) {
+            String text = flag(country, codes.get(country)) + " " + country + "  " + counts.get(country);
+            TextView chip = buttonText(text, country.equals(activeCountry));
+            LinearLayout.LayoutParams cp = lp(-2, 36); cp.rightMargin = dp(7);
+            countryChoices.addView(chip, cp);
+            chip.setOnClickListener(v -> { activeCountry = country; renderPage(); });
+        }
+    }
+
+    private ArrayList<Channel> filteredChannels() {
+        String q = searchText == null ? "" : searchText.trim().toLowerCase(Locale.ROOT);
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel ch : channels) {
+            String country = safeCountry(ch.country);
+            if (!"Tous les pays".equals(activeCountry) && !activeCountry.equals(country)) continue;
+            String src = ch.isVavoo ? "VAVOO" : "IPTV-ORG";
+            if (!"Toutes".equals(sourceFilter) && !sourceFilter.equals(src)) continue;
+            if (!q.isEmpty() && !(safe(ch.name) + " " + safe(ch.group) + " " + country).toLowerCase(Locale.ROOT).contains(q)) continue;
+            result.add(ch);
+        }
+        return result;
+    }
+
+    private void updateChannelResults() {
+        if (channelResults == null || !("Live TV".equals(activePage))) return;
+        ArrayList<Channel> filtered = filteredChannels();
+        if (countView != null) countView.setText(filtered.size() + " chaînes");
+        channelResults.removeAllViews();
+        if (filtered.isEmpty()) {
+            LinearLayout empty = vertical();
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(20), dp(28), dp(20), dp(28));
+            empty.setBackground(outlined(PANEL, 14, LINE));
+            TextView symbol = label("▣", 30, PURPLE, true); symbol.setGravity(Gravity.CENTER);
+            empty.addView(symbol);
+            TextView heading = label(channels.isEmpty() ? "Connexion aux catalogues…" : "Aucune chaîne trouvée", 16, TEXT, true);
+            heading.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams ehp=lp(-1,-2);ehp.topMargin=dp(9);empty.addView(heading,ehp);
+            TextView msg = label(channels.isEmpty() ? "VAVOO et IPTV-ORG se chargent automatiquement. Vérifie ta connexion ou actualise." : "Essaie un autre pays, une autre source ou une recherche différente.", 11, MUTED, false);
+            msg.setGravity(Gravity.CENTER);
+            msg.setPadding(0,dp(6),0,dp(12));
+            empty.addView(msg);
+            TextView tryAgain = buttonText("↻ Actualiser les catalogues", true);
+            empty.addView(tryAgain, lp(-2, 40));
+            tryAgain.setOnClickListener(v -> loadChannels());
+            channelResults.addView(empty, lp(-1,-2));
+            return;
+        }
+
+        int columns = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 2 : 1;
+        LinearLayout row = null;
+        int width = getResources().getDisplayMetrics().widthPixels;
+        if (width > dp(1050)) columns = 3;
+        for (int i=0;i<filtered.size();i++) {
+            if (i % columns == 0) {
+                row = horizontal();
+                row.setGravity(Gravity.TOP);
+                LinearLayout.LayoutParams rp = lp(-1,-2); rp.bottomMargin=dp(9);
+                channelResults.addView(row,rp);
+            }
+            Channel ch = filtered.get(i);
+            LinearLayout card = channelCard(ch);
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
+            cp.rightMargin = i % columns == columns - 1 ? 0 : dp(9);
+            row.addView(card, cp);
+        }
+    }
+
+    private LinearLayout channelCard(Channel ch) {
+        LinearLayout card = horizontal();
+        card.setPadding(dp(10), dp(8), dp(8), dp(8));
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(outlined(PANEL, 12, LINE));
+        card.setFocusable(true);
+        card.setClickable(true);
+
+        FrameLayout logoFrame = new FrameLayout(this);
+        logoFrame.setBackground(rounded(0xFFEAF2FC, 8));
+        TextView initials = label(initials(ch.name), 12, 0xFF15253D, true);
+        initials.setGravity(Gravity.CENTER);
+        logoFrame.addView(initials, new FrameLayout.LayoutParams(-1,-1));
+        ImageView image = new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setPadding(dp(3),dp(3),dp(3),dp(3));
+        logoFrame.addView(image, new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout.LayoutParams logop = lp(48, 48);
+        logop.rightMargin = dp(10);
+        card.addView(logoFrame, logop);
+        loadLogo(ch.logo, image, initials);
+
+        LinearLayout info = vertical();
+        info.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(info, new LinearLayout.LayoutParams(0,-1,1));
+        TextView name = label(safe(ch.name), 12, TEXT, true);
+        name.setSingleLine(true); name.setEllipsize(TextUtils.TruncateAt.END);
+        info.addView(name);
+        TextView meta = label((ch.isVavoo ? "VAVOO" : "IPTV-ORG") + " · " + safeCountry(ch.country), 9, MUTED, false);
+        meta.setSingleLine(true); meta.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams mp=lp(-1,-2);mp.topMargin=dp(5);info.addView(meta,mp);
+
+        TextView star = label(isFavorite(ch) ? "★" : "☆", 20, YELLOW, true);
+        star.setGravity(Gravity.CENTER);
+        card.addView(star, lp(26, 42));
+        star.setOnClickListener(v -> {
+            toggleFavorite(ch);
+            star.setText(isFavorite(ch) ? "★" : "☆");
+        });
+        card.setOnClickListener(v -> play(ch));
+        return card;
+    }
+
+    private void loadLogo(String address, ImageView image, TextView initials) {
+        if (address == null || address.trim().isEmpty()) { image.setVisibility(View.GONE); return; }
+        image.setTag(address);
+        Bitmap cached = logoCache.get(address);
+        if (cached != null) { image.setImageBitmap(cached); initials.setVisibility(View.GONE); return; }
+        logoIo.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL(address).openConnection();
+                conn.setConnectTimeout(7000); conn.setReadTimeout(9000);
+                conn.setRequestProperty("User-Agent", "NISSKENZI+/1.8");
+                try (InputStream in = conn.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(in);
+                    if (bitmap != null) {
+                        logoCache.put(address, bitmap);
+                        image.post(() -> {
+                            if (address.equals(image.getTag())) {
+                                image.setImageBitmap(bitmap);
+                                image.setVisibility(View.VISIBLE);
+                                initials.setVisibility(View.GONE);
+                            }
+                        });
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally { if (conn != null) conn.disconnect(); }
+        });
+    }
+
+    private void renderSettings() {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout page = vertical();
+        page.setPadding(dp(16), dp(18), dp(16), dp(22));
+        scroll.addView(page);
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1,-1));
+
+        page.addView(label("Paramètres", 24, TEXT, true));
+        TextView intro = label("Gère les catalogues utilisés par le Live TV.", 11, MUTED, false);
+        LinearLayout.LayoutParams ip=lp(-1,-2);ip.topMargin=dp(5);ip.bottomMargin=dp(18);page.addView(intro,ip);
+
+        page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Les chaînes et leurs métadonnées sont récupérées directement par l’application.", CYAN));
+        LinearLayout.LayoutParams gap=lp(-1,-2);gap.topMargin=dp(12);
+        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Charge la playlist organisée par pays et lit les flux via le lecteur Android.", PURPLE),gap);
+
+        LinearLayout statusCard = vertical();
+        statusCard.setPadding(dp(16),dp(14),dp(16),dp(14));
+        statusCard.setBackground(outlined(PANEL,13,LINE));
+        LinearLayout.LayoutParams sp=lp(-1,-2);sp.topMargin=dp(14);page.addView(statusCard,sp);
+        statusCard.addView(label("ÉTAT DU CATALOGUE", 9, MUTED, true));
+        TextView details=label(catalogStatus,11,TEXT,false);
+        details.setTextIsSelectable(true);
+        details.setPadding(0,dp(9),0,dp(4));
+        statusCard.addView(details);
+
+        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser les deux catalogues", true);
+        LinearLayout.LayoutParams rp=lp(-1,46);rp.topMargin=dp(14);page.addView(refresh,rp);
+        refresh.setOnClickListener(v -> loadChannels());
+        if (loadingCatalog) refresh.setAlpha(0.65f);
+
+        TextView cache = buttonText("Effacer le catalogue enregistré", false);
+        LinearLayout.LayoutParams cp=lp(-1,44);cp.topMargin=dp(9);page.addView(cache,cp);
+        cache.setOnClickListener(v -> new AlertDialog.Builder(this)
+            .setTitle("Effacer le cache ?")
+            .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Les favoris restent conservés.")
+            .setNegativeButton("Annuler",null)
+            .setPositiveButton("Effacer",(dialog,which)->{
+                getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().clear().apply();
+                Toast.makeText(this,"Cache local effacé.",Toast.LENGTH_SHORT).show();
+                channels.clear();activeCountry="Tous les pays";renderPage();
+            }).show());
+
+        TextView note = label("NISSKENZI utilise uniquement VAVOO et IPTV-ORG pour ce catalogue. La disponibilité des chaînes dépend des sources.",10,MUTED,false);
+        note.setPadding(dp(2),dp(13),dp(2),0);
+        page.addView(note);
+    }
+
+    private View sourceCard(String title, String icon, String tagline, String description, int accent) {
+        LinearLayout card=vertical();
+        card.setPadding(dp(15),dp(14),dp(15),dp(14));
+        card.setBackground(outlined(PANEL,13,LINE));
+        LinearLayout head=horizontal();
+        TextView mark=label(icon,21,accent,true);mark.setGravity(Gravity.CENTER);mark.setBackground(rounded(0xFF182840,10));
+        head.addView(mark,lp(42,42));
+        LinearLayout names=vertical();names.setPadding(dp(11),0,0,0);
+        names.addView(label(title,15,TEXT,true));
+        names.addView(label(tagline,10,accent,false));
+        head.addView(names);
+        card.addView(head);
+        TextView desc=label(description,11,MUTED,false);
+        desc.setLineSpacing(dp(3),1f);
+        LinearLayout.LayoutParams dp=lp(-1,-2);dp.topMargin=dp(11);card.addView(desc,dp);
+        TextView state=label("État : " + sourceStatus(title),10,GREEN,true);
+        LinearLayout.LayoutParams stp=lp(-1,-2);stp.topMargin=dp(8);card.addView(state,stp);
+        return card;
+    }
+
+    private String sourceStatus(String source) {
+        if (loadingCatalog) return "actualisation en cours";
+        if (catalogStatus.toLowerCase(Locale.ROOT).contains(source.toLowerCase(Locale.ROOT) + " : indisponible")) return "indisponible";
+        if (channels.isEmpty()) return "en attente de chaînes";
+        for (Channel ch : channels) if (source.equals(ch.isVavoo ? "VAVOO" : "IPTV-ORG")) return "catalogue chargé";
+        return "aucune chaîne reçue";
+    }
+
+    private void loadCachedChannels() {
+        try {
+            String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("merged_channels","");
+            if (raw.isEmpty()) return;
+            JSONArray arr=new JSONArray(raw);
+            ArrayList<Channel> cached=new ArrayList<>();
+            for(int i=0;i<arr.length();i++) {
+                JSONObject o=arr.optJSONObject(i); if(o==null) continue;
+                String url=o.optString("url","");
+                if(url.isEmpty()) continue;
+                boolean v=o.optBoolean("isVavoo",false);
+                String group=o.optString("group","Direct");
+                if(!group.startsWith("VAVOO · ")&&!group.startsWith("IPTV-ORG · ")) continue;
+                String country=normalizeCountry(o.optString("country",""));
+                if(country.isEmpty()||"Pays non précisé".equalsIgnoreCase(country)||"default".equalsIgnoreCase(country)){
+                    String prefix=v?"VAVOO · ":"IPTV-ORG · ";
+                    country=normalizeCountry(group.startsWith(prefix)?group.substring(prefix.length()):group);
+                }
+                if(country.isEmpty()||"default".equalsIgnoreCase(country)) country="Pays non précisé";
+                cached.add(new Channel(o.optString("name","Chaîne"),url,o.optString("logo",""),group,v,o.optString("sourceUrl",""),country));
+            }
+            if(!cached.isEmpty()){
+                channels.clear();channels.addAll(cached);
+                catalogStatus=cached.size()+" chaînes disponibles en cache · actualisation en arrière-plan…";
+                updateStatus();
+                renderPage();
+            }
+        } catch(Exception ignored) {}
+    }
+
+    private void saveCachedChannels(ArrayList<Channel> items) {
+        try {
+            JSONArray arr=new JSONArray();
+            for(Channel ch:items){
+                JSONObject o=new JSONObject();
+                o.put("name",safe(ch.name));o.put("url",safe(ch.url));o.put("logo",safe(ch.logo));
+                o.put("group",safe(ch.group));o.put("isVavoo",ch.isVavoo);
+                o.put("sourceUrl",safe(ch.vavooSourceUrl));o.put("country",safe(ch.country));
+                arr.put(o);
+            }
+            getSharedPreferences("catalog_cache",MODE_PRIVATE).edit()
+                .putString("merged_channels",arr.toString())
+                .putLong("updated_at",System.currentTimeMillis()).apply();
+        } catch(Exception ignored) {}
+    }
+
+    private void loadChannels() {
+        if (loadingCatalog) return;
+        loadingCatalog=true;
+        catalogStatus="Actualisation des catalogues VAVOO + IPTV-ORG…";
+        updateStatus();
+        if ("Paramètres".equals(activePage)) renderSettings();
+        io.execute(() -> {
+            ArrayList<Channel> merged=new ArrayList<>();
+            int vavooCount=0, iptvCount=0;
+            String vavooError="", iptvError="";
+            try {
+                for(VavooProvider.VavooChannel item:VavooProvider.loadChannels()){
+                    String country=normalizeCountry(item.country);
+                    if(country.isEmpty()||"default".equalsIgnoreCase(country)) country=normalizeCountry(item.group);
+                    if(country.isEmpty()||"default".equalsIgnoreCase(country)) country="Pays non précisé";
+                    merged.add(new Channel(item.name,"vavoo://"+item.id,item.logo,
+                        "VAVOO · "+(item.group==null||item.group.trim().isEmpty()?"Direct":item.group),
+                        true,item.sourceUrl,country));
+                    vavooCount++;
+                }
+            } catch(Exception e){vavooError=e.getMessage()==null?"catalogue VAVOO indisponible":e.getMessage();}
+
+            HttpURLConnection conn=null;
+            try {
+                URL u=new URL("https://iptv-org.github.io/iptv/index.country.m3u");
+                conn=(HttpURLConnection)u.openConnection();
+                conn.setConnectTimeout(15000);conn.setReadTimeout(35000);
+                conn.setRequestProperty("User-Agent","NISSKENZI+/1.8");
+                try(BufferedReader reader=new BufferedReader(new InputStreamReader(conn.getInputStream(),"UTF-8"))){
+                    String line,name="Chaîne",logo="",group="Pays non précisé",country="Pays non précisé";
+                    while((line=reader.readLine())!=null){
+                        if(line.startsWith("#EXTINF:")){
+                            int comma=line.lastIndexOf(',');
+                            name=comma>=0?line.substring(comma+1).trim():"Chaîne";
+                            logo="";group="Pays non précisé";country="Pays non précisé";
+                            String lg=attribute(line,"tvg-logo");if(!lg.isEmpty())logo=lg;
+                            String grouped=attribute(line,"group-title");
+                            if(!grouped.isEmpty())group=grouped;
+                            String cn=normalizeCountry(group);
+                            if(!cn.isEmpty()&&!"Pays non précisé".equalsIgnoreCase(cn))country=cn;
+                            else {
+                                country=normalizeCountry(attribute(line,"tvg-country"));
+                                if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));
+                                if(country.isEmpty())country="Pays non précisé";
+                            }
+                        } else if(line.startsWith("http://")||line.startsWith("https://")){
+                            merged.add(new Channel(name,line.trim(),logo,"IPTV-ORG · "+group,false,null,country));
+                            iptvCount++;
+                        }
+                    }
+                }
+            } catch(Exception e){iptvError=e.getMessage()==null?"playlist IPTV-ORG indisponible":e.getMessage();}
+            finally {if(conn!=null)conn.disconnect();}
+
+            final ArrayList<Channel> all=new ArrayList<>(merged);
+            final String ve=vavooError, ie=iptvError;
+            final int vc=vavooCount, ic=iptvCount;
+            runOnUiThread(() -> {
+                loadingCatalog=false;
+                if(!all.isEmpty()){
+                    channels.clear();channels.addAll(all);
+                    saveCachedChannels(all);
+                    if(!activeCountry.equals("Tous les pays")){
+                        boolean found=false;for(Channel ch:channels)if(activeCountry.equals(safeCountry(ch.country))){found=true;break;}
+                        if(!found)activeCountry="Tous les pays";
+                    }
+                    catalogStatus=all.size()+" chaînes chargées\nVAVOO : "+(ve.isEmpty()?"OK · "+vc+" chaînes":"indisponible · "+ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"OK · "+ic+" chaînes":"indisponible · "+ie);
+                } else {
+                    catalogStatus="Aucune chaîne chargée\nVAVOO : "+(ve.isEmpty()?"aucune chaîne reçue":ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"aucune chaîne reçue":ie);
+                }
+                updateStatus();
+                renderPage();
+                if(all.isEmpty()) Toast.makeText(this,"Aucun catalogue chargé. Vérifie la connexion puis réessaie.",Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
+    private void updateStatus() {
+        if (statusView != null) statusView.setText(catalogStatus);
+    }
+
+    private String attribute(String line,String key) {
+        int a=line.indexOf(key+"=");
+        if(a<0) return "";
+        int start=a+key.length()+1;
+        if(start<line.length()&&line.charAt(start)=='"')start++;
+        int end=line.indexOf('"',start);
+        if(end<0) end=line.indexOf(' ',start);
+        return end>start?line.substring(start,end<0?line.length():end):"";
+    }
+
+    private static String countryKey(String value) {
+        if(value==null)return "";
+        String normalized=Normalizer.normalize(value.trim(),Normalizer.Form.NFD);
+        normalized=normalized.replaceAll("\\p{M}+","").toLowerCase(Locale.ROOT);
+        return normalized.replaceAll("[^a-z0-9]+"," ").trim();
+    }
+
+    private static final Map<String,String> COUNTRY_ALIASES=buildCountryAliases();
+    private static Map<String,String> buildCountryAliases() {
+        HashMap<String,String> map=new HashMap<>();
+        for(String code:Locale.getISOCountries()){
+            Locale loc=new Locale("",code);
+            String fr=loc.getDisplayCountry(Locale.FRENCH), en=loc.getDisplayCountry(Locale.ENGLISH);
+            if(fr==null||fr.trim().isEmpty())continue;
+            map.put(countryKey(code),fr);map.put(countryKey(fr),fr);map.put(countryKey(en),fr);
+        }
+        map.put(countryKey("UK"),"Royaume-Uni");map.put(countryKey("Great Britain"),"Royaume-Uni");
+        map.put(countryKey("USA"),"États-Unis");map.put(countryKey("United States of America"),"États-Unis");
+        map.put(countryKey("South Korea"),"Corée du Sud");map.put(countryKey("Republic of Korea"),"Corée du Sud");
+        map.put(countryKey("North Korea"),"Corée du Nord");map.put(countryKey("Ivory Coast"),"Côte d’Ivoire");
+        map.put(countryKey("Czech Republic"),"Tchéquie");map.put(countryKey("Russia"),"Russie");
+        map.put(countryKey("Moldova"),"Moldavie");map.put(countryKey("Vietnam"),"Viêt Nam");
+        map.put(countryKey("Turkey"),"Turquie");map.put(countryKey("Türkiye"),"Turquie");
+        map.put(countryKey("Taiwan"),"Taïwan");map.put(countryKey("Vatican City"),"Vatican");
+        map.put(countryKey("Palestine"),"Palestine");map.put(countryKey("Kosovo"),"Kosovo");
+        return map;
+    }
+
+    private static final Map<String,String> COUNTRY_CODES=buildCountryCodes();
+    private static Map<String,String> buildCountryCodes() {
+        HashMap<String,String> map=new HashMap<>();
+        for(String code:Locale.getISOCountries()){
+            Locale loc=new Locale("",code);
+            map.put(countryKey(code),code);
+            map.put(countryKey(loc.getDisplayCountry(Locale.FRENCH)),code);
+            map.put(countryKey(loc.getDisplayCountry(Locale.ENGLISH)),code);
+        }
+        map.put(countryKey("UK"),"GB");map.put(countryKey("Great Britain"),"GB");
+        map.put(countryKey("USA"),"US");map.put(countryKey("United States of America"),"US");
+        map.put(countryKey("South Korea"),"KR");map.put(countryKey("Republic of Korea"),"KR");
+        map.put(countryKey("North Korea"),"KP");map.put(countryKey("Ivory Coast"),"CI");
+        map.put(countryKey("Czech Republic"),"CZ");map.put(countryKey("Russia"),"RU");
+        map.put(countryKey("Moldova"),"MD");map.put(countryKey("Vietnam"),"VN");
+        map.put(countryKey("Turkey"),"TR");map.put(countryKey("Türkiye"),"TR");
+        map.put(countryKey("Taiwan"),"TW");map.put(countryKey("Vatican City"),"VA");
+        map.put(countryKey("Palestine"),"PS");map.put(countryKey("Kosovo"),"XK");
+        return map;
+    }
+
+    private String countryCode(String country) {
+        String code=COUNTRY_CODES.get(countryKey(country));
+        if(code==null)code=COUNTRY_CODES.get(countryKey(normalizeCountry(country)));
+        return code==null?"":code;
+    }
+
+    private String normalizeCountry(String raw) {
+        if(raw==null)return "";
+        String first=raw.trim().split("[,;]")[0].trim();
+        if(first.isEmpty())return "";
+        String value=COUNTRY_ALIASES.get(countryKey(first));
+        return value==null?first:value;
+    }
+
+    private String safeCountry(String value) {
+        String country=normalizeCountry(value);
+        return country.isEmpty()||"default".equalsIgnoreCase(country)?"Pays non précisé":country;
+    }
+
+    private String flag(String country,String code) {
+        String cc=code==null?"":code.toUpperCase(Locale.ROOT);
+        if(cc.matches("[A-Z]{2}")){
+            int a=0x1F1E6+cc.charAt(0)-'A', b=0x1F1E6+cc.charAt(1)-'A';
+            return new String(Character.toChars(a))+new String(Character.toChars(b));
+        }
+        String k=countryKey(country);
+        if(k.contains("france"))return "🇫🇷";
+        if(k.contains("maroc")||k.contains("morocco"))return "🇲🇦";
+        return "🌐";
+    }
+
+    private String initials(String name) {
+        String n=safe(name).trim();
+        if(n.isEmpty())return "TV";
+        String[] parts=n.split("\\s+");
+        if(parts.length>1)return (parts[0].substring(0,1)+parts[1].substring(0,1)).toUpperCase(Locale.ROOT);
+        return n.substring(0,Math.min(3,n.length())).toUpperCase(Locale.ROOT);
+    }
+
+    private String safe(String value) {return value==null?"":value.trim();}
+
+    private boolean isFavorite(Channel ch) {
+        return getSharedPreferences("favorites",MODE_PRIVATE).getBoolean(ch.url,false);
+    }
+
+    private void toggleFavorite(Channel ch) {
+        SharedPreferences p=getSharedPreferences("favorites",MODE_PRIVATE);
+        p.edit().putBoolean(ch.url,!p.getBoolean(ch.url,false)).apply();
+    }
+
+    private void play(Channel ch) {
+        currentChannel=ch;
+        if(player!=null){player.release();player=null;}
+        root.removeAllViews();
+        root.setPadding(0,0,0,0);
+
+        LinearLayout top=horizontal();
+        top.setPadding(dp(14),dp(10),dp(14),dp(10));
+        top.setBackgroundColor(0xFF070C15);
+        TextView back=buttonText("‹  RETOUR",false);
+        top.addView(back,lp(-2,40));
+        back.setOnClickListener(v -> returnHome());
+        TextView title=label(safe(ch.name),16,TEXT,true);
+        title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setPadding(dp(12),0,dp(10),0);
+        top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        TextView star=buttonText(isFavorite(ch)?"★":"☆",isFavorite(ch));
+        top.addView(star,lp(44,40));
+        star.setOnClickListener(v->{toggleFavorite(ch);star.setText(isFavorite(ch)?"★":"☆");});
+        root.addView(top,lp(-1,-2));
+
+        FrameLayout stage=new FrameLayout(this);stage.setBackgroundColor(Color.BLACK);
+        playerView=new PlayerView(this);
+        playerView.setUseController(true);playerView.setKeepContentOnPlayerReset(true);
+        playerView.setShutterBackgroundColor(Color.BLACK);
+        stage.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
+        root.addView(stage,new LinearLayout.LayoutParams(-1,0,1));
+
+        LinearLayout footer=horizontal();footer.setPadding(dp(14),dp(8),dp(14),dp(8));footer.setBackgroundColor(0xFF070C15);
+        TextView live=label("●  EN DIRECT",11,0xFFFF4D5A,true);
+        footer.addView(live,new LinearLayout.LayoutParams(0,-2,1));
+        TextView retry=buttonText("↻ RELANCER",false);footer.addView(retry,lp(-2,40));
+        retry.setOnClickListener(v->startPlayback(ch));
+        TextView info=buttonText("ⓘ",false);LinearLayout.LayoutParams infop=lp(44,40);infop.leftMargin=dp(7);footer.addView(info,infop);
+        info.setOnClickListener(v->new AlertDialog.Builder(this).setTitle(ch.name)
+            .setMessage("Groupe : "+ch.group+"\n\nSource : "+(ch.isVavoo?"VAVOO":"IPTV-ORG")+"\n\nLa disponibilité dépend de la source et de ses conditions d’accès.")
+            .setPositiveButton("OK",null).show());
+        root.addView(footer,lp(-1,-2));
+        startPlayback(ch);
+    }
+
+    private void startPlayback(Channel ch) {
+        if(player!=null){player.release();player=null;}
+        DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory()
+            .setUserAgent(ch.isVavoo?"VAVOO/2.6":"NISSKENZI+/1.8")
+            .setAllowCrossProtocolRedirects(true);
+        DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
+        ExoPlayer active=new ExoPlayer.Builder(this)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(data)).build();
+        player=active;
+        playerView.setPlayer(active);
+        active.addListener(new Player.Listener(){
+            @Override public void onPlayerError(PlaybackException e){
+                Toast.makeText(MainActivity.this,"Lecture impossible ("+e.getErrorCodeName()+"). Le flux peut être indisponible ou incompatible.",Toast.LENGTH_LONG).show();
+            }
+        });
+        if(ch.isVavoo){
+            Toast.makeText(this,"Résolution du flux VAVOO…",Toast.LENGTH_SHORT).show();
+            io.execute(()->{
+                try{
+                    String resolved=VavooProvider.resolveStream(ch.vavooSourceUrl);
+                    runOnUiThread(()->{
+                        if(player!=active||currentChannel!=ch)return;
+                        active.setMediaItem(MediaItem.fromUri(resolved));active.prepare();active.setPlayWhenReady(true);
+                    });
+                }catch(Exception e){
+                    String message=e.getMessage()==null?"Résolution VAVOO impossible":e.getMessage();
+                    runOnUiThread(()->{if(player==active)Toast.makeText(MainActivity.this,"VAVOO : "+message,Toast.LENGTH_LONG).show();});
+                }
+            });
+        }else{
+            active.setMediaItem(MediaItem.fromUri(ch.url));active.prepare();active.setPlayWhenReady(true);
+        }
+    }
+
+    private void returnHome() {
+        releasePlayer();
+        currentChannel=null;
+        playerView=null;
+        buildHome();
+        renderPage();
+    }
+
+    private void releasePlayer() {
+        if(player!=null){player.release();player=null;}
+        if(playerView!=null){playerView.setPlayer(null);playerView=null;}
+    }
+
+    @Override public void onBackPressed() {
+        if(player!=null){returnHome();}
+        else if(!"Live TV".equals(activePage)){setPage("Live TV");}
+        else super.onBackPressed();
+    }
+
+    @Override protected void onDestroy() {
+        releasePlayer();
+        io.shutdownNow();
+        logoIo.shutdownNow();
+        super.onDestroy();
+    }
 }

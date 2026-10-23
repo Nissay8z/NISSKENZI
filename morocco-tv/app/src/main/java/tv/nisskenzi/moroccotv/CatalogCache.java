@@ -48,7 +48,8 @@ public final class CatalogCache {
                 if (country.isEmpty()) country = groupCountry(group, isVavoo);
                 result.add(new Channel(object.optString("name", "Chaîne"), url,
                         object.optString("logo", ""), group, isVavoo,
-                        object.optString("sourceUrl", ""), country));
+                        object.optString("sourceUrl", ""), country,
+                        object.optString("epgId", "")));
             }
         } catch (Exception ignored) {
             result.clear();
@@ -117,7 +118,8 @@ public final class CatalogCache {
                 if (country.isEmpty()) country = groupCountry(group, isVavoo);
                 result.add(new Channel(object.optString("name", "Chaîne"), url,
                         object.optString("logo", ""), group, isVavoo,
-                        object.optString("sourceUrl", ""), country));
+                        object.optString("sourceUrl", ""), country,
+                        object.optString("epgId", "")));
             }
         } catch (Exception ignored) {
             result.clear();
@@ -182,6 +184,7 @@ public final class CatalogCache {
         object.put("isVavoo", channel.isVavoo);
         object.put("sourceUrl", safe(channel.vavooSourceUrl));
         object.put("country", safe(channel.country));
+        object.put("epgId", safe(channel.epgId));
         return object;
     }
 

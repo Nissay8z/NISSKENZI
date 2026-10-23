@@ -41,7 +41,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final int bg=Color.rgb(5,8,16), panel=Color.rgb(17,24,39), red=Color.rgb(0,174,255), green=Color.rgb(0,98,51), violet=Color.rgb(129,68,255);
-  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private String activeFilter="TOUT"; private volatile String activeSection="Accueil"; private String searchQuery="";
+  private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private WebView homeWebView; private boolean homeWebReady=false; private String activeFilter="TOUT"; private volatile String activeSection="Live TV"; private String searchQuery=""; private volatile String catalogStatus="Chargement des catalogues VAVOO + IPTV-ORG…";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ArrayList<Channel> baseChannels=new ArrayList<>(); private final ArrayList<Channel> importedChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
   private static class MediaEntry { String name,url,poster,group,type,id,extension; MediaEntry(String n,String u,String p,String g,String t,String i,String e){name=n;url=u;poster=p;group=g;type=t;id=i;extension=e;} }
@@ -194,16 +194,16 @@ public class MainActivity extends Activity {
           if(line.startsWith("#EXTINF:")){
             int comma=line.lastIndexOf(',');
             name=comma>=0?line.substring(comma+1).trim():"Chaîne";
-            logo="";group="Pays non précisé";country=normalizeCountry(attribute(line,"tvg-country"));if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));if(country.isEmpty())country="Pays non précisé";
+            logo="";group="Pays non précisé";country="Pays non précisé";
             int a=line.indexOf("tvg-logo=\"");
             if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
             int g=line.indexOf("group-title=\"");
             if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
-            // index.country.m3u is explicitly grouped by country; group-title is our fallback country metadata.
-            if("Pays non précisé".equalsIgnoreCase(country)){
-              String normalizedGroup=normalizeCountry(group);
-              if(!normalizedGroup.isEmpty())country=normalizedGroup;
-            }
+            // In IPTV-ORG's index.country.m3u the group-title is the broadcast country.
+            String groupedCountry=normalizeCountry(group);
+            if(!groupedCountry.isEmpty()&&!"Pays non précisé".equalsIgnoreCase(groupedCountry))country=groupedCountry;
+            else{country=normalizeCountry(attribute(line,"tvg-country"));if(country.isEmpty())country=normalizeCountry(attribute(line,"country"));}
+            if(country.isEmpty())country="Pays non précisé";
           }else if(line.startsWith("http://")||line.startsWith("https://")){
             String url=line.trim();
             merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,country));
@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
         String msg=combined.size()+" chaînes réunies";
         if(!ve.isEmpty())msg+=" · VAVOO indisponible";
         if(!ie.isEmpty())msg+=" · IPTV-ORG indisponible";
-        status.setText(msg);
+        status.setText(msg);catalogStatus=msg+"\nVAVOO : "+(ve.isEmpty()?"connecté · catalogue "+vavooAll.size()+" chaînes":ve)+"\nIPTV-ORG : "+(ie.isEmpty()?"connecté · playlist chargée":"indisponible · "+ie);
         if(combined.isEmpty())Toast.makeText(this,"Aucun catalogue chargé. VAVOO : "+ve+" · IPTV-ORG : "+ie,Toast.LENGTH_LONG).show();
       });
     });
@@ -476,13 +476,14 @@ public class MainActivity extends Activity {
   }
   private void mSafePut(JSONArray array,JSONObject value){array.put(value);}
   public final class HomeBridge {
-    @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();renderMediaToWeb();});}
+    @JavascriptInterface public void ready(){runOnUiThread(()->{homeWebReady=true;renderChannelsToWeb();});}
     @JavascriptInterface public void refresh(){runOnUiThread(()->loadChannels());}
     @JavascriptInterface public void addSource(){runOnUiThread(()->openSourceMenu());}
     @JavascriptInterface public void openLocalFiles(){runOnUiThread(()->openLocalVideoPicker());}
     @JavascriptInterface public void settings(){runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("Paramètres NISSKENZI+").setItems(new String[]{"Ajouter / importer une source","Pays du catalogue VAVOO","Actualiser les catalogues"},(d,w)->{if(w==0)openSourceMenu();else if(w==1)openVavooSettings();else{MainActivity.this.loadChannels();MainActivity.this.loadXtreamCatalog();}}).setNegativeButton("Fermer",null).show());}
     @JavascriptInterface public void refreshStatus(String message){runOnUiThread(()->status.setText(message));}
     @JavascriptInterface public void setCurrentPage(String page){activeSection=page==null?"Accueil":page;}
+    @JavascriptInterface public String getCatalogStatus(){return catalogStatus;}
     @JavascriptInterface public String getQuality(){return getSharedPreferences("player_settings",MODE_PRIVATE).getString("quality","Auto");}
     @JavascriptInterface public void setQuality(String quality){if(!"Auto".equals(quality)&&!"SD".equals(quality)&&!"HD".equals(quality)&&!"Full HD".equals(quality)&&!"4K".equals(quality))return;runOnUiThread(()->{getSharedPreferences("player_settings",MODE_PRIVATE).edit().putString("quality",quality).apply();if(player!=null)applyQuality(player);Toast.makeText(MainActivity.this,"Qualité par défaut : "+quality,Toast.LENGTH_SHORT).show();});}
     @JavascriptInterface public void chooseCountry(){runOnUiThread(()->{if(homeWebView!=null&&homeWebReady)homeWebView.evaluateJavascript("setPage('Live TV')",null);});}

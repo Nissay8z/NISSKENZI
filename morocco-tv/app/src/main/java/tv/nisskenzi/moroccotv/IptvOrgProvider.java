@@ -31,6 +31,19 @@ public final class IptvOrgProvider {
 
     private IptvOrgProvider() {}
 
+    /** Reads the preloaded M3U only; returns empty for a missing or partial asset. */
+    public static ArrayList<Channel> loadBundledChannels(Context context, int maximum,
+            CountryResolver countryResolver) {
+        if (context == null) return new ArrayList<>();
+        try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
+            ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
+            return bundled.size() >= MIN_VALID_BUNDLED_CHANNELS ? bundled : new ArrayList<>();
+        } catch (IOException ignored) {
+            return new ArrayList<>();
+        }
+    }
+
     /**
      * Normal startup uses the packaged M3U, parsed off the UI thread, and
      * returns the complete list in one snapshot to avoid repeated big UI diffs.

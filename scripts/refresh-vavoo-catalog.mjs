@@ -220,7 +220,11 @@ async function main() {
 
   let existing = '';
   try { existing = fs.readFileSync(OUT, 'utf8'); } catch {}
-  if (existing === m3u) {
+  const stripGeneratedHeader = text => text.replace(
+    /^#NISSKENZI-CATALOG generatedAt="[^"]*" channels="[^"]*" countries="[^"]*" region="[^"]*"$/m,
+    '#NISSKENZI-CATALOG'
+  ).trim();
+  if (existing && stripGeneratedHeader(existing) === stripGeneratedHeader(m3u)) {
     console.log(`Catalogue M3U inchangé: ${channels.length} chaînes de ${countries.length} pays.`);
     return;
   }

@@ -157,7 +157,10 @@ public final class VavooProvider {
                     String name = item.optString("name", "Chaîne VAVOO").trim();
                     String group = item.optString("group", "").trim();
                     String logo = item.optString("logo", "").trim();
-                    String country = extractCountry(group);
+                    String country = item.optString("country", "").trim();
+                    if(country.isEmpty())country=item.optString("countryName", "").trim();
+                    if(country.isEmpty())country=item.optString("country_name", "").trim();
+                    if(country.isEmpty())country=extractCountry(group);
                     String id = stableId(name, country);
                     channels.add(new VavooChannel(id, name, sourceUrl, logo,
                             group.isEmpty() ? "VAVOO Live" : group, country));

@@ -66,7 +66,9 @@ public final class IptvOrgProvider {
             ArrayList<Channel> bundled = loadBundledChannels(context, maximum, countryResolver);
             if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) return bundled;
         }
-        return WorldPlaylistProvider.load(context, maximum, countryResolver, listener);
+        WorldPlaylistParser.CountryResolver resolver = countryResolver == null
+                ? null : countryResolver::resolve;
+        return WorldPlaylistProvider.load(context, maximum, resolver, listener);
     }
 
     /**

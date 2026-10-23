@@ -74,7 +74,6 @@ public final class ChannelLogoLoader {
             return null;
         }
 
-        final FutureTask<Bitmap>[] holder = new FutureTask[1];
         FutureTask<Bitmap> task = new FutureTask<Bitmap>(() -> download(url)) {
             @Override protected void done() {
                 if (isCancelled() || closed) return;
@@ -87,7 +86,6 @@ public final class ChannelLogoLoader {
                 }
             }
         };
-        holder[0] = task;
         try {
             executor.execute(task);
             return new Request(this, task);

@@ -1296,11 +1296,10 @@ public class MainActivity extends Activity {
     }
 
     private void startMedia3Playback(Channel ch, String streamUrl) {
-        NativeLivePlayerView nativeView = null;
+        NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
         try {
             ExoPlayer active = LivePlaybackFactory.create(this,
                     ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
-            nativeView = new NativeLivePlayerView(this);
             nativeView.setChannelName(ch.name);
             nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
             nativeView.setBackAction(this::exitFullscreenPlayback);

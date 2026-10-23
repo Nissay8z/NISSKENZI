@@ -210,7 +210,7 @@ async function main() {
   const escapeAttr = value => clean(value)
     .replace(/\\\\/g, '\\\\\\\\')
     .replace(/"/g, '\\\\"')
-    .replace(/[\\r\\n]+/g, ' ');
+    .replace(/[\r\n]+/g, ' ');
   const m3u = [
     '#EXTM3U',
     `#NISSKENZI-CATALOG generatedAt="${generatedAt}" channels="${channels.length}" countries="${countries.length}" region="${REGION}"`,
@@ -219,7 +219,7 @@ async function main() {
       `vavoo-catalog://${Buffer.from(channel.url, 'utf8').toString('base64url')}`,
     ]),
     '',
-  ].join('\\n');
+  ].join('\n');
 
   let existing = '';
   try { existing = fs.readFileSync(OUT, 'utf8'); } catch {}

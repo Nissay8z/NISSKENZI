@@ -7,13 +7,27 @@ android {
         applicationId 'tv.nisskenzi.moroccotv'
         minSdk 23
         targetSdk 28
-        versionCode 23
-        versionName '2.8.0'
+        versionCode 24
+        versionName '2.9.0'
     }
 }
 
 dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
+
+    // SQLite catalogue persistence and generated Java DAO implementations.
+    def room_version = '2.8.5'
+    implementation "androidx.room:room-runtime:$room_version"
+    annotationProcessor "androidx.room:room-compiler:$room_version"
+
+    // Java ViewModel + LiveData.
+    def lifecycle_version = '2.11.0'
+    implementation "androidx.lifecycle:lifecycle-viewmodel:$lifecycle_version"
+    implementation "androidx.lifecycle:lifecycle-livedata:$lifecycle_version"
+
+    // Background refresh every 12 hours (2.11.x retains support for minSdk 23).
+    implementation 'androidx.work:work-runtime:2.11.2'
+
     // Keep every Media3 component on the same stable release.
     implementation 'androidx.media3:media3-exoplayer:1.11.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'

@@ -177,7 +177,7 @@ public final class VavooSnapshotProvider {
             if (escaped) {
                 value.append(ch);
                 escaped = false;
-            } else if (ch == '\\\\') {
+            } else if (ch == '\\') {
                 escaped = true;
             } else if (ch == '"') {
                 break;

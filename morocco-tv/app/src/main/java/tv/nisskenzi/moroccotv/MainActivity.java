@@ -961,6 +961,7 @@ public class MainActivity extends Activity {
                 }
                 filtered = countryFavorites;
             }
+            final ArrayList<Channel> filteredResult = filtered;
 
             runOnUiThread(() -> {
                 if (activityDestroyed || requestId != filterGeneration.get()
@@ -968,8 +969,8 @@ public class MainActivity extends Activity {
                         || !requestedSource.equals(sourceFilter)
                         || !"Live TV".equals(activePage)) return;
 
-                if (countView != null) countView.setText(filtered.size() + " chaînes");
-                if (filtered.isEmpty()) {
+                if (countView != null) countView.setText(filteredResult.size() + " chaînes");
+                if (filteredResult.isEmpty()) {
                     targetAdapter.submitList(Collections.emptyList());
                     targetRecycler.setVisibility(View.GONE);
                     channelEmptyView.setVisibility(View.VISIBLE);
@@ -1004,7 +1005,7 @@ public class MainActivity extends Activity {
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
                 targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-                targetAdapter.submitList(filtered, () -> {
+                targetAdapter.submitList(filteredResult, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
                     if (filtersChanged && targetAdapter.getItemCount() > 0) {

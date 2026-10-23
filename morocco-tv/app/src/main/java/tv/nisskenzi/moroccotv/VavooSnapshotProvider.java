@@ -13,6 +13,8 @@ import java.io.InputStreamReader;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Reads the prebuilt all-country VAVOO metadata catalogue.
@@ -69,6 +71,8 @@ public final class VavooSnapshotProvider {
             String group = "VAVOO Live";
             String country = "";
             long bytes = 0L;
+            // VAVOO has thousands of rows but only a small number of countries.
+            Map<String, String> normalizedCountryCache = new HashMap<>();
 
             while ((line = reader.readLine()) != null) {
                 bytes += line.length() + 1L;
@@ -108,7 +112,14 @@ public final class VavooSnapshotProvider {
                 }
 
                 if (!sourceUrl.isEmpty() && !name.trim().isEmpty()) {
-                    String resolvedCountry = resolveCountry(country, group, countryResolver);
+                    String rawCountry = safe(country);
+                    String resolvedCountry;
+                    if (!rawCountry.isEmpty() && normalizedCountryCache.containsKey(rawCountry)) {
+                        resolvedCountry = normalizedCountryCache.get(rawCountry);
+                    } else {
+                        resolvedCountry = resolveCountry(country, group, countryResolver);
+                        if (!rawCountry.isEmpty()) normalizedCountryCache.put(rawCountry, resolvedCountry);
+                    }
                     String stable = id.trim().isEmpty() ? stableId(name, resolvedCountry) : id.trim();
                     String finalGroup = group.startsWith("VAVOO · ") ? group : "VAVOO · " + group;
                     result.add(new Channel(name, "vavoo://" + stable, logo, finalGroup,

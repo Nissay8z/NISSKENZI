@@ -242,7 +242,17 @@ async function refreshIptvOrgCatalog() {
       if (!country && source.countryFromGroup) {
         country = group.split(/[|;›»→➾⟾]/)[0].trim();
       }
-      const normalizedGroup = normalizeSearch(group);
+      // Many public lists encode ISO-3166 country codes in tvg-id (for example,
+      // AlJazeeraEnglish.qa@HD). Resolve those to readable French country names
+      // so the Android TV country filter remains useful across every repository.
+      if (!country) {
+        const suffix = tvgId.match(/\\.([a-z]{2})(?:@[^.]*)?$/i);
+        if (suffix) {
+          const code = suffix[1].toUpperCase();
+          country = code === 'XK' ? 'Kosovo'
+            : (new Intl.DisplayNames(['fr'], { type: 'region' }).of(code) || code);
+        }
+      }
       const haystack = normalizeSearch([name, group, line].join(' '));
       if (blocked.size && [...blocked].some(term => haystack.includes(term))) {
         extinf = ''; extras = []; continue;

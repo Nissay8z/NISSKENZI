@@ -390,6 +390,7 @@ public class MainActivity extends Activity {
   private boolean countryDrawerOpen=false;
   private void play(Channel ch){
     currentChannel=ch;
+    if(homeWebView!=null){try{homeWebView.stopLoading();homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}homeWebView=null;homeWebReady=false;}
     if(player!=null){player.release();player=null;}
     root.removeAllViews();root.setPadding(0,0,0,0);root.setOrientation(LinearLayout.VERTICAL);
     LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);top.setPadding(18,10,18,10);top.setBackgroundColor(0xFF090B10);
@@ -494,5 +495,5 @@ public class MainActivity extends Activity {
     return super.dispatchKeyEvent(event);
   }
   @Override public void onBackPressed(){if(channelDrawer!=null&&playerStage!=null){playerStage.removeView(channelDrawer);channelDrawer=null;countryDrawerOpen=false;}else if(player!=null){returnHome();}else super.onBackPressed();}
-  @Override protected void onDestroy(){if(player!=null)player.release();io.shutdownNow();logoIo.shutdownNow();super.onDestroy();}
+  @Override protected void onDestroy(){if(player!=null)player.release();if(homeWebView!=null){try{homeWebView.removeJavascriptInterface("NisskenziBridge");homeWebView.destroy();}catch(Exception ignored){}}io.shutdownNow();logoIo.shutdownNow();super.onDestroy();}
 }

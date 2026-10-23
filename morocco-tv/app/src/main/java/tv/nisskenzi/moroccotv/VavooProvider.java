@@ -52,6 +52,11 @@ public final class VavooProvider {
 
     private VavooProvider() {}
 
+    public interface CatalogListener {
+        /** Called on the loader thread after a catalogue page has been appended. */
+        void onChannelsUpdated(List<VavooChannel> channels);
+    }
+
     public static final class VavooChannel {
         public final String id;
         public final String name;
@@ -71,20 +76,27 @@ public final class VavooProvider {
     }
 
     public static List<VavooChannel> loadChannels() throws IOException, JSONException {
+        return loadChannels(null);
+    }
+
+    public static List<VavooChannel> loadChannels(CatalogListener listener) throws IOException, JSONException {
         long now = System.currentTimeMillis();
         List<VavooChannel> current = cachedChannels;
         if (!current.isEmpty() && now < catalogExpiryMs) {
-            return new ArrayList<>(current);
+            List<VavooChannel> result = new ArrayList<>(current);
+            notifyCatalogListener(listener, result);
+            return result;
         }
 
         String signature = getAddonSignature();
         IOException lastError = null;
         for (String base : BASE_URLS) {
             try {
-                List<VavooChannel> channels = loadCatalogFromBase(base, signature);
+                List<VavooChannel> channels = loadCatalogFromBase(base, signature, listener);
                 if (!channels.isEmpty()) {
                     cachedChannels = new ArrayList<>(channels);
                     catalogExpiryMs = System.currentTimeMillis() + CATALOG_CACHE_MS;
+                    notifyCatalogListener(listener, channels);
                     return channels;
                 }
                 lastError = new IOException("Le catalogue VAVOO reçu depuis " + host(base) + " est vide.");
@@ -93,6 +105,15 @@ public final class VavooProvider {
             }
         }
         throw lastError != null ? lastError : new IOException("Impossible de récupérer le catalogue VAVOO.");
+    }
+
+    private static void notifyCatalogListener(CatalogListener listener, List<VavooChannel> channels) {
+        if (listener == null || channels == null || channels.isEmpty()) return;
+        try {
+            listener.onChannelsUpdated(new ArrayList<>(channels));
+        } catch (RuntimeException ignored) {
+            // A UI listener must not break the network catalogue loader.
+        }
     }
 
     public static void invalidateCatalogCache() {
@@ -127,8 +148,8 @@ public final class VavooProvider {
         throw lastError != null ? lastError : new IOException("Impossible de résoudre ce flux VAVOO.");
     }
 
-    private static List<VavooChannel> loadCatalogFromBase(String base, String signature)
-            throws IOException, JSONException {
+    private static List<VavooChannel> loadCatalogFromBase(String base, String signature,
+            CatalogListener listener) throws IOException, JSONException {
         ArrayList<VavooChannel> channels = new ArrayList<>();
         Object cursor = JSONObject.NULL;
         int pages = 0;
@@ -166,6 +187,9 @@ public final class VavooProvider {
                             group.isEmpty() ? "VAVOO Live" : group, country));
                 }
             }
+            // Publish each completed page so the TV UI can show channels/categories
+            // before the entire remote catalogue finishes loading.
+            notifyCatalogListener(listener, channels);
             Object next = body.opt("nextCursor");
             if (next == null || next == JSONObject.NULL || String.valueOf(next).trim().isEmpty()) break;
             cursor = next;

@@ -43,6 +43,9 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -51,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -70,8 +74,10 @@ public class MainActivity extends Activity {
     private static final int YELLOW = 0xFFFFFF00;
     private static final int MAX_CACHED_CHANNELS = 400;
     private static final int MAX_CATALOG_CHANNELS = 9000;
+    private static final long MAX_CATALOG_CACHE_FILE_BYTES = 12L * 1024L * 1024L;
 
     private LinearLayout root;
+    private View headerView;
     private FrameLayout contentHost;
     private TextView statusView;
     private TextView countView;
@@ -93,6 +99,11 @@ public class MainActivity extends Activity {
     private PlayerView playerView;
     private ExoPlayer player;
     private FrameLayout playerStage;
+    private boolean fullscreenPlayback = false;
+    private ViewGroup playerStageParent;
+    private View playerStagePlaceholder;
+    private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
+    private int playerStageOriginalIndex = -1;
     private LibVLC libVLC;
     private org.videolan.libvlc.MediaPlayer vlcPlayer;
     private VLCVideoLayout vlcVideoLayout;
@@ -226,6 +237,7 @@ public class MainActivity extends Activity {
         header.setPadding(dp(headerPad), dp(isTelevision() ? 10 : 8),
                 dp(headerPad), dp(isTelevision() ? 10 : 8));
         header.setBackgroundColor(0xDD101721);
+        headerView = header;
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         TextView back = buttonText("‹", false);
@@ -324,6 +336,12 @@ public class MainActivity extends Activity {
 
     private void renderPage() {
         if (contentHost == null) return;
+        // Keep the live layout and its active player stage mounted while video is fullscreen.
+        if (fullscreenPlayback) {
+            renderCountryChoices();
+            updateChannelResults();
+            return;
+        }
         if (channelAdapter != null) {
             channelAdapter.shutdown();
             channelAdapter = null;
@@ -755,6 +773,9 @@ public class MainActivity extends Activity {
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
                 getSharedPreferences("catalog_cache", MODE_PRIVATE).edit().clear().apply();
+                deleteFullCatalogCache("VAVOO");
+                deleteFullCatalogCache("IPTV-ORG");
+                VavooProvider.invalidateCatalogCache();
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
                 channels.clear(); activeCountry = "Tous les pays"; renderPage();
             }).show());
@@ -907,19 +928,46 @@ public class MainActivity extends Activity {
 
         final int currentGen = loadGeneration.incrementAndGet();
 
+        final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
+        final AtomicInteger lastIptvPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
+            // A full on-disk catalogue is restored in the background first. The small
+            // SharedPreferences cache still supplies an immediate first paint on startup.
+            ArrayList<Channel> diskCached = readFullCatalogCache(requestedSource);
+            if (!diskCached.isEmpty()) {
+                final ArrayList<Channel> diskSnapshot = diskCached;
+                runOnUiThread(() -> {
+                    if (activityDestroyed || currentGen != loadGeneration.get()
+                            || !requestedSource.equals(sourceFilter)) return;
+                    if (channels.size() < diskSnapshot.size()) {
+                        channels.clear();
+                        channels.addAll(diskSnapshot);
+                        catalogStatus = requestedSource + " · " + diskSnapshot.size()
+                                + " chaînes en cache, actualisation…";
+                        updateStatus();
+                        updateHeaderTabs();
+                        renderCountryChoices();
+                        updateChannelResults();
+                    }
+                });
+            }
+
             ArrayList<Channel> loaded = new ArrayList<>();
             String error = "";
             if (requestVavoo) {
                 try {
-                    for (VavooProvider.VavooChannel item : VavooProvider.loadChannels()) {
+                    List<VavooProvider.VavooChannel> sourceChannels = VavooProvider.loadChannels(partial -> {
+                        int size = partial == null ? 0 : partial.size();
+                        int previous = lastVavooPublished.get();
+                        if (size <= 0 || (previous > 0 && size - previous < 400)
+                                || !lastVavooPublished.compareAndSet(previous, size)) return;
+                        publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
+                                currentGen);
+                    });
+
+                    for (VavooProvider.VavooChannel item : sourceChannels) {
                         if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
-                        String country = knownCountry(item.country);
-                        if (country.isEmpty()) country = knownCountry(item.group);
-                        if (country.isEmpty()) country = "Pays non précisé";
-                        loaded.add(new Channel(item.name, "vavoo://" + item.id, item.logo,
-                                "VAVOO · " + (item.group == null || item.group.trim().isEmpty()
-                                ? "Direct" : item.group), true, item.sourceUrl, country));
+                        loaded.add(toAppChannel(item));
                     }
                 } catch (Exception e) {
                     error = e.getMessage() == null ? "catalogue VAVOO indisponible" : e.getMessage();
@@ -956,6 +1004,12 @@ public class MainActivity extends Activity {
                                 if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
                                 loaded.add(new Channel(name, line.trim(), logo,
                                         "IPTV-ORG · " + group, false, null, country));
+                                int previouslyPublished = lastIptvPublished.get();
+                                if (loaded.size() - previouslyPublished >= 500
+                                        && lastIptvPublished.compareAndSet(previouslyPublished, loaded.size())) {
+                                    publishCatalogSnapshot(new ArrayList<>(loaded), requestedSource,
+                                            currentGen);
+                                }
                             }
                         }
                     }
@@ -970,7 +1024,6 @@ public class MainActivity extends Activity {
             final String loadError = error;
             final ArrayList<Channel> cacheSnapshot = cacheableChannels(result);
             if (!cacheSnapshot.isEmpty()) saveCachedChannels(cacheSnapshot, requestedSource);
-
             runOnUiThread(() -> {
                 if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
                 loadingCatalog = loadingVavoo || loadingIptv;
@@ -989,14 +1042,19 @@ public class MainActivity extends Activity {
                         channels.addAll(result);
                         catalogStatus = requestedSource + " · " + result.size() + " chaînes chargées";
                     } else if (!channels.isEmpty()) {
-                        catalogStatus = requestedSource + " · connexion impossible, cache conservé";
+                        catalogStatus = requestedSource + " · connexion impossible, cache/aperçu conservé";
                     } else {
                         catalogStatus = requestedSource + " · aucun flux reçu"
                                 + (loadError.isEmpty() ? "" : " · " + loadError);
                     }
                     updateStatus();
                     updateHeaderTabs();
-                    renderPage();
+                    if (fullscreenPlayback) {
+                        renderCountryChoices();
+                        updateChannelResults();
+                    } else {
+                        renderPage();
+                    }
                     if (result.isEmpty() && channels.isEmpty()) {
                         Toast.makeText(MainActivity.this,
                                 requestedSource + " : chargement impossible. Vérifiez votre connexion.",
@@ -1006,7 +1064,141 @@ public class MainActivity extends Activity {
                     updateStatus();
                 }
             });
+
+            // Saving the complete catalogue happens off the UI thread; subsequent launches
+            // can restore all countries/channels without waiting for remote pagination.
+            if (!result.isEmpty()) saveFullCatalogCache(result, requestedSource);
         });
+    }
+
+    private Channel toAppChannel(VavooProvider.VavooChannel item) {
+        String country = knownCountry(item.country);
+        if (country.isEmpty()) country = knownCountry(item.group);
+        if (country.isEmpty()) country = "Pays non précisé";
+        return new Channel(item.name, "vavoo://" + item.id, item.logo,
+                "VAVOO · " + (item.group == null || item.group.trim().isEmpty()
+                ? "Direct" : item.group), true, item.sourceUrl, country);
+    }
+
+    private ArrayList<Channel> convertVavooChannels(List<VavooProvider.VavooChannel> items) {
+        ArrayList<Channel> converted = new ArrayList<>(Math.min(items.size(), MAX_CATALOG_CHANNELS));
+        for (VavooProvider.VavooChannel item : items) {
+            if (converted.size() >= MAX_CATALOG_CHANNELS) break;
+            converted.add(toAppChannel(item));
+        }
+        return converted;
+    }
+
+    private void publishCatalogSnapshot(ArrayList<Channel> snapshot, String requestedSource,
+                                        int generation) {
+        if (snapshot == null || snapshot.isEmpty()) return;
+        final ArrayList<Channel> copy = new ArrayList<>(snapshot);
+        runOnUiThread(() -> {
+            if (activityDestroyed || generation != loadGeneration.get()
+                    || !requestedSource.equals(sourceFilter)
+                    || copy.size() <= channels.size()) return;
+            channels.clear();
+            channels.addAll(copy);
+            catalogStatus = requestedSource + " · " + copy.size()
+                    + " chaînes reçues, catalogue en chargement…";
+            updateStatus();
+            updateHeaderTabs();
+            renderCountryChoices();
+            updateChannelResults();
+        });
+    }
+
+    private File fullCatalogCacheFile(String source) {
+        String suffix = "VAVOO".equals(source) ? "vavoo" : "iptv_org";
+        return new File(getFilesDir(), "nisskenzi_catalog_" + suffix + "_v1.json");
+    }
+
+    private ArrayList<Channel> readFullCatalogCache(String source) {
+        ArrayList<Channel> cached = new ArrayList<>();
+        File file = fullCatalogCacheFile(source);
+        if (!file.isFile() || file.length() <= 0) return cached;
+        if (file.length() > MAX_CATALOG_CACHE_FILE_BYTES) {
+            file.delete();
+            return cached;
+        }
+
+        StringBuilder raw = new StringBuilder((int) Math.min(file.length(), 1024 * 1024));
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), "UTF-8"))) {
+            char[] buffer = new char[8192];
+            int count;
+            while ((count = reader.read(buffer)) != -1) {
+                if (raw.length() + count > MAX_CATALOG_CACHE_FILE_BYTES) return new ArrayList<>();
+                raw.append(buffer, 0, count);
+            }
+
+            JSONArray array = new JSONArray(raw.toString());
+            boolean wantVavoo = "VAVOO".equals(source);
+            for (int i = 0; i < array.length() && cached.size() < MAX_CATALOG_CHANNELS; i++) {
+                JSONObject object = array.optJSONObject(i);
+                if (object == null) continue;
+                String url = object.optString("url", "").trim();
+                if (url.isEmpty()) continue;
+                boolean isVavoo = object.optBoolean("isVavoo", false);
+                if (isVavoo != wantVavoo) continue;
+                String group = object.optString("group", "Direct");
+                String country = knownCountry(object.optString("country", ""));
+                if (country.isEmpty()) {
+                    String prefix = isVavoo ? "VAVOO · " : "IPTV-ORG · ";
+                    country = knownCountry(group.startsWith(prefix) ? group.substring(prefix.length()) : group);
+                }
+                if (country.isEmpty()) country = "Pays non précisé";
+                cached.add(new Channel(object.optString("name", "Chaîne"), url,
+                        object.optString("logo", ""), group, isVavoo,
+                        object.optString("sourceUrl", ""), country));
+            }
+        } catch (Exception ignored) {
+            cached.clear();
+        }
+        return cached;
+    }
+
+    private void saveFullCatalogCache(ArrayList<Channel> items, String source) {
+        if (items == null || items.isEmpty()) return;
+        File target = fullCatalogCacheFile(source);
+        File temporary = new File(getFilesDir(), target.getName() + ".tmp");
+        try {
+            JSONArray array = new JSONArray();
+            int count = 0;
+            for (Channel channel : items) {
+                if (count++ >= MAX_CATALOG_CHANNELS) break;
+                JSONObject object = new JSONObject();
+                object.put("name", safe(channel.name));
+                object.put("url", safe(channel.url));
+                object.put("logo", safe(channel.logo));
+                object.put("group", safe(channel.group));
+                object.put("isVavoo", channel.isVavoo);
+                object.put("sourceUrl", safe(channel.vavooSourceUrl));
+                object.put("country", safe(channel.country));
+                array.put(object);
+            }
+            try (OutputStreamWriter writer = new OutputStreamWriter(
+                    new FileOutputStream(temporary), "UTF-8")) {
+                writer.write(array.toString());
+                writer.flush();
+            }
+            if (target.exists() && !target.delete()) {
+                temporary.delete();
+                return;
+            }
+            if (!temporary.renameTo(target)) {
+                temporary.delete();
+            }
+        } catch (Exception ignored) {
+            temporary.delete();
+        }
+    }
+
+    private void deleteFullCatalogCache(String source) {
+        File file = fullCatalogCacheFile(source);
+        if (file.exists()) file.delete();
+        File temporary = new File(getFilesDir(), file.getName() + ".tmp");
+        if (temporary.exists()) temporary.delete();
     }
 
     private void updateStatus() {
@@ -1144,6 +1336,66 @@ public class MainActivity extends Activity {
         return useVlcPlayer() ? "VLC (compatibilité étendue)" : "Media3 (léger)";
     }
 
+    private void enterFullscreenPlayback() {
+        if (fullscreenPlayback || playerStage == null || contentHost == null
+                || !"Live TV".equals(activePage)) return;
+        if (!(playerStage.getParent() instanceof ViewGroup)) return;
+
+        playerStageParent = (ViewGroup) playerStage.getParent();
+        playerStageOriginalIndex = playerStageParent.indexOfChild(playerStage);
+        playerStageOriginalLayoutParams = playerStage.getLayoutParams();
+
+        View placeholder = new FrameLayout(this);
+        placeholder.setBackgroundColor(Color.BLACK);
+        playerStageParent.removeView(playerStage);
+        playerStageParent.addView(placeholder, playerStageOriginalIndex, playerStageOriginalLayoutParams);
+        playerStagePlaceholder = placeholder;
+
+        contentHost.addView(playerStage, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        fullscreenPlayback = true;
+        if (headerView != null) headerView.setVisibility(View.GONE);
+        if (statusView != null) statusView.setVisibility(View.GONE);
+        playerStage.setFocusable(true);
+        playerStage.setFocusableInTouchMode(true);
+        playerStage.bringToFront();
+        playerStage.requestFocus();
+        if (playerView != null) {
+            playerView.setFocusable(true);
+            playerView.requestFocus();
+        }
+    }
+
+    private void exitFullscreenPlayback() {
+        if (!fullscreenPlayback) return;
+        fullscreenPlayback = false;
+
+        if (playerStage != null && playerStage.getParent() instanceof ViewGroup) {
+            ((ViewGroup) playerStage.getParent()).removeView(playerStage);
+        }
+        if (playerStageParent != null) {
+            if (playerStagePlaceholder != null) playerStageParent.removeView(playerStagePlaceholder);
+            int index = Math.max(0, Math.min(playerStageOriginalIndex, playerStageParent.getChildCount()));
+            if (playerStage != null) {
+                if (playerStageOriginalLayoutParams != null) {
+                    playerStageParent.addView(playerStage, index, playerStageOriginalLayoutParams);
+                } else {
+                    playerStageParent.addView(playerStage, index);
+                }
+                playerStage.setFocusable(false);
+                playerStage.setFocusableInTouchMode(false);
+            }
+        }
+
+        playerStageParent = null;
+        playerStagePlaceholder = null;
+        playerStageOriginalLayoutParams = null;
+        playerStageOriginalIndex = -1;
+        if (headerView != null) headerView.setVisibility(View.VISIBLE);
+        if (statusView != null) statusView.setVisibility(View.VISIBLE);
+        if (channelResults != null) channelResults.requestFocus();
+    }
+
     private void play(Channel ch) {
         if (ch == null) return;
         currentChannel = ch;
@@ -1154,6 +1406,7 @@ public class MainActivity extends Activity {
         if (previewDetail != null) previewDetail.setText(
                 "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
         renderCountryChoices();
+        enterFullscreenPlayback();
         startPlayback(ch);
     }
 
@@ -1199,7 +1452,11 @@ public class MainActivity extends Activity {
             playerView.setKeepContentOnPlayerReset(true);
             playerView.setShutterBackgroundColor(Color.BLACK);
             playerStage.addView(playerView, new FrameLayout.LayoutParams(-1, -1));
+            playerView.setFocusable(true);
             playerView.setPlayer(active);
+            if (fullscreenPlayback) playerView.post(() -> {
+                if (fullscreenPlayback && playerView != null) playerView.requestFocus();
+            });
             active.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int playbackState) {
                     if (currentChannel != ch || previewStatus == null) return;
@@ -1327,7 +1584,9 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if ("Paramètres".equals(activePage)) {
+        if (fullscreenPlayback) {
+            exitFullscreenPlayback();
+        } else if ("Paramètres".equals(activePage)) {
             setPage("Live TV");
         } else if (player != null || vlcPlayer != null) {
             stopPreview();

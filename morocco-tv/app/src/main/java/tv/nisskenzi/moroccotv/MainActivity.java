@@ -65,6 +65,8 @@ public class MainActivity extends Activity {
     // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
     private static final int MAX_CATALOG_CHANNELS = 20000;
     private static final String WORLD_REFRESH_PREFS = "world_playlist_refresh";
+    private static final String COUNTRY_FAVORITES_PREFS = "country_favorites";
+    private static final String COUNTRY_FAVORITES_KEY = "favorite_country_names";
     private static final String WORLD_REFRESH_LAST_SUCCESS = "last_success";
     private static final String WORLD_REFRESH_LAST_ATTEMPT = "last_attempt";
     private static final long WORLD_REFRESH_INTERVAL_MS = 12L * 60L * 60L * 1000L;
@@ -129,6 +131,7 @@ public class MainActivity extends Activity {
     private Runnable pendingSearchFilter;
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
+    private SharedPreferences countryFavoritesPrefs;
     private int catalogVersion = 0;
     // Identity token shared by each player instance for the same loaded catalogue.
     private Object channelCatalogToken = new Object();
@@ -151,6 +154,7 @@ public class MainActivity extends Activity {
     private String lastRenderedFilterKey = "";
     private boolean favoritesOnly = false;
     private boolean recentOnly = false;
+    private boolean favoriteCountriesOnly = false;
 
     private final ArrayList<Channel> channels = new ArrayList<>();
     private final ExecutorService io = Executors.newFixedThreadPool(2);
@@ -159,6 +163,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         favoritesStore = new FavoritesStore(getSharedPreferences("favorites", MODE_PRIVATE));
         recentStore = new RecentChannelsStore(getSharedPreferences("recent", MODE_PRIVATE));
+        countryFavoritesPrefs = getSharedPreferences(COUNTRY_FAVORITES_PREFS, MODE_PRIVATE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
@@ -651,11 +656,12 @@ public class MainActivity extends Activity {
         countryChoices.removeAllViews();
 
         addCategoryRow("Tous", channels.size(),
-                !favoritesOnly && !recentOnly && "Tous les pays".equals(activeCountry),
+                !favoritesOnly && !recentOnly && !favoriteCountriesOnly && "Tous les pays".equals(activeCountry),
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = false;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -664,6 +670,7 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -672,9 +679,21 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
+                    favoriteCountriesOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
+        if ("IPTV-ORG".equals(sourceFilter)) {
+            addCategoryRow("★ Pays favoris", getFavoriteCountryNames().size(), favoriteCountriesOnly,
+                    v -> {
+                        activeCountry = "Tous les pays";
+                        favoritesOnly = false;
+                        recentOnly = false;
+                        favoriteCountriesOnly = true;
+                        renderCountryChoices();
+                        updateChannelResults();
+                    });
+        }
 
         View divider = new View(this);
         divider.setBackgroundColor(LINE);
@@ -709,20 +728,32 @@ public class MainActivity extends Activity {
             countryStatsVersion = catalogVersion;
         }
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
-        Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
+        Collections.sort(names, (a, b) -> {
+            if ("IPTV-ORG".equals(sourceFilter)) {
+                boolean favoriteA = isCountryFavorite(a);
+                boolean favoriteB = isCountryFavorite(b);
+                if (favoriteA != favoriteB) return favoriteA ? -1 : 1;
+            }
+            return String.CASE_INSENSITIVE_ORDER.compare(a, b);
+        });
         String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
         for (String country : names) {
             if (!query.isEmpty() && !country.toLowerCase(Locale.ROOT).contains(query)) continue;
             String title = flag(country, countryCodeCache.get(country)) + "  " + country;
-            addCategoryRow(title, countryCountCache.get(country),
-                    country.equals(activeCountry) && !favoritesOnly && !recentOnly,
-                    v -> {
-                        activeCountry = country;
-                        favoritesOnly = false;
-                        recentOnly = false;
-                        renderCountryChoices();
-                        updateChannelResults();
-                    });
+            boolean selected = country.equals(activeCountry) && !favoritesOnly && !recentOnly && !favoriteCountriesOnly;
+            View.OnClickListener selectCountry = v -> {
+                activeCountry = country;
+                favoritesOnly = false;
+                recentOnly = false;
+                favoriteCountriesOnly = false;
+                renderCountryChoices();
+                updateChannelResults();
+            };
+            if ("IPTV-ORG".equals(sourceFilter)) {
+                addCountryRow(title, country, countryCountCache.get(country), selected, selectCountry);
+            } else {
+                addCategoryRow(title, countryCountCache.get(country), selected, selectCountry);
+            }
         }
     }
 
@@ -759,6 +790,84 @@ public class MainActivity extends Activity {
             row.setScaleY(focused ? 1.025f : 1f);
         });
         row.setOnClickListener(click);
+    }
+
+    private void addCountryRow(String title, String country, int count, boolean selected,
+                               View.OnClickListener click) {
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(13), dp(8), dp(8), dp(8));
+        row.setBackground(rounded(selected ? 0xFF164A60 : 0xFF1D2632, 8));
+        row.setFocusable(true);
+        row.setClickable(true);
+
+        TextView name = label(title, isTelevision() ? 14 : 11,
+                selected ? YELLOW : Color.WHITE, true);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        boolean favorite = isCountryFavorite(country);
+        TextView star = label(favorite ? "★" : "☆", isTelevision() ? 18 : 15,
+                favorite ? YELLOW : MUTED, true);
+        star.setGravity(Gravity.CENTER);
+        star.setFocusable(true);
+        star.setClickable(true);
+        star.setContentDescription((favorite ? "Retirer " : "Ajouter ") + country + " "
+                + (favorite ? "des pays favoris" : "aux pays favoris"));
+        star.setBackground(rounded(0x00151D28, 8));
+        row.addView(star, lp(32, isTelevision() ? 32 : 28));
+        star.setOnFocusChangeListener((view, focused) -> {
+            star.setBackground(rounded(focused ? 0xFF164A60 : 0x00151D28, 8));
+            star.setTextColor(focused || isCountryFavorite(country) ? YELLOW : MUTED);
+        });
+        star.setOnClickListener(v -> {
+            toggleCountryFavorite(country);
+            renderCountryChoices();
+            updateChannelResults();
+        });
+
+        TextView number = label(String.valueOf(count), isTelevision() ? 14 : 11,
+                selected ? YELLOW : Color.WHITE, true);
+        number.setGravity(Gravity.CENTER);
+        row.addView(number, lp(30, -2));
+        LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 45 : 38);
+        rowP.bottomMargin = dp(6);
+        countryChoices.addView(row, rowP);
+        row.setOnFocusChangeListener((view, focused) -> {
+            row.setBackground(outlined(focused || selected ? 0xFF164A60 : 0xFF1D2632,
+                    8, focused ? 0xFF4CC9F0 : (selected ? 0xFF4CC9F0 : 0x00FFFFFF)));
+            name.setTextColor(focused || selected ? YELLOW : Color.WHITE);
+            number.setTextColor(focused || selected ? YELLOW : Color.WHITE);
+            row.setScaleX(focused ? 1.025f : 1f);
+            row.setScaleY(focused ? 1.025f : 1f);
+        });
+        row.setOnClickListener(click);
+    }
+
+    private Set<String> getFavoriteCountryNames() {
+        if (countryFavoritesPrefs == null) {
+            countryFavoritesPrefs = getSharedPreferences(COUNTRY_FAVORITES_PREFS, MODE_PRIVATE);
+        }
+        Set<String> stored = countryFavoritesPrefs.getStringSet(COUNTRY_FAVORITES_KEY, Collections.emptySet());
+        return new HashSet<>(stored == null ? Collections.emptySet() : stored);
+    }
+
+    private Set<String> getFavoriteCountryKeys() {
+        HashSet<String> keys = new HashSet<>();
+        for (String country : getFavoriteCountryNames()) keys.add(countryKey(country));
+        return keys;
+    }
+
+    private boolean isCountryFavorite(String country) {
+        return getFavoriteCountryNames().contains(country);
+    }
+
+    private void toggleCountryFavorite(String country) {
+        if (country == null || country.trim().isEmpty()) return;
+        Set<String> names = getFavoriteCountryNames();
+        if (!names.remove(country)) names.add(country);
+        countryFavoritesPrefs.edit().putStringSet(COUNTRY_FAVORITES_KEY, new HashSet<>(names)).apply();
     }
 
     private ArrayList<String> readRecentUrls() {
@@ -821,8 +930,11 @@ public class MainActivity extends Activity {
         final String requestedSearch = searchText;
         final boolean requestedFavorites = favoritesOnly;
         final boolean requestedRecent = recentOnly;
+        final boolean requestedFavoriteCountries = favoriteCountriesOnly;
+        final Set<String> favoriteCountrySnapshot = getFavoriteCountryKeys();
         final String filterKey = requestedSource + "|" + requestedCountry + "|" + safe(requestedSearch)
-                + "|" + requestedFavorites + "|" + requestedRecent;
+                + "|" + requestedFavorites + "|" + requestedRecent + "|" + requestedFavoriteCountries
+                + "|" + favoriteCountrySnapshot.hashCode();
         final boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
         lastRenderedFilterKey = filterKey;
 
@@ -838,6 +950,15 @@ public class MainActivity extends Activity {
             ArrayList<Channel> filtered = ChannelFilter.filter(channelSnapshot, requestedSource,
                     requestedCountry, requestedSearch, requestedFavorites, requestedRecent,
                     favoriteSnapshot, recentSnapshot);
+            if (requestedFavoriteCountries) {
+                ArrayList<Channel> countryFavorites = new ArrayList<>();
+                for (Channel channel : filtered) {
+                    if (channel != null && favoriteCountrySnapshot.contains(countryKey(safeCountry(channel.country)))) {
+                        countryFavorites.add(channel);
+                    }
+                }
+                filtered = countryFavorites;
+            }
 
             runOnUiThread(() -> {
                 if (activityDestroyed || requestId != filterGeneration.get()
@@ -1000,6 +1121,7 @@ public class MainActivity extends Activity {
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
+            favoriteCountriesOnly = false;
             categorySearch = "";
             searchText = "";
             if (searchInput != null) searchInput.setText("");

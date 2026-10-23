@@ -13,6 +13,7 @@ public final class RecentChannelsStore {
     private final SharedPreferences preferences;
     private final ArrayList<String> orderedUrls = new ArrayList<>();
     private final HashSet<String> urlSet = new HashSet<>();
+    private long revision = 0L;
 
     public RecentChannelsStore(SharedPreferences preferences) {
         this.preferences = preferences;
@@ -22,6 +23,7 @@ public final class RecentChannelsStore {
     public synchronized void reload() {
         orderedUrls.clear();
         urlSet.clear();
+        revision++;
         String raw = preferences.getString("urls", "");
         if (raw == null || raw.isEmpty()) return;
         for (String item : raw.split("\\n")) {
@@ -42,13 +44,17 @@ public final class RecentChannelsStore {
     public synchronized void remember(String url) {
         if (url == null || url.trim().isEmpty()) return;
         String value = url.trim();
+        boolean membershipChanged = !urlSet.contains(value);
         orderedUrls.remove(value);
         orderedUrls.add(0, value);
         while (orderedUrls.size() > MAX_RECENT) orderedUrls.remove(orderedUrls.size() - 1);
         urlSet.clear();
         urlSet.addAll(orderedUrls);
+        if (membershipChanged) revision++;
         preferences.edit().putString("urls", joinLines(orderedUrls)).apply();
     }
+
+    public synchronized long revision() { return revision; }
 
     private static String joinLines(List<String> items) {
         StringBuilder result = new StringBuilder();

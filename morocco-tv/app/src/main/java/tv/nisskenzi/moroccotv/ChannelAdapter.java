@@ -17,7 +17,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.collection.LruCache;
+import android.util.LruCache;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
@@ -97,13 +97,6 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         super(DIFF_CALLBACK);
         this.listener = listener;
         this.favoriteChecker = favoriteChecker;
-        setHasStableIds(true);
-    }
-
-    @Override
-    public long getItemId(int position) {
-        String url = safe(getItem(position).url);
-        return url.hashCode();
     }
 
     /** Updates the highlighted channel without rebinding the entire catalogue. */
@@ -224,7 +217,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         MainActivity.Channel channel = getItem(position);
         holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
-                listener, favoriteChecker, logoCache, imageExecutor, this);
+                listener, favoriteChecker, logoCache, this);
     }
 
     @Override
@@ -238,7 +231,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
         imageExecutor.shutdownNow();
     }
 
-    private void loadLogo(String address, ImageView image, TextView initials, String channelName) {
+    private void loadLogo(String address, ImageView image, TextView initials) {
         if (address == null || address.trim().isEmpty() || shutDown) return;
 
         Bitmap cached = logoCache.get(address);
@@ -337,7 +330,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
 
         void bind(MainActivity.Channel channel, int index, boolean selected,
                   OnChannelClickListener listener, FavoriteChecker favoriteChecker,
-                  LruCache<String, Bitmap> cache, ExecutorService executor, ChannelAdapter owner) {
+                  LruCache<String, Bitmap> cache, ChannelAdapter owner) {
             boundUrl = safe(channel.url);
             number.setText(String.valueOf(index + 1));
             name.setText(emptyFallback(channel.name, "Chaîne"));
@@ -365,7 +358,7 @@ public final class ChannelAdapter extends ListAdapter<MainActivity.Channel, Chan
                 initials.setVisibility(View.GONE);
             } else {
                 image.setImageDrawable(null);
-                owner.loadLogo(channel.logo, image, initials, channel.name);
+                owner.loadLogo(channel.logo, image, initials);
             }
 
             card.setOnFocusChangeListener((view, hasFocus) -> applyState(hasFocus, owner.isSelected(boundUrl)));

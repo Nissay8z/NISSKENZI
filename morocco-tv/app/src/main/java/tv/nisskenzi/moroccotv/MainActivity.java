@@ -889,13 +889,13 @@ public class MainActivity extends Activity {
                     && CatalogCache.isFresh(MainActivity.this, requestedSource, 12L * 60L * 60L * 1000L)) {
                 final ArrayList<Channel> restored = diskCached;
                 runOnUiThread(() -> {
+                    if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
+                    loadingCatalog = loadingVavoo || loadingIptv;
                     if (activityDestroyed) return;
                     if (currentGen != loadGeneration.get()) {
                         if (requestedSource.equals(sourceFilter) && !isFinishing()) loadChannels();
                         return;
                     }
-                    if (requestVavoo) loadingVavoo = false; else loadingIptv = false;
-                    loadingCatalog = loadingVavoo || loadingIptv;
                     if (!requestedSource.equals(sourceFilter)) {
                         updateStatus();
                         return;

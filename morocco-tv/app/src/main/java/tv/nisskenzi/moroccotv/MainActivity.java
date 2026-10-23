@@ -793,9 +793,39 @@ public class MainActivity extends Activity {
         playerInfoParams.bottomMargin = dp(18);
         page.addView(playerInfoDetail, playerInfoParams);
 
-        page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
+        page.addView(sourceCard("VAVOO", "V", "Playlist M3U", "Le catalogue vient d’une playlist M3U. Seule une chaîne vavoo:// sélectionnée passe par resolveStream().", CYAN));
         LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Catalogue mondial structuré par pays.", PURPLE), gap);
+        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist M3U", "Les URLs HTTP(S) de la playlist sont envoyées directement au lecteur natif.", PURPLE), gap);
+
+        SharedPreferences m3uPrefs = getSharedPreferences("m3u_sources", MODE_PRIVATE);
+        TextView m3uTitle = label("SOURCES DES PLAYLISTS M3U", 10, CYAN, true);
+        LinearLayout.LayoutParams m3uTitleParams = lp(-1, -2);
+        m3uTitleParams.topMargin = dp(20);
+        m3uTitleParams.bottomMargin = dp(8);
+        page.addView(m3uTitle, m3uTitleParams);
+        page.addView(label("Laisse une URL vide pour utiliser le M3U intégré à l’application. URL acceptées : https://…, asset://nom.m3u ou file://…", 10, MUTED, false), lp(-1, -2));
+
+        EditText vavooM3uUrl = m3uUrlField(m3uPrefs.getString("vavoo_url", ""), "Playlist M3U VAVOO (facultatif)");
+        LinearLayout.LayoutParams vavooUrlParams = lp(-1, 46);
+        vavooUrlParams.topMargin = dp(8);
+        page.addView(vavooM3uUrl, vavooUrlParams);
+        EditText iptvM3uUrl = m3uUrlField(m3uPrefs.getString("iptv_org_url", ""), "Playlist M3U IPTV-ORG (facultatif)");
+        LinearLayout.LayoutParams iptvUrlParams = lp(-1, 46);
+        iptvUrlParams.topMargin = dp(8);
+        page.addView(iptvM3uUrl, iptvUrlParams);
+
+        TextView saveM3uUrls = buttonText("Enregistrer les URLs M3U", true);
+        LinearLayout.LayoutParams saveM3uParams = lp(-1, 46);
+        saveM3uParams.topMargin = dp(10);
+        page.addView(saveM3uUrls, saveM3uParams);
+        saveM3uUrls.setOnClickListener(v -> {
+            m3uPrefs.edit()
+                    .putString("vavoo_url", safe(vavooM3uUrl.getText() == null ? "" : vavooM3uUrl.getText().toString()))
+                    .putString("iptv_org_url", safe(iptvM3uUrl.getText() == null ? "" : iptvM3uUrl.getText().toString()))
+                    .apply();
+            M3UParser.clearMemoryCache();
+            Toast.makeText(this, "URLs M3U enregistrées. Appuie sur Actualiser pour recharger la source.", Toast.LENGTH_LONG).show();
+        });
 
         LinearLayout statusCard = vertical();
         statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -830,9 +860,24 @@ public class MainActivity extends Activity {
                 renderPage();
             }).show());
 
-        TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
+        TextView note = label("Le catalogue est lu depuis une playlist M3U locale ou distante. Les références VAVOO sont résolues uniquement au clic sur une chaîne.", 10, MUTED, false);
         note.setPadding(dp(2), dp(14), dp(2), 0);
         page.addView(note);
+    }
+
+    private EditText m3uUrlField(String initialValue, String hint) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        field.setTextSize(isTelevision() ? 14 : 11);
+        field.setTextColor(Color.WHITE);
+        field.setHintTextColor(0xFF8997A8);
+        field.setHint(hint);
+        field.setPadding(dp(14), 0, dp(14), 0);
+        field.setBackground(outlined(0xFF171F2A, 12, 0xFF39485B));
+        field.setText(initialValue == null ? "" : initialValue);
+        field.setSelectAllOnFocus(true);
+        return field;
     }
 
     private View sourceCard(String title, String icon, String tagline, String description, int accent) {

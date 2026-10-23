@@ -118,6 +118,8 @@ public class MainActivity extends Activity {
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
     private int catalogVersion = 0;
+    // Identity token shared by each player instance for the same loaded catalogue.
+    private Object channelCatalogToken = new Object();
     private int countryStatsVersion = -1;
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
@@ -612,6 +614,7 @@ public class MainActivity extends Activity {
 
     private void markCatalogChanged() {
         catalogVersion++;
+        channelCatalogToken = new Object();
         countryStatsVersion = -1;
     }
 
@@ -1426,7 +1429,7 @@ public class MainActivity extends Activity {
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setBackAction(nativeView::hideControls);
-            nativeView.setDrawerChannels(channels, catalogVersion, ch.url, this::play,
+            nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
                     this::loadEpgForCurrentChannel);
             nativeView.setPlaybackState(Player.STATE_BUFFERING);
 

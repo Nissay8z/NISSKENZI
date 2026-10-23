@@ -60,13 +60,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Native Android Live TV app optimized for Android TV and native UI design.
  */
 public class MainActivity extends Activity {
-    private static final int PANEL = 0x44FFFFFF;
-    private static final int LINE = 0x66FFFFFF;
-    private static final int CYAN = 0xFF0A8258;
-    private static final int PURPLE = 0xFF16A978;
-    private static final int MUTED = 0xFFE8FFF6;
+    private static final int PANEL = 0xCC151D28;
+    private static final int LINE = 0x665D6D82;
+    private static final int CYAN = 0xFF4CC9F0;
+    private static final int PURPLE = 0xFFB39DFF;
+    private static final int MUTED = 0xFFB8C4D2;
     private static final int TEXT = 0xFFFFFFFF;
-    private static final int GREEN = 0xFF0E714A;
+    private static final int GREEN = 0xFF4CC9F0;
     private static final int YELLOW = 0xFFFFFF00;
     private static final int MAX_CACHED_CHANNELS = 400;
     private static final int MAX_CATALOG_CHANNELS = 9000;
@@ -171,12 +171,12 @@ public class MainActivity extends Activity {
         int padH = isTelevision() ? 18 : 13;
         int padV = isTelevision() ? 11 : 8;
         b.setPadding(dp(padH), dp(padV), dp(padH), dp(padV));
-        b.setBackground(rounded(selected ? 0xAA08653F : 0x44FFFFFF, 22));
+        b.setBackground(rounded(selected ? 0xFF173D52 : 0xFF242E3B, 22));
         b.setFocusable(true);
         b.setClickable(true);
         b.setOnFocusChangeListener((view, focused) -> {
             if (focused) {
-                b.setBackground(outlined(0xAA087449, 22, 0xDDFFFFFF));
+                b.setBackground(outlined(0xFF164A60, 22, 0xFF4CC9F0));
                 b.setTextColor(YELLOW);
                 b.setScaleX(1.035f);
                 b.setScaleY(1.035f);
@@ -185,7 +185,7 @@ public class MainActivity extends Activity {
                         : b == vavooTab ? ("Live TV".equals(activePage) && "VAVOO".equals(sourceFilter))
                         : b == iptvTab ? ("Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter))
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
-                b.setBackground(rounded(active ? 0xAA08653F : 0x44FFFFFF, 22));
+                b.setBackground(rounded(active ? 0xFF173D52 : 0xFF242E3B, 22));
                 b.setTextColor(active ? YELLOW : Color.WHITE);
                 b.setScaleX(1f);
                 b.setScaleY(1f);
@@ -216,7 +216,7 @@ public class MainActivity extends Activity {
         root = vertical();
         GradientDrawable backdrop = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF24C982, 0xFF44CDA5, 0xFF65C7D1});
+                new int[]{0xFF080B10, 0xFF111A26, 0xFF0A131D});
         root.setBackground(backdrop);
         setContentView(root);
 
@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
         int headerPad = isTelevision() ? 26 : 14;
         header.setPadding(dp(headerPad), dp(isTelevision() ? 10 : 8),
                 dp(headerPad), dp(isTelevision() ? 10 : 8));
-        header.setBackgroundColor(0x332B805E);
+        header.setBackgroundColor(0xDD101721);
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         TextView back = buttonText("‹", false);
@@ -261,7 +261,7 @@ public class MainActivity extends Activity {
         searchInput.setTextSize(isTelevision() ? 16 : 12);
         searchInput.setHint("⌕  Rechercher une chaîne…");
         searchInput.setPadding(dp(18), 0, dp(18), 0);
-        searchInput.setBackground(outlined(0x33FFFFFF, 24, 0x44FFFFFF));
+        searchInput.setBackground(outlined(0xFF171F2A, 24, 0xFF39485B));
         searchInput.setText(searchText);
         LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 48 : 40), 1f);
         searchP.leftMargin = dp(isTelevision() ? 20 : 10);
@@ -281,7 +281,7 @@ public class MainActivity extends Activity {
 
         TextView mark = label("N+", isTelevision() ? 24 : 20, Color.WHITE, true);
         mark.setGravity(Gravity.CENTER);
-        mark.setBackground(rounded(0x44FFFFFF, 16));
+        mark.setBackground(outlined(0xFF1B2938, 16, 0xFF4CC9F0));
         LinearLayout.LayoutParams markP = lp(isTelevision() ? 54 : 44, isTelevision() ? 48 : 40);
         markP.leftMargin = dp(10);
         header.addView(mark, markP);
@@ -293,7 +293,7 @@ public class MainActivity extends Activity {
         statusView.setMaxLines(1);
         statusView.setEllipsize(TextUtils.TruncateAt.END);
         statusView.setPadding(dp(headerPad), dp(6), dp(headerPad), dp(6));
-        statusView.setBackgroundColor(0x2240655D);
+        statusView.setBackgroundColor(0xFF0C121A);
         root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
         updateHeaderTabs();
         renderPage();
@@ -318,7 +318,7 @@ public class MainActivity extends Activity {
 
     private void setTabState(TextView tab, boolean selected) {
         if (tab == null) return;
-        tab.setBackground(rounded(selected ? 0xAA08653F : 0x44FFFFFF, 22));
+        tab.setBackground(rounded(selected ? 0xFF173D52 : 0xFF242E3B, 22));
         tab.setTextColor(selected ? YELLOW : Color.WHITE);
     }
 
@@ -377,7 +377,7 @@ public class MainActivity extends Activity {
         categorySearchInput.setHintTextColor(0xEEFFFFFF);
         categorySearchInput.setHint("Filtrer les pays…");
         categorySearchInput.setPadding(dp(14), 0, dp(14), 0);
-        categorySearchInput.setBackground(outlined(0x33FFFFFF, 18, 0x44FFFFFF));
+        categorySearchInput.setBackground(outlined(0xFF171F2A, 18, 0xFF39485B));
         categorySearchInput.setText(categorySearch);
         left.addView(categorySearchInput, lp(-1, isTelevision() ? 46 : 40));
         categorySearchInput.addTextChangedListener(new TextWatcher() {
@@ -403,7 +403,7 @@ public class MainActivity extends Activity {
         TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
         middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
-        countView.setBackground(rounded(0x33FFFFFF, 15));
+        countView.setBackground(rounded(0xFF212B38, 15));
         countView.setPadding(dp(11), dp(6), dp(11), dp(6));
         middleHeader.addView(countView);
         middle.addView(middleHeader, lp(-1, -2));
@@ -566,7 +566,7 @@ public class MainActivity extends Activity {
         LinearLayout row = horizontal();
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(13), dp(8), dp(12), dp(8));
-        row.setBackground(rounded(selected ? 0xAA087449 : 0x33FFFFFF, 8));
+        row.setBackground(rounded(selected ? 0xFF164A60 : 0xFF1D2632, 8));
         row.setFocusable(true);
         row.setClickable(true);
         TextView name = label(title, isTelevision() ? 14 : 11, selected ? YELLOW : Color.WHITE, true);
@@ -581,8 +581,8 @@ public class MainActivity extends Activity {
         rowP.bottomMargin = dp(6);
         countryChoices.addView(row, rowP);
         row.setOnFocusChangeListener((view, focused) -> {
-            row.setBackground(outlined(focused || selected ? 0xAA087449 : 0x33FFFFFF,
-                    8, focused ? 0xDDFFFFFF : 0x00FFFFFF));
+            row.setBackground(outlined(focused || selected ? 0xFF164A60 : 0xFF1D2632,
+                    8, focused ? 0xFF4CC9F0 : (selected ? 0xFF4CC9F0 : 0x00FFFFFF)));
             name.setTextColor(focused || selected ? YELLOW : Color.WHITE);
             number.setTextColor(focused || selected ? YELLOW : Color.WHITE);
             row.setScaleX(focused ? 1.025f : 1f);
@@ -664,7 +664,7 @@ public class MainActivity extends Activity {
             LinearLayout empty = vertical();
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(dp(14), dp(22), dp(14), dp(22));
-            empty.setBackground(rounded(0x33FFFFFF, 12));
+            empty.setBackground(rounded(0xFF151D28, 12));
 
             String source = sourceFilter;
             TextView heading = label(channels.isEmpty()

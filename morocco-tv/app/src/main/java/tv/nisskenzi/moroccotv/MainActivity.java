@@ -174,9 +174,11 @@ public class MainActivity extends Activity {
       String vavooError="",iptvError="";
       try{
         for(VavooProvider.VavooChannel item:VavooProvider.loadChannels()){
+          String vavooCountry=normalizeCountry(item.country);
+          if(vavooCountry.isEmpty()||"default".equalsIgnoreCase(vavooCountry))vavooCountry=normalizeCountry(item.group);
           Channel ch=new Channel(item.name,"vavoo://"+item.id,item.logo,
             "VAVOO · "+(item.group==null||item.group.trim().isEmpty()?"Direct":item.group),
-            true,item.sourceUrl,item.country);
+            true,item.sourceUrl,vavooCountry.isEmpty()?"Pays non précisé":vavooCountry);
           vavooAll.add(ch);
           merged.add(ch);
         }
@@ -197,6 +199,11 @@ public class MainActivity extends Activity {
             if(a>=0){int z=line.indexOf('"',a+10);if(z>a)logo=line.substring(a+10,z);}
             int g=line.indexOf("group-title=\"");
             if(g>=0){int z=line.indexOf('"',g+13);if(z>g)group=line.substring(g+13,z);}
+            // index.country.m3u is explicitly grouped by country; group-title is our fallback country metadata.
+            if("Pays non précisé".equalsIgnoreCase(country)){
+              String normalizedGroup=normalizeCountry(group);
+              if(!normalizedGroup.isEmpty())country=normalizedGroup;
+            }
           }else if(line.startsWith("http://")||line.startsWith("https://")){
             String url=line.trim();
             merged.add(new Channel(name,url,logo,"IPTV-ORG · "+group,false,null,country));

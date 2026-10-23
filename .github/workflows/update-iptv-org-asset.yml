@@ -1,0 +1,78 @@
+name: Refresh embedded IPTV-org catalogue and build Android APK
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/update-iptv-org-asset.py"
+      - ".github/workflows/update-iptv-org-asset.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: embedded-iptv-org-catalogue
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download and prepare the bundled IPTV-org playlist
+        run: python scripts/update-iptv-org-asset.py
+
+      - name: Commit the updated M3U into the app
+        id: catalogue
+        run: |
+          git add morocco-tv/app/src/main/assets/iptv_org_catalog.m3u
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The packaged M3U is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: refresh embedded IPTV-org M3U"
+            git push origin HEAD:main
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java 17
+        if: steps.catalogue.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: steps.catalogue.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build native Android TV APK with the embedded catalogue
+        if: steps.catalogue.outputs.changed == 'true' || github.event_name != 'schedule'
+        run: gradle -p morocco-tv assembleDebug --no-daemon
+
+      - name: Upload the self-contained Android APK
+        if: steps.catalogue.outputs.changed == 'true' || github.event_name != 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nisskenzi-android-tv-self-contained
+          path: morocco-tv/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

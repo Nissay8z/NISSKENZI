@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
   private LinearLayout root, list; private TextView status, nowTitle; private EditText searchBox; private PlayerView playerView; private ExoPlayer player; private Channel currentChannel; private String activeFilter="TOUT"; private String searchQuery="";
   private final ArrayList<Channel> channels=new ArrayList<>(); private final ArrayList<Channel> allVavooChannels=new ArrayList<>(); private final ExecutorService io=Executors.newSingleThreadExecutor(); private final ExecutorService logoIo=Executors.newFixedThreadPool(3);
   private static class Channel { String name,url,logo,group,vavooSourceUrl,vavooCountry; boolean isVavoo; Channel(String n,String u,String l,String g){this(n,u,l,g,false,null,"");} Channel(String n,String u,String l,String g,boolean v,String source){this(n,u,l,g,v,source,"");} Channel(String n,String u,String l,String g,boolean v,String source,String country){name=n;url=u;logo=l;group=g;isVavoo=v;vavooSourceUrl=source;vavooCountry=country;} }
-  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadChannels();}
+  @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); buildHome(); loadCachedChannels(); loadChannels();}
   private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private android.graphics.drawable.GradientDrawable rounded(int color,int radius){
     android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable();
@@ -62,6 +62,43 @@ public class MainActivity extends Activity {
     status=text("Chargement des catalogues VAVOO + IPTV-ORG…",12,0xFFADB4C2,false);LinearLayout.LayoutParams statusP=new LinearLayout.LayoutParams(-1,-2);statusP.topMargin=12;hero.addView(status,statusP);
     LinearLayout filters=new LinearLayout(this);filters.setOrientation(LinearLayout.HORIZONTAL);filters.setPadding(0,6,0,4);for(String f:new String[]{"TOUT","FAVORIS"}){TextView chip=actionButton(f,f.equals(activeFilter)?red:panel);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.rightMargin=8;filters.addView(chip,cp);chip.setOnClickListener(v->{activeFilter=f;showChannels(null);});}root.addView(filters);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,8,0,20);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));list=content;
     TextView foot=text("Flux publics · La disponibilité dépend des diffuseurs",10,0xFF717B8D,false);foot.setGravity(Gravity.CENTER);root.addView(foot);
+  }
+  private void loadCachedChannels(){
+    try{
+      String raw=getSharedPreferences("catalog_cache",MODE_PRIVATE).getString("merged_channels","");
+      if(raw.isEmpty())return;
+      JSONArray arr=new JSONArray(raw);
+      ArrayList<Channel> cached=new ArrayList<>();
+      for(int i=0;i<arr.length();i++){
+        JSONObject o=arr.optJSONObject(i);if(o==null)continue;
+        String name=o.optString("name","Chaîne"),url=o.optString("url",""),logo=o.optString("logo",""),group=o.optString("group","Direct");
+        if(url.isEmpty())continue;
+        cached.add(new Channel(name,url,logo,group,o.optBoolean("isVavoo",false),o.optString("sourceUrl",""),o.optString("country","")));
+      }
+      if(!cached.isEmpty()){
+        channels.clear();channels.addAll(cached);
+        allVavooChannels.clear();allVavooChannels.addAll(cached);
+        showChannels(new ArrayList<>(cached));
+        status.setText(cached.size()+" chaînes en cache · actualisation en arrière-plan…");
+      }
+    }catch(Exception ignored){}
+  }
+  private void saveCachedChannels(ArrayList<Channel> items){
+    try{
+      JSONArray arr=new JSONArray();
+      for(Channel ch:items){
+        JSONObject o=new JSONObject();
+        o.put("name",ch.name==null?"Chaîne":ch.name);
+        o.put("url",ch.url==null?"":ch.url);
+        o.put("logo",ch.logo==null?"":ch.logo);
+        o.put("group",ch.group==null?"Direct":ch.group);
+        o.put("isVavoo",ch.isVavoo);
+        o.put("sourceUrl",ch.vavooSourceUrl==null?"":ch.vavooSourceUrl);
+        o.put("country",ch.vavooCountry==null?"":ch.vavooCountry);
+        arr.put(o);
+      }
+      getSharedPreferences("catalog_cache",MODE_PRIVATE).edit().putString("merged_channels",arr.toString()).putLong("updated_at",System.currentTimeMillis()).apply();
+    }catch(Exception ignored){}
   }
   private void loadChannels(){
     status.setText("Chargement des catalogues VAVOO + IPTV-ORG…");
@@ -107,6 +144,7 @@ public class MainActivity extends Activity {
       runOnUiThread(()->{
         allVavooChannels.clear();allVavooChannels.addAll(all);
         channels.clear();channels.addAll(all);
+        if(!all.isEmpty())saveCachedChannels(all);
         activeFilter="TOUT";
         showChannels(new ArrayList<>(all));
         String msg=all.size()+" chaînes réunies";

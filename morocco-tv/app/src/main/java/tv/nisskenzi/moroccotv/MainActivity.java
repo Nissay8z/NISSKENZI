@@ -1301,7 +1301,7 @@ public class MainActivity extends Activity {
 
                 @Override public void onPlayerError(PlaybackException error) {
                     if (currentChannel != ch || playerView != nativeView) return;
-                    if (vavooReference) ResolvedStreamCache.invalidate(selectedCatalogReference);
+                    if (!safe(ch.vavooSourceUrl).isEmpty()) ResolvedStreamCache.invalidate(ch.vavooSourceUrl);
                     nativeView.setErrorMessage("Flux indisponible. Essaie une autre chaîne.");
                     if (previewStatus != null) previewStatus.setText("Flux indisponible");
                     // This application intentionally uses one player only; errors are

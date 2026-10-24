@@ -47,8 +47,10 @@ public final class EpgProvider {
     private static final long MAX_DOWNLOAD_BYTES = 32L * 1024L * 1024L;
     private static final int MAX_PROGRAMMES_PER_CHANNEL = 8;
     private static final long LOOKAHEAD_MS = 72L * 60L * 60L * 1000L;
+    private static final long FAILURE_RETRY_MS = 5L * 60L * 1000L;
 
     private static final ConcurrentHashMap<String, GuideIndex> MEMORY_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> FAILURE_RETRY_AFTER = new ConcurrentHashMap<>();
     private static final Map<String, String> COUNTRY_CODES = buildCountryCodes();
 
     private EpgProvider() {}
@@ -58,12 +60,28 @@ public final class EpgProvider {
         public final String next;
         public final String status;
         public final String guideCountry;
+        public final long nowStartMs;
+        public final long nowStopMs;
 
         Result(String now, String next, String status, String guideCountry) {
+            this(now, next, status, guideCountry, 0L, 0L);
+        }
+
+        Result(String now, String next, String status, String guideCountry,
+               long nowStartMs, long nowStopMs) {
             this.now = safe(now);
             this.next = safe(next);
             this.status = safe(status);
             this.guideCountry = safe(guideCountry);
+            this.nowStartMs = Math.max(0L, nowStartMs);
+            this.nowStopMs = Math.max(0L, nowStopMs);
+        }
+
+        public int progressPercent(long nowMs) {
+            if (nowStartMs <= 0L || nowStopMs <= nowStartMs) return 0;
+            long elapsed = Math.max(0L, Math.min(nowStopMs - nowStartMs, nowMs - nowStartMs));
+            return (int) Math.max(0L, Math.min(100L,
+                    Math.round(elapsed * 100.0 / (nowStopMs - nowStartMs))));
         }
 
         public static Result loading() {
@@ -134,7 +152,9 @@ public final class EpgProvider {
                     continue;
                 }
                 return new Result(nowText, nextText,
-                        "Guide XMLTV · " + label, label);
+                        "Guide XMLTV · " + label, label,
+                        current == null ? 0L : current.startMs,
+                        current == null ? 0L : current.stopMs);
             } catch (Exception e) {
                 lastFailure = e.getMessage() == null ? "Guide indisponible" : e.getMessage();
             }
@@ -149,35 +169,47 @@ public final class EpgProvider {
         if (inMemory != null && now - inMemory.loadedAtMs < CACHE_TTL_MS) return inMemory;
         if (inMemory != null) MEMORY_CACHE.remove(key, inMemory);
 
-        File directory = new File(context.getFilesDir(), "epg");
-        if (!directory.exists() && !directory.mkdirs()) throw new Exception("Impossible de créer le cache EPG");
-        File gzipFile = new File(directory, "epg-" + key + ".xml.gz");
-        File xmlFile = new File(directory, "epg-" + key + ".xml");
-        File local = isFresh(gzipFile, now) ? gzipFile : (isFresh(xmlFile, now) ? xmlFile : null);
+        Long retryAfter = FAILURE_RETRY_AFTER.get(key);
+        if (retryAfter != null && now < retryAfter) {
+            throw new Exception("Guide " + key.toUpperCase(Locale.ROOT) + " temporairement indisponible");
+        }
+        if (retryAfter != null) FAILURE_RETRY_AFTER.remove(key, retryAfter);
 
-        if (local == null) {
-            Exception downloadError = null;
-            try {
-                download(GUIDE_BASE + key + ".xml.gz", gzipFile);
-                local = gzipFile;
-            } catch (Exception e) {
-                downloadError = e;
+        try {
+            File directory = new File(context.getFilesDir(), "epg");
+            if (!directory.exists() && !directory.mkdirs()) throw new Exception("Impossible de créer le cache EPG");
+            File gzipFile = new File(directory, "epg-" + key + ".xml.gz");
+            File xmlFile = new File(directory, "epg-" + key + ".xml");
+            File local = isFresh(gzipFile, now) ? gzipFile : (isFresh(xmlFile, now) ? xmlFile : null);
+
+            if (local == null) {
+                Exception downloadError = null;
                 try {
-                    download(GUIDE_BASE + key + ".xml", xmlFile);
-                    local = xmlFile;
-                } catch (Exception fallback) {
-                    if (downloadError != null) fallback.addSuppressed(downloadError);
-                    throw fallback;
+                    download(GUIDE_BASE + key + ".xml.gz", gzipFile);
+                    local = gzipFile;
+                } catch (Exception e) {
+                    downloadError = e;
+                    try {
+                        download(GUIDE_BASE + key + ".xml", xmlFile);
+                        local = xmlFile;
+                    } catch (Exception fallback) {
+                        if (downloadError != null) fallback.addSuppressed(downloadError);
+                        throw fallback;
+                    }
                 }
             }
-        }
 
-        GuideIndex parsed = parseGuide(local, key, now);
-        if (parsed.programmesById.isEmpty() && parsed.programmesByName.isEmpty()) {
-            throw new Exception("Le guide " + key.toUpperCase(Locale.ROOT) + " ne contient aucun programme exploitable");
+            GuideIndex parsed = parseGuide(local, key, now);
+            if (parsed.programmesById.isEmpty() && parsed.programmesByName.isEmpty()) {
+                throw new Exception("Le guide " + key.toUpperCase(Locale.ROOT) + " ne contient aucun programme exploitable");
+            }
+            GuideIndex existing = MEMORY_CACHE.putIfAbsent(key, parsed);
+            FAILURE_RETRY_AFTER.remove(key);
+            return existing == null ? parsed : existing;
+        } catch (Exception failure) {
+            FAILURE_RETRY_AFTER.put(key, now + FAILURE_RETRY_MS);
+            throw failure;
         }
-        GuideIndex existing = MEMORY_CACHE.putIfAbsent(key, parsed);
-        return existing == null ? parsed : existing;
     }
 
     private static boolean isFresh(File file, long now) {

@@ -4,10 +4,10 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,7 +20,10 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,15 +34,13 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.exoplayer.ExoPlayer;
 
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.util.VLCVideoLayout;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
@@ -56,14 +57,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Native Android Live TV app optimized for Android TV and native UI design.
  */
 public class MainActivity extends Activity {
-    private static final int PANEL = 0xCC151D28;
-    private static final int LINE = 0x665D6D82;
-    private static final int CYAN = 0xFF4CC9F0;
-    private static final int PURPLE = 0xFFB39DFF;
-    private static final int MUTED = 0xFFB8C4D2;
+    private static final int PANEL = 0xEE1A1B20;
+    private static final int LINE = 0x44FFFFFF;
+    private static final int CYAN = 0xFFEA5265;
+    private static final int PURPLE = 0xFFFF8999;
+    private static final int MUTED = 0xFFB6B7C0;
     private static final int TEXT = 0xFFFFFFFF;
-    private static final int GREEN = 0xFF4CC9F0;
-    private static final int YELLOW = 0xFFFFFF00;
+    private static final int GREEN = 0xFF6DD49A;
+    private static final int YELLOW = 0xFFFFE8EA;
     private static final int MAX_CACHED_CHANNELS = 400;
     // The VAVOO catalogue is preloaded from an all-country snapshot and refreshed off-thread.
     private static final int MAX_CATALOG_CHANNELS = 20000;
@@ -83,10 +84,26 @@ public class MainActivity extends Activity {
     private TextView liveTab;
     private TextView vavooTab;
     private TextView iptvTab;
+    private TextView recentTab;
     private TextView settingsTab;
+    private String activeGuideCountry = "Tous";
+    private String homePreviewIdentity = "";
+    private final Map<String, TextView[]> guideProgramViews = new HashMap<>();
+    private final Map<String, ProgressBar> guideProgressViews = new HashMap<>();
+    private String guidePreviewIdentity = "";
+    private final Map<String, EpgProvider.Result> guideResults = new HashMap<>();
+    private final Set<String> guidePending = new HashSet<>();
     private TextView previewTitle;
     private TextView previewStatus;
     private TextView previewDetail;
+    private TextView sourceOptionsButton;
+    private TextView channelFavoriteButton;
+    private ImageView channelPreviewImage;
+    private TextView channelPreviewInitials;
+    private Channel focusedPreviewChannel;
+    private ChannelLogoLoader homeLogoLoader;
+    private boolean logoFallbackRequested = false;
+    private Map<String, String> logoFallbackIndex = Collections.emptyMap();
 
     private NativeLivePlayerView playerView;
     private ExoPlayer player;
@@ -95,12 +112,15 @@ public class MainActivity extends Activity {
     private ViewGroup playerStageParent;
     private View playerStagePlaceholder;
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
+    private View playbackReturnFocus;
     private int playerStageOriginalIndex = -1;
-    private LibVLC libVLC;
-    private org.videolan.libvlc.MediaPlayer vlcPlayer;
-    private VLCVideoLayout vlcVideoLayout;
     private Channel currentChannel;
-    private volatile String activePage = "Live TV";
+    private Channel activePlaybackSource;
+    private ArrayList<Channel> playbackCandidates = new ArrayList<>();
+    private int playbackCandidateIndex = -1;
+    private boolean activeSourceSucceeded = false;
+    private boolean preserveManualSourceOrder = false;
+    private volatile String activePage = "Accueil";
     private volatile String catalogStatus = "Préparation du catalogue…";
     private volatile boolean loadingCatalog = false;
     private volatile boolean loadingVavoo = false;
@@ -117,6 +137,7 @@ public class MainActivity extends Activity {
     private Runnable pendingSearchFilter;
     private FavoritesStore favoritesStore;
     private RecentChannelsStore recentStore;
+    private SharedPreferences sourceHealthPreferences;
     private int catalogVersion = 0;
     // Identity token shared by each player instance for the same loaded catalogue.
     private Object channelCatalogToken = new Object();
@@ -124,6 +145,7 @@ public class MainActivity extends Activity {
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
     private final Set<String> channelUrlCache = new HashSet<>();
+    private final Map<String, Channel> channelBySavedId = new HashMap<>();
     private int channelUrlSetVersion = -1;
     private int favoriteCountCache = 0;
     private int favoriteCountCatalogVersion = -1;
@@ -133,20 +155,22 @@ public class MainActivity extends Activity {
     private long recentCountStoreRevision = -1L;
 
     private String activeCountry = "Tous les pays";
-    private String sourceFilter = "VAVOO";
+    private String sourceFilter = "TOUS";
     private String searchText = "";
     private String categorySearch = "";
     private String lastRenderedFilterKey = "";
     private boolean favoritesOnly = false;
     private boolean recentOnly = false;
+    private boolean groupedOnly = false;
 
     private final ArrayList<Channel> channels = new ArrayList<>();
-    private final ExecutorService io = Executors.newFixedThreadPool(2);
+    private final ExecutorService io = Executors.newFixedThreadPool(3);
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         favoritesStore = new FavoritesStore(getSharedPreferences("favorites", MODE_PRIVATE));
         recentStore = new RecentChannelsStore(getSharedPreferences("recent", MODE_PRIVATE));
+        sourceHealthPreferences = getSharedPreferences("source_health", MODE_PRIVATE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         buildHome();
@@ -185,27 +209,27 @@ public class MainActivity extends Activity {
     }
 
     private TextView buttonText(String text, boolean selected) {
-        TextView b = label(text, isTelevision() ? 15 : 12, selected ? YELLOW : Color.WHITE, true);
+        TextView b = label(text, isTelevision() ? 15 : 12, selected ? Color.WHITE : 0xFFE6E6EB, true);
         b.setGravity(Gravity.CENTER);
-        int padH = isTelevision() ? 18 : 13;
-        int padV = isTelevision() ? 11 : 8;
-        b.setPadding(dp(padH), dp(padV), dp(padH), dp(padV));
-        b.setBackground(rounded(selected ? 0xFF173D52 : 0xFF242E3B, 22));
+        int padH = isTelevision() ? 18 : 12;
+        b.setPadding(dp(padH), dp(isTelevision() ? 11 : 8), dp(padH), dp(isTelevision() ? 11 : 8));
+        b.setBackground(rounded(selected ? 0xFF3B2027 : 0x001A1B20, 20));
         b.setFocusable(true);
         b.setClickable(true);
         b.setOnFocusChangeListener((view, focused) -> {
             if (focused) {
-                b.setBackground(outlined(0xFF164A60, 22, 0xFF4CC9F0));
-                b.setTextColor(YELLOW);
-                b.setScaleX(1.035f);
-                b.setScaleY(1.035f);
+                b.setBackground(outlined(0xFF402229, 20, CYAN));
+                b.setTextColor(Color.WHITE);
+                b.setScaleX(1.04f);
+                b.setScaleY(1.04f);
             } else {
-                boolean active = b == liveTab ? "Live TV".equals(activePage)
-                        : b == vavooTab ? ("Live TV".equals(activePage) && "VAVOO".equals(sourceFilter))
-                        : b == iptvTab ? ("Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter))
+                boolean active = b == liveTab ? "Accueil".equals(activePage)
+                        : b == vavooTab ? ("Live TV".equals(activePage) && !favoritesOnly)
+                        : b == iptvTab ? "Guide TV".equals(activePage)
+                        : b == recentTab ? ("Live TV".equals(activePage) && favoritesOnly)
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
-                b.setBackground(rounded(active ? 0xFF173D52 : 0xFF242E3B, 22));
-                b.setTextColor(active ? YELLOW : Color.WHITE);
+                b.setBackground(rounded(active ? 0xFF3B2027 : 0x001A1B20, 20));
+                b.setTextColor(active ? Color.WHITE : 0xFFE6E6EB);
                 b.setScaleX(1f);
                 b.setScaleY(1f);
             }
@@ -231,115 +255,169 @@ public class MainActivity extends Activity {
     }
 
     private void buildHome() {
-        if (player != null || vlcPlayer != null) releasePlayer();
+        if (player != null) releasePlayer();
         root = vertical();
-        GradientDrawable backdrop = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF080B10, 0xFF111A26, 0xFF0A131D});
-        root.setBackground(backdrop);
+        root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF101115, 0xFF17171C, 0xFF111216}));
         setContentView(root);
 
-        // Barre supérieure large et native Android TV
         LinearLayout header = horizontal();
-        int headerPad = isTelevision() ? 26 : 14;
+        int headerPad = isTelevision() ? 34 : 14;
         header.setPadding(dp(headerPad), dp(isTelevision() ? 10 : 8),
                 dp(headerPad), dp(isTelevision() ? 10 : 8));
-        header.setBackgroundColor(0xDD101721);
+        header.setBackgroundColor(0xF218191E);
         headerView = header;
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView back = buttonText("‹", false);
-        back.setContentDescription("Retour");
-        header.addView(back, lp(isTelevision() ? 44 : 38, isTelevision() ? 48 : 40));
-        back.setOnClickListener(v -> onBackPressed());
+        LinearLayout brand = horizontal();
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        TextView brandMark = label("N", isTelevision() ? 19 : 15, Color.WHITE, true);
+        brandMark.setGravity(Gravity.CENTER);
+        brandMark.setBackground(rounded(CYAN, 12));
+        brand.addView(brandMark, lp(isTelevision() ? 38 : 30, isTelevision() ? 38 : 30));
+        TextView brandName = label("NISSKENZI+", isTelevision() ? 19 : 14, Color.WHITE, true);
+        LinearLayout.LayoutParams brandNameP = lp(-2, -2);
+        brandNameP.leftMargin = dp(10);
+        brand.addView(brandName, brandNameP);
+        brand.setContentDescription("Accueil NISSKENZI+");
+        brand.setFocusable(true);
+        brand.setClickable(true);
+        brand.setBackground(rounded(0x001A1B20, 12));
+        brand.setOnFocusChangeListener((view, focused) ->
+                brand.setBackground(outlined(focused ? 0xFF30252A : 0x001A1B20,
+                        12, focused ? CYAN : 0x001A1B20)));
+        header.addView(brand, lp(isTelevision() ? 178 : 132, isTelevision() ? 54 : 42));
+        brand.setOnClickListener(v -> setPage("Accueil"));
 
-        liveTab = buttonText("Live TV", true);
-        vavooTab = buttonText("VAVOO", "VAVOO".equals(sourceFilter));
-        iptvTab = buttonText("IPTV-ORG", "IPTV-ORG".equals(sourceFilter));
-        settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
+        liveTab = buttonText("Accueil", "Accueil".equals(activePage));
+        vavooTab = buttonText("Chaînes", "Live TV".equals(activePage));
+        iptvTab = buttonText("Guide TV", "Guide TV".equals(activePage));
+        recentTab = buttonText("Favoris", "Live TV".equals(activePage) && favoritesOnly);
 
-        LinearLayout.LayoutParams navp = lp(-2, isTelevision() ? 48 : 40);
-        navp.leftMargin = dp(8);
-        header.addView(liveTab, navp);
+        LinearLayout.LayoutParams nav = lp(-2, isTelevision() ? 50 : 40);
+        nav.leftMargin = dp(3);
+        header.addView(liveTab, nav);
+        LinearLayout.LayoutParams nav2 = lp(-2, isTelevision() ? 50 : 40);
+        nav2.leftMargin = dp(2);
+        header.addView(vavooTab, nav2);
+        LinearLayout.LayoutParams nav3 = lp(-2, isTelevision() ? 50 : 40);
+        nav3.leftMargin = dp(2);
+        header.addView(iptvTab, nav3);
+        LinearLayout.LayoutParams nav4 = lp(-2, isTelevision() ? 50 : 40);
+        nav4.leftMargin = dp(2);
+        header.addView(recentTab, nav4);
 
-        LinearLayout.LayoutParams sourceP = lp(-2, isTelevision() ? 48 : 40);
-        sourceP.leftMargin = dp(8);
-        header.addView(vavooTab, sourceP);
-
-        LinearLayout.LayoutParams iptvP = lp(-2, isTelevision() ? 48 : 40);
-        iptvP.leftMargin = dp(8);
-        header.addView(iptvTab, iptvP);
-
-        liveTab.setOnClickListener(v -> setPage("Live TV"));
-        vavooTab.setOnClickListener(v -> switchSource("VAVOO"));
-        iptvTab.setOnClickListener(v -> switchSource("IPTV-ORG"));
+        liveTab.setOnClickListener(v -> setPage("Accueil"));
+        vavooTab.setOnClickListener(v -> showChannelList(false, false));
+        iptvTab.setOnClickListener(v -> setPage("Guide TV"));
+        recentTab.setOnClickListener(v -> showChannelList(true, false));
 
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
         searchInput.setTextColor(Color.WHITE);
-        searchInput.setHintTextColor(0xEEFFFFFF);
-        searchInput.setTextSize(isTelevision() ? 16 : 12);
-        searchInput.setHint("⌕  Rechercher une chaîne…");
-        searchInput.setPadding(dp(18), 0, dp(18), 0);
-        searchInput.setBackground(outlined(0xFF171F2A, 24, 0xFF39485B));
+        searchInput.setHintTextColor(0xFF9A9AA3);
+        searchInput.setTextSize(isTelevision() ? 15 : 11);
+        searchInput.setHint("⌕  Rechercher");
+        searchInput.setPadding(dp(16), 0, dp(16), 0);
+        searchInput.setBackground(outlined(0xFF24252B, 22, 0xFF3A3B42));
         searchInput.setText(searchText);
-        LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 48 : 40), 1f);
-        searchP.leftMargin = dp(isTelevision() ? 20 : 10);
-        searchP.rightMargin = dp(isTelevision() ? 20 : 10);
+        searchInput.setFocusable(true);
+        searchInput.setFocusableInTouchMode(false);
+        LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 48 : 38), 1f);
+        searchP.leftMargin = dp(isTelevision() ? 14 : 8);
+        searchP.rightMargin = dp(isTelevision() ? 10 : 6);
         header.addView(searchInput, searchP);
+        searchInput.setOnFocusChangeListener((view, focused) ->
+                searchInput.setBackground(outlined(focused ? 0xFF30252A : 0xFF24252B,
+                        22, focused ? CYAN : 0xFF3A3B42)));
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 searchText = s == null ? "" : s.toString();
-                scheduleSearchFilter();
+                if (("Accueil".equals(activePage) || "Guide TV".equals(activePage))
+                        && !safe(searchText).isEmpty()) {
+                    showChannelList(false, false);
+                } else {
+                    scheduleSearchFilter();
+                }
             }
             @Override public void afterTextChanged(Editable e) {}
         });
 
-        header.addView(settingsTab, lp(isTelevision() ? 46 : 40, isTelevision() ? 48 : 40));
+        settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
+        settingsTab.setContentDescription("Paramètres");
+        header.addView(settingsTab, lp(isTelevision() ? 52 : 42, isTelevision() ? 48 : 38));
         settingsTab.setOnClickListener(v -> setPage("Paramètres"));
-
-        TextView mark = label("N+", isTelevision() ? 24 : 20, Color.WHITE, true);
-        mark.setGravity(Gravity.CENTER);
-        mark.setBackground(outlined(0xFF1B2938, 16, 0xFF4CC9F0));
-        LinearLayout.LayoutParams markP = lp(isTelevision() ? 54 : 44, isTelevision() ? 48 : 40);
-        markP.leftMargin = dp(10);
-        header.addView(mark, markP);
 
         contentHost = new FrameLayout(this);
         root.addView(contentHost, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        statusView = label(catalogStatus, isTelevision() ? 11 : 9, Color.WHITE, false);
+        statusView = label(catalogStatus, isTelevision() ? 10 : 8, 0xFF9E9EA7, false);
         statusView.setMaxLines(1);
         statusView.setEllipsize(TextUtils.TruncateAt.END);
-        statusView.setPadding(dp(headerPad), dp(6), dp(headerPad), dp(6));
-        statusView.setBackgroundColor(0xFF0C121A);
+        statusView.setPadding(dp(headerPad), dp(7), dp(headerPad), dp(7));
+        statusView.setBackgroundColor(0xFF17181D);
         root.addView(statusView, new LinearLayout.LayoutParams(-1, -2));
         updateHeaderTabs();
         renderPage();
     }
 
     private void setPage(String p) {
-        activePage = "Accueil".equals(p) ? "Live TV" : p;
+        String next = p == null ? "Accueil" : p;
+        if (!next.equals(activePage) && (player != null)) {
+            releaseMediaEngine();
+            currentChannel = null;
+            activePlaybackSource = null;
+            playbackCandidates.clear();
+        }
+        activePage = next;
         if ("Paramètres".equals(activePage)) {
             releaseMediaEngine();
             currentChannel = null;
+            activePlaybackSource = null;
+            playbackCandidates.clear();
         }
         updateHeaderTabs();
         renderPage();
     }
 
+    private void showChannelList(boolean favorites, boolean recent) {
+        if (player != null) {
+            releaseMediaEngine();
+            currentChannel = null;
+            activePlaybackSource = null;
+            playbackCandidates.clear();
+        }
+        activePage = "Live TV";
+        favoritesOnly = favorites;
+        recentOnly = recent;
+        groupedOnly = false;
+        activeCountry = "Tous les pays";
+        categorySearch = "";
+        updateHeaderTabs();
+        renderPage();
+        if (channelResults != null && safe(searchText).isEmpty()) {
+            channelResults.post(() -> {
+                if (!"Live TV".equals(activePage) || channelResults == null) return;
+                View first = channelResults.getChildAt(0);
+                if (first != null) first.requestFocus();
+                else if (categorySearchInput != null) categorySearchInput.requestFocus();
+            });
+        }
+    }
+
     private void updateHeaderTabs() {
-        setTabState(liveTab, "Live TV".equals(activePage));
-        setTabState(vavooTab, "Live TV".equals(activePage) && "VAVOO".equals(sourceFilter));
-        setTabState(iptvTab, "Live TV".equals(activePage) && "IPTV-ORG".equals(sourceFilter));
+        setTabState(liveTab, "Accueil".equals(activePage));
+        setTabState(vavooTab, "Live TV".equals(activePage) && !favoritesOnly);
+        setTabState(iptvTab, "Guide TV".equals(activePage));
+        setTabState(recentTab, "Live TV".equals(activePage) && favoritesOnly);
         setTabState(settingsTab, "Paramètres".equals(activePage));
     }
 
     private void setTabState(TextView tab, boolean selected) {
         if (tab == null) return;
-        tab.setBackground(rounded(selected ? 0xFF173D52 : 0xFF242E3B, 22));
-        tab.setTextColor(selected ? YELLOW : Color.WHITE);
+        tab.setBackground(rounded(selected ? 0xFF3B2027 : 0x001A1B20, 20));
+        tab.setTextColor(selected ? Color.WHITE : 0xFFE6E6EB);
     }
 
     private void renderPage() {
@@ -350,7 +428,6 @@ public class MainActivity extends Activity {
             filterJob = null;
             filterExecutor.purge();
         }
-        // Keep the live layout and its active player stage mounted while video is fullscreen.
         if (fullscreenPlayback) {
             renderCountryChoices();
             updateChannelResults();
@@ -360,58 +437,670 @@ public class MainActivity extends Activity {
             channelAdapter.shutdown();
             channelAdapter = null;
         }
+        if (!"Accueil".equals(activePage) && !"Guide TV".equals(activePage)
+                && homeLogoLoader != null) {
+            homeLogoLoader.close();
+            homeLogoLoader = null;
+        }
         channelResults = null;
         channelListHost = null;
         channelEmptyView = null;
+        countryChoices = null;
+        categorySearchInput = null;
+        previewTitle = null;
+        previewStatus = null;
+        previewDetail = null;
+        sourceOptionsButton = null;
+        channelFavoriteButton = null;
+        channelPreviewImage = null;
+        channelPreviewInitials = null;
+        focusedPreviewChannel = null;
+        playerStage = null;
+        guideProgramViews.clear();
+        guideProgressViews.clear();
         contentHost.removeAllViews();
         if ("Paramètres".equals(activePage)) renderSettings();
+        else if ("Accueil".equals(activePage)) renderHomePage();
+        else if ("Guide TV".equals(activePage)) renderGuidePage();
         else renderLivePage();
     }
 
+    private void renderHomePage() {
+        if (homeLogoLoader != null) homeLogoLoader.close();
+        homeLogoLoader = new ChannelLogoLoader();
+        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout page = vertical();
+        int sidePad = isTelevision() ? 42 : 16;
+        page.setPadding(dp(sidePad), dp(isTelevision() ? 18 : 12), dp(sidePad),
+                dp(isTelevision() ? 22 : 16));
+        scroll.addView(page);
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+        boolean waiting = channels.isEmpty() && loadingCatalog;
+        ArrayList<Channel> recent = recentStore == null
+                ? new ArrayList<>() : channelsForSaved(recentStore.orderedUrls(), 1);
+        ArrayList<Channel> favorites = favoritesStore == null
+                ? new ArrayList<>() : channelsForSaved(
+                        new ArrayList<>(favoritesStore.snapshotUrls()), 1);
+        Channel featured = homeFeaturedChannel(recent, favorites);
+
+        LinearLayout titleRow = horizontal();
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(titleRow, lp(-1, -2));
+        LinearLayout headingBlock = vertical();
+        titleRow.addView(headingBlock, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView eyebrow = label("NISSKENZI+  ·  DIRECT", isTelevision() ? 10 : 8, CYAN, true);
+        eyebrow.setLetterSpacing(0.14f);
+        headingBlock.addView(eyebrow);
+        TextView heading = label("Votre TV, en un seul endroit.", isTelevision() ? 31 : 22, TEXT, true);
+        LinearLayout.LayoutParams headingP = lp(-1, -2);
+        headingP.topMargin = dp(3);
+        headingBlock.addView(heading, headingP);
+        TextView intro = label(waiting
+                        ? "Les chaînes sont en préparation. Tu peux déjà parcourir l’application."
+                        : "Le direct, le guide et tes chaînes préférées sont prêts à explorer.",
+                isTelevision() ? 13 : 9, MUTED, false);
+        LinearLayout.LayoutParams introP = lp(-1, -2);
+        introP.topMargin = dp(4);
+        introP.bottomMargin = dp(isTelevision() ? 13 : 9);
+        headingBlock.addView(intro, introP);
+
+        FrameLayout heroFrame = new FrameLayout(this);
+        GradientDrawable heroBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF442235, 0xFF24232D, 0xFF151820});
+        heroBg.setCornerRadius(dp(24));
+        heroFrame.setBackground(heroBg);
+        heroFrame.setClipToOutline(true);
+        LinearLayout.LayoutParams heroFrameP = lp(-1, isTelevision() ? 224 : 190);
+        heroFrameP.bottomMargin = dp(isTelevision() ? 14 : 10);
+        page.addView(heroFrame, heroFrameP);
+
+        View glow = new View(this);
+        GradientDrawable glowBg = new GradientDrawable();
+        glowBg.setShape(GradientDrawable.OVAL);
+        glowBg.setColor(0x22FF7A9D);
+        FrameLayout.LayoutParams glowP = new FrameLayout.LayoutParams(
+                dp(isTelevision() ? 310 : 190), dp(isTelevision() ? 310 : 190),
+                Gravity.END | Gravity.CENTER_VERTICAL);
+        glowP.rightMargin = dp(isTelevision() ? 200 : 118);
+        glow.setBackground(glowBg);
+        heroFrame.addView(glow, glowP);
+
+        LinearLayout hero = horizontal();
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(isTelevision() ? 28 : 17), dp(isTelevision() ? 20 : 14),
+                dp(isTelevision() ? 24 : 14), dp(isTelevision() ? 20 : 14));
+        heroFrame.addView(hero, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout heroInfo = vertical();
+        heroInfo.setGravity(Gravity.CENTER_VERTICAL);
+        heroInfo.setPadding(0, 0, dp(isTelevision() ? 18 : 10), 0);
+        hero.addView(heroInfo, new LinearLayout.LayoutParams(0, -1, 1.08f));
+        TextView badge = label(featured == null
+                        ? (waiting ? "CATALOGUE EN PRÉPARATION" : "BIENVENUE CHEZ NISSKENZI+")
+                        : (!recent.isEmpty() ? "À REPRENDRE" : "SÉLECTION DU MOMENT"),
+                isTelevision() ? 10 : 8, 0xFFFFA8B7, true);
+        badge.setLetterSpacing(0.1f);
+        heroInfo.addView(badge);
+        previewTitle = label(featured == null
+                        ? (waiting ? "Le direct arrive…" : "Choisis ta prochaine chaîne")
+                        : featured.name,
+                isTelevision() ? 30 : 22, TEXT, true);
+        previewTitle.setMaxLines(2);
+        previewTitle.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams heroTitleP = lp(-1, -2);
+        heroTitleP.topMargin = dp(8);
+        heroInfo.addView(previewTitle, heroTitleP);
+
+        String where = featured == null
+                ? (waiting ? "France  ·  Maroc  ·  Maghreb  ·  Pays arabes"
+                    : "France  ·  Maroc  ·  Maghreb  ·  Pays arabes")
+                : flag(featured.country, countryCode(featured.country)) + "  "
+                    + safeCountry(featured.country) + "  ·  "
+                    + (featured.isVavoo ? "VAVOO" : "IPTV-ORG");
+        previewStatus = label(where, isTelevision() ? 13 : 9, 0xFFE7DDE0, false);
+        previewStatus.setMaxLines(1);
+        previewStatus.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams statusP = lp(-1, -2);
+        statusP.topMargin = dp(6);
+        heroInfo.addView(previewStatus, statusP);
+
+        String detailText = featured == null
+                ? (waiting ? "Tes chaînes et leurs logos se chargent en arrière-plan."
+                    : "Appuie sur Chaînes pour parcourir le catalogue.")
+                : featured.sourceCount() + " flux disponibles  ·  meilleur flux sélectionné automatiquement";
+        previewDetail = label(detailText, isTelevision() ? 11 : 8, MUTED, false);
+        previewDetail.setMaxLines(1);
+        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams detailP = lp(-1, -2);
+        detailP.topMargin = dp(4);
+        heroInfo.addView(previewDetail, detailP);
+
+        LinearLayout heroActions = horizontal();
+        LinearLayout.LayoutParams actionsP = lp(-1, -2);
+        actionsP.topMargin = dp(isTelevision() ? 12 : 9);
+        heroInfo.addView(heroActions, actionsP);
+        TextView watch = buttonText(featured == null
+                        ? (waiting ? "Ouvrir les chaînes" : "Voir les chaînes")
+                        : "▶  Regarder",
+                true);
+        heroActions.addView(watch, lp(-2, isTelevision() ? 46 : 38));
+        watch.setEnabled(true);
+        watch.setOnClickListener(v -> {
+            if (featured != null) play(featured);
+            else showChannelList(false, false);
+        });
+        TextView guide = buttonText("Guide TV", false);
+        LinearLayout.LayoutParams guideP = lp(-2, isTelevision() ? 46 : 38);
+        guideP.leftMargin = dp(8);
+        heroActions.addView(guide, guideP);
+        guide.setOnClickListener(v -> setPage("Guide TV"));
+
+        playerStage = new FrameLayout(this);
+        GradientDrawable stageBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF5A2D43, 0xFF28252E, 0xFF171A21});
+        stageBg.setCornerRadius(dp(20));
+        playerStage.setBackground(stageBg);
+        playerStage.setClipToOutline(true);
+        playerStage.setFocusable(false);
+        LinearLayout.LayoutParams stageP = new LinearLayout.LayoutParams(0, -1, 0.74f);
+        stageP.leftMargin = dp(8);
+        hero.addView(playerStage, stageP);
+
+        View stageGlow = new View(this);
+        GradientDrawable stageGlowBg = new GradientDrawable();
+        stageGlowBg.setShape(GradientDrawable.OVAL);
+        stageGlowBg.setColor(0x33FF7595);
+        FrameLayout.LayoutParams stageGlowP = new FrameLayout.LayoutParams(
+                dp(isTelevision() ? 230 : 150), dp(isTelevision() ? 230 : 150),
+                Gravity.CENTER);
+        stageGlow.setBackground(stageGlowBg);
+        playerStage.addView(stageGlow, stageGlowP);
+
+        TextView stageMark = label(featured == null
+                        ? (waiting ? "N+  LIVE" : "NISSKENZI+")
+                        : initials(featured.name),
+                isTelevision() ? 48 : 34, 0xFFFFEEF2, true);
+        stageMark.setGravity(Gravity.CENTER);
+        playerStage.addView(stageMark, new FrameLayout.LayoutParams(-1, -1));
+        if (featured != null && !safe(featured.logo).isEmpty()) {
+            ImageView image = new ImageView(this);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            image.setPadding(dp(22), dp(22), dp(22), dp(22));
+            image.setTag(safe(featured.logo));
+            playerStage.addView(image, new FrameLayout.LayoutParams(-1, -1));
+            bindHomeLogo(image, stageMark, featured.logo);
+        }
+
+        TextView liveBadge = label(featured == null
+                        ? (waiting ? "●  PRÉPARATION" : "●  À DÉCOUVRIR")
+                        : "●  EN DIRECT",
+                isTelevision() ? 9 : 7, Color.WHITE, true);
+        liveBadge.setGravity(Gravity.CENTER);
+        liveBadge.setPadding(dp(10), dp(6), dp(10), dp(6));
+        liveBadge.setBackground(rounded(0xCC17181D, 14));
+        FrameLayout.LayoutParams liveP = new FrameLayout.LayoutParams(-2, -2,
+                Gravity.TOP | Gravity.END);
+        liveP.setMargins(0, dp(11), dp(11), 0);
+        playerStage.addView(liveBadge, liveP);
+        homePreviewIdentity = featured == null ? "" : featured.identity();
+        if (featured != null && isGuideEligible(featured)) {
+            EpgProvider.Result cachedGuide = guideResults.get(featured.identity());
+            if (cachedGuide != null) applyHomeGuideResult(featured, cachedGuide);
+            else requestGuidePrograms(Collections.singletonList(featured));
+        }
+
+        addHomeShortcuts(page);
+        if (channels.isEmpty()) {
+            if (waiting) addHomeLoadingRail(page);
+            else addHomeEmptyState(page);
+        } else {
+            if (!recent.isEmpty()) addHomeRail(page, "Reprendre", recentChannels(12));
+            if (!favorites.isEmpty()) addHomeRail(page, "Mes favoris", favoriteChannels(12));
+            addHomeRail(page, "France", channelsForRegion("FRANCE", 14));
+            addHomeRail(page, "Maroc", channelsForIptvMorocco(14));
+            addHomeRail(page, "Maghreb", channelsForRegion("MAGHREB", 14));
+            addHomeRail(page, "Pays arabes", channelsForRegion("ARAB", 14));
+            addHomeRail(page, "Toutes les chaînes", firstChannels(14));
+        }
+
+        View firstFocus = watch;
+        firstFocus.post(() -> {
+            if ("Accueil".equals(activePage) && firstFocus.isAttachedToWindow()) {
+                firstFocus.requestFocus();
+            }
+        });
+    }
+
+    private Channel homeFeaturedChannel(List<Channel> recent, List<Channel> favorites) {
+        if (recent != null && !recent.isEmpty()) return recent.get(0);
+        if (favorites != null && !favorites.isEmpty()) return favorites.get(0);
+        Channel best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Channel channel : channels) {
+            if (channel == null) continue;
+            int score = 0;
+            if (!safe(channel.logo).isEmpty()) score += 40;
+            if (channel.sourceCount() > 1) score += 24;
+            if ("FR".equals(ChannelCatalogPolicy.countryCode(channel.country))) score += 8;
+            if (channel.isVavoo) score += 2;
+            if (score > bestScore) {
+                best = channel;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private void addHomeShortcuts(LinearLayout page) {
+        LinearLayout section = horizontal();
+        section.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = label("ACCÈS RAPIDE", isTelevision() ? 9 : 7, MUTED, true);
+        title.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams titleP = lp(-2, -2);
+        titleP.rightMargin = dp(isTelevision() ? 14 : 8);
+        section.addView(title, titleP);
+        TextView france = buttonText("🇫🇷  France", false);
+        TextView morocco = buttonText("🇲🇦  Maroc", false);
+        TextView maghreb = buttonText("🌍  Maghreb", false);
+        TextView guide = buttonText("▦  Guide TV", false);
+        for (TextView chip : new TextView[]{france, morocco, maghreb, guide}) {
+            LinearLayout.LayoutParams chipP = lp(-2, isTelevision() ? 40 : 33);
+            chipP.rightMargin = dp(7);
+            section.addView(chip, chipP);
+        }
+        france.setOnClickListener(v -> openCountryShortcut("France"));
+        morocco.setOnClickListener(v -> openCountryShortcut("Maroc"));
+        maghreb.setOnClickListener(v -> {
+            showChannelList(false, false);
+            activeCountry = "Tous les pays";
+            categorySearch = "";
+            searchText = "Maghreb";
+            searchInput.setText(searchText);
+        });
+        guide.setOnClickListener(v -> setPage("Guide TV"));
+        LinearLayout.LayoutParams sectionP = lp(-1, -2);
+        sectionP.bottomMargin = dp(isTelevision() ? 12 : 8);
+        page.addView(section, sectionP);
+    }
+
+    private void openCountryShortcut(String country) {
+        showChannelList(false, false);
+        activeCountry = country;
+        categorySearch = "";
+        renderCountryChoices();
+        updateChannelResults();
+    }
+
+    private void addHomeLoadingRail(LinearLayout page) {
+        LinearLayout heading = horizontal();
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(heading, lp(-1, -2));
+        TextView title = label("TES CHAÎNES ARRIVENT", isTelevision() ? 18 : 13, TEXT, true);
+        heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView progress = label("●  CHARGEMENT", isTelevision() ? 9 : 7, CYAN, true);
+        heading.addView(progress);
+        LinearLayout.LayoutParams headingP = (LinearLayout.LayoutParams) heading.getLayoutParams();
+        headingP.bottomMargin = dp(9);
+        heading.setLayoutParams(headingP);
+
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        LinearLayout cards = horizontal();
+        for (int i = 0; i < (isTelevision() ? 4 : 2); i++) {
+            LinearLayout skeleton = vertical();
+            skeleton.setGravity(Gravity.CENTER_VERTICAL);
+            skeleton.setPadding(dp(14), dp(12), dp(14), dp(12));
+            skeleton.setBackground(outlined(0xFF20232B, 17, 0x22FFFFFF));
+            View art = new View(this);
+            art.setBackground(rounded(i % 2 == 0 ? 0xFF342A39 : 0xFF2B2B34, 12));
+            skeleton.addView(art, lp(isTelevision() ? 62 : 44, isTelevision() ? 62 : 44));
+            View line = new View(this);
+            line.setBackground(rounded(0xFF343640, 8));
+            LinearLayout.LayoutParams lineP = lp(isTelevision() ? 160 : 116, 10);
+            lineP.topMargin = dp(12);
+            skeleton.addView(line, lineP);
+            View subline = new View(this);
+            subline.setBackground(rounded(0xFF2D2F38, 8));
+            LinearLayout.LayoutParams sublineP = lp(isTelevision() ? 105 : 78, 7);
+            sublineP.topMargin = dp(7);
+            skeleton.addView(subline, sublineP);
+            LinearLayout.LayoutParams cardP = lp(isTelevision() ? 224 : 170,
+                    isTelevision() ? 142 : 112);
+            cardP.rightMargin = dp(10);
+            cards.addView(skeleton, cardP);
+        }
+        scroller.addView(cards);
+        LinearLayout.LayoutParams scrollerP = lp(-1, -2);
+        page.addView(scroller, scrollerP);
+        TextView hint = label("Le catalogue s’affiche dès que les premières chaînes sont prêtes.",
+                isTelevision() ? 11 : 8, MUTED, false);
+        LinearLayout.LayoutParams hintP = lp(-1, -2);
+        hintP.topMargin = dp(7);
+        page.addView(hint, hintP);
+    }
+
+    private void addHomeEmptyState(LinearLayout page) {
+        LinearLayout card = horizontal();
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(isTelevision() ? 22 : 14), dp(isTelevision() ? 16 : 12),
+                dp(isTelevision() ? 22 : 14), dp(isTelevision() ? 16 : 12));
+        card.setBackground(outlined(0xFF1C2028, 16, 0x22FFFFFF));
+        TextView message = label("Le catalogue n’a pas pu être chargé.",
+                isTelevision() ? 14 : 10, TEXT, true);
+        card.addView(message, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView retry = buttonText("↻ Réessayer", true);
+        card.addView(retry, lp(-2, isTelevision() ? 42 : 34));
+        retry.setOnClickListener(v -> loadChannels(true));
+        page.addView(card, lp(-1, -2));
+    }
+
+
+    private void addHomeRail(LinearLayout page, String title, List<Channel> items) {
+        if (items == null || items.isEmpty()) return;
+        LinearLayout headingRow = horizontal();
+        headingRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams headingP = lp(-1, -2);
+        headingP.topMargin = dp(2);
+        headingP.bottomMargin = dp(9);
+        page.addView(headingRow, headingP);
+        TextView heading = label(title, isTelevision() ? 20 : 15, TEXT, true);
+        headingRow.addView(heading, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView count = label(String.valueOf(items.size()), isTelevision() ? 11 : 9, MUTED, true);
+        count.setGravity(Gravity.CENTER);
+        count.setPadding(dp(9), dp(4), dp(9), dp(4));
+        count.setBackground(rounded(0xFF28292F, 14));
+        headingRow.addView(count);
+
+        HorizontalScrollView horizontalScroll = new HorizontalScrollView(this);
+        horizontalScroll.setHorizontalScrollBarEnabled(false);
+        horizontalScroll.setClipToPadding(false);
+        LinearLayout cards = horizontal();
+        cards.setGravity(Gravity.TOP);
+        horizontalScroll.addView(cards);
+        LinearLayout.LayoutParams scrollP = lp(-1, isTelevision() ? 174 : 145);
+        scrollP.bottomMargin = dp(isTelevision() ? 19 : 13);
+        page.addView(horizontalScroll, scrollP);
+
+        int limit = Math.min(items.size(), isTelevision() ? 8 : 9);
+        for (int i = 0; i < limit; i++) {
+            Channel channel = items.get(i);
+            LinearLayout card = vertical();
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setPadding(dp(14), dp(11), dp(14), dp(10));
+            card.setFocusable(true);
+            card.setFocusableInTouchMode(false);
+            card.setClickable(true);
+            card.setBackground(outlined(0xFF1D2028, 17, 0x16FFFFFF));
+
+            LinearLayout top = horizontal();
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            card.addView(top, lp(-1, -2));
+            FrameLayout logoTile = new FrameLayout(this);
+            logoTile.setBackground(rounded(0xFFF1EEF0, 12));
+            int logoSize = isTelevision() ? 54 : 42;
+            TextView mark = label(initials(channel.name), isTelevision() ? 16 : 12, 0xFF9D3445, true);
+            mark.setGravity(Gravity.CENTER);
+            logoTile.addView(mark, new FrameLayout.LayoutParams(-1, -1));
+            if (!safe(channel.logo).isEmpty()) {
+                ImageView logo = new ImageView(this);
+                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                logo.setPadding(dp(5), dp(5), dp(5), dp(5));
+                logo.setTag(safe(channel.logo));
+                logoTile.addView(logo, new FrameLayout.LayoutParams(-1, -1));
+                bindHomeLogo(logo, mark, channel.logo);
+            }
+            top.addView(logoTile, lp(logoSize, logoSize));
+            if (channel.sourceCount() > 1) {
+                TextView folder = label("▤ " + channel.sourceCount(),
+                        isTelevision() ? 8 : 7, Color.WHITE, true);
+                folder.setGravity(Gravity.CENTER);
+                folder.setPadding(dp(5), dp(3), dp(5), dp(3));
+                folder.setBackground(rounded(CYAN, 10));
+                folder.setContentDescription("Ouvrir le dossier des " + channel.sourceCount() + " flux");
+                folder.setFocusable(true);
+                folder.setClickable(true);
+                FrameLayout.LayoutParams folderP = new FrameLayout.LayoutParams(-2, -2,
+                        Gravity.TOP | Gravity.END);
+                folderP.setMargins(0, dp(4), dp(4), 0);
+                logoTile.addView(folder, folderP);
+                folder.setOnClickListener(v -> showSourceChoices(channel));
+            }
+            TextView ordinal = label(String.format(Locale.ROOT, "%02d", i + 1),
+                    isTelevision() ? 10 : 8, MUTED, true);
+            ordinal.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams ordinalP = new LinearLayout.LayoutParams(0, -2, 1f);
+            ordinalP.leftMargin = dp(8);
+            ordinal.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            top.addView(ordinal, ordinalP);
+
+            TextView name = label(channel.name, isTelevision() ? 15 : 12, TEXT, true);
+            name.setMaxLines(1);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams nameP = lp(-1, -2);
+            nameP.topMargin = dp(8);
+            card.addView(name, nameP);
+            TextView country = label(flag(channel.country, countryCode(channel.country))
+                    + "  " + safeCountry(channel.country),
+                    isTelevision() ? 10 : 8, MUTED, false);
+            country.setSingleLine(true);
+            country.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams countryP = lp(-1, -2);
+            countryP.topMargin = dp(3);
+            card.addView(country, countryP);
+            TextView provider = label(channel.sourceCount() > 1
+                    ? "▤ DOSSIER · " + channel.sourceCount() + " flux"
+                    : (channel.isVavoo ? "VAVOO" : "IPTV-ORG") + " recommandé",
+                    isTelevision() ? 9 : 7, CYAN, true);
+            provider.setSingleLine(true);
+            provider.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams sourceP = lp(-1, -2);
+            sourceP.topMargin = dp(5);
+            card.addView(provider, sourceP);
+
+            LinearLayout.LayoutParams cardP = lp(isTelevision() ? 236 : 188,
+                    isTelevision() ? 156 : 130);
+            cardP.rightMargin = dp(11);
+            cards.addView(card, cardP);
+            card.setContentDescription(channel.name + ", " + safeCountry(channel.country)
+                    + ", " + (channel.isVavoo ? "VAVOO" : "IPTV-ORG") + " recommandé"
+                    + (channel.sourceCount() > 1 ? ", " + channel.sourceCount() + " flux au total" : ""));
+            card.setOnFocusChangeListener((view, focused) -> {
+                card.setBackground(outlined(focused ? 0xFF382431 : 0xFF1D2028, 17,
+                        focused ? CYAN : 0x00202020));
+                card.setScaleX(focused ? 1.04f : 1f);
+                card.setScaleY(focused ? 1.04f : 1f);
+            });
+            card.setOnClickListener(v -> play(channel));
+            card.setOnLongClickListener(v -> {
+                if (channel.sourceCount() < 2) return false;
+                showSourceChoices(channel);
+                return true;
+            });
+        }
+    }
+
+    private void bindHomeLogo(ImageView image, TextView initialsView, String logoUrl) {
+        ChannelLogoLoader loader = homeLogoLoader;
+        String url = safe(logoUrl);
+        if (loader == null || url.isEmpty()) return;
+        Bitmap cached = loader.getCached(url);
+        if (cached != null) {
+            image.setImageBitmap(cached);
+            initialsView.setVisibility(View.GONE);
+            return;
+        }
+        loader.load(url, bitmap -> image.post(() -> {
+            if (homeLogoLoader != loader || loader.isClosed()
+                    || !url.equals(image.getTag()) || bitmap == null) return;
+            image.setImageBitmap(bitmap);
+            initialsView.setVisibility(View.GONE);
+        }));
+    }
+
+    private ArrayList<Channel> channelsForRegion(String region, int limit) {
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel channel : channels) {
+            String code = ChannelCatalogPolicy.countryCode(channel.country);
+            String rawCountry = Channel.normalizeSearch(channel.country);
+            boolean genericFrance = code.isEmpty()
+                    && (rawCountry.contains("france") || rawCountry.contains("francais")
+                    || rawCountry.contains("francaise"));
+            boolean genericMaghreb = code.isEmpty() && rawCountry.contains("maghreb");
+            boolean genericArab = code.isEmpty()
+                    && (rawCountry.contains("arab") || rawCountry.contains("arabia"));
+            boolean match = "FRANCE".equals(region) ? ("FR".equals(code) || genericFrance)
+                    : ("MAGHREB".equals(region)
+                        ? (ChannelCatalogPolicy.isMaghrebCode(code) || genericMaghreb)
+                        : ((ChannelCatalogPolicy.isArabCode(code)
+                                && !ChannelCatalogPolicy.isMaghrebCode(code)) || genericArab));
+            if (!match) continue;
+            result.add(channel);
+            if (result.size() >= limit) break;
+        }
+        return result;
+    }
+
+    private ArrayList<Channel> channelsForIptvMorocco(int limit) {
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel channel : channels) {
+            boolean hasMoroccanIptvOrg = false;
+            for (Channel option : channel.playbackOptions()) {
+                if (ChannelCatalogPolicy.isIptvOrgMorocco(option)) {
+                    hasMoroccanIptvOrg = true;
+                    break;
+                }
+            }
+            if (!hasMoroccanIptvOrg) continue;
+            result.add(channel);
+            if (result.size() >= limit) break;
+        }
+        return result;
+    }
+
+    private ArrayList<Channel> channelsForSaved(List<String> savedIds, int limit) {
+        ArrayList<Channel> result = new ArrayList<>();
+        if (savedIds == null || savedIds.isEmpty()) return result;
+        Set<String> added = new LinkedHashSet<>();
+        for (String savedId : savedIds) {
+            Channel channel = channelBySavedId.get(savedId);
+            if (channel != null && added.add(channel.identity())) {
+                result.add(channel);
+                if (result.size() >= limit) break;
+            }
+        }
+        return result;
+    }
+
+    private ArrayList<Channel> recentChannels(int limit) {
+        return recentStore == null ? new ArrayList<>()
+                : channelsForSaved(recentStore.orderedUrls(), limit);
+    }
+
+    private ArrayList<Channel> favoriteChannels(int limit) {
+        return favoritesStore == null ? new ArrayList<>()
+                : channelsForSaved(new ArrayList<>(favoritesStore.snapshotUrls()), limit);
+    }
+
+    private ArrayList<Channel> groupedChannels(int limit) {
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel channel : channels) {
+            if (channel.sourceCount() > 1) result.add(channel);
+        }
+        Collections.sort(result, (left, right) -> {
+            int bySourceCount = Integer.compare(right.sourceCount(), left.sourceCount());
+            return bySourceCount != 0 ? bySourceCount
+                    : left.searchTitle().compareTo(right.searchTitle());
+        });
+        if (result.size() > limit) result.subList(limit, result.size()).clear();
+        return result;
+    }
+
+    private ArrayList<Channel> firstChannels(int limit) {
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel channel : channels) {
+            result.add(channel);
+            if (result.size() >= limit) break;
+        }
+        return result;
+    }
+
+    private ArrayList<Channel> recommendedChannels(int limit) {
+        Set<String> saved = new HashSet<>();
+        Set<String> preferredCountries = new HashSet<>();
+        if (recentStore != null) saved.addAll(recentStore.snapshotUrls());
+        if (favoritesStore != null) saved.addAll(favoritesStore.snapshotUrls());
+        for (String id : saved) {
+            Channel watched = channelBySavedId.get(id);
+            if (watched != null) preferredCountries.add(Channel.normalizeSearch(watched.country));
+        }
+
+        ArrayList<Channel> candidates = new ArrayList<>();
+        for (Channel channel : channels) {
+            if (channel.matchesSavedIds(saved)) continue;
+            candidates.add(channel);
+            if (candidates.size() >= 500) break;
+        }
+        Collections.sort(candidates, (left, right) -> {
+            int leftScore = recommendationScore(left, preferredCountries);
+            int rightScore = recommendationScore(right, preferredCountries);
+            int byInterest = Integer.compare(rightScore, leftScore);
+            return byInterest != 0 ? byInterest : left.searchTitle().compareTo(right.searchTitle());
+        });
+        if (candidates.size() > limit) candidates.subList(limit, candidates.size()).clear();
+        return candidates;
+    }
+
+    private int recommendationScore(Channel channel, Set<String> preferredCountries) {
+        int score = sourceReliabilityScore(channel.playbackOptions().get(0));
+        if (preferredCountries.contains(Channel.normalizeSearch(channel.country))) score += 200;
+        return score;
+    }
+
     private void renderLivePage() {
+        if (homeLogoLoader != null) homeLogoLoader.close();
+        homeLogoLoader = new ChannelLogoLoader();
+
         LinearLayout body = horizontal();
         body.setGravity(Gravity.FILL);
+        body.setPadding(dp(isTelevision() ? 20 : 10), dp(isTelevision() ? 14 : 8),
+                dp(isTelevision() ? 20 : 10), dp(isTelevision() ? 14 : 8));
         contentHost.addView(body, new FrameLayout.LayoutParams(-1, -1));
 
-        // --- COLONNE GAUCHE : Catégories, Récemment vus, Favoris et Filtres pays ---
         LinearLayout left = vertical();
-        left.setPadding(dp(18), dp(16), dp(14), dp(12));
-        body.addView(left, new LinearLayout.LayoutParams(0, -1, 3.0f));
+        left.setPadding(dp(isTelevision() ? 19 : 12), dp(isTelevision() ? 18 : 11),
+                dp(isTelevision() ? 15 : 8), dp(10));
+        left.setBackground(rounded(0xFF171A21, 18));
+        LinearLayout.LayoutParams leftP = new LinearLayout.LayoutParams(
+                dp(isTelevision() ? 270 : 150), -1);
+        leftP.rightMargin = dp(isTelevision() ? 12 : 7);
+        body.addView(left, leftP);
 
-        View dividerOne = new View(this);
-        dividerOne.setBackgroundColor(LINE);
-        body.addView(dividerOne, new LinearLayout.LayoutParams(dp(1), -1));
-
-        // --- COLONNE DU MILIEU : Liste compacte de chaînes avec index, logo et nom ---
-        LinearLayout middle = vertical();
-        middle.setPadding(dp(16), dp(16), dp(16), dp(12));
-        body.addView(middle, new LinearLayout.LayoutParams(0, -1, 3.25f));
-
-        View dividerTwo = new View(this);
-        dividerTwo.setBackgroundColor(LINE);
-        body.addView(dividerTwo, new LinearLayout.LayoutParams(dp(1), -1));
-
-        // --- COLONNE DROITE : Lecteur/Aperçu noir au-dessus et actions Favori en dessous ---
-        LinearLayout right = vertical();
-        right.setPadding(dp(18), dp(18), dp(20), dp(14));
-        body.addView(right, new LinearLayout.LayoutParams(0, -1, 3.75f));
-
-        TextView catTitle = label("CATEGORIES & PAYS", isTelevision() ? 11 : 9, Color.WHITE, true);
-        catTitle.setLetterSpacing(0.08f);
-        LinearLayout.LayoutParams ctp = lp(-1, -2);
-        ctp.bottomMargin = dp(8);
-        left.addView(catTitle, ctp);
+        TextView categoryTitle = label("BIBLIOTHÈQUE", isTelevision() ? 10 : 8, CYAN, true);
+        categoryTitle.setLetterSpacing(0.12f);
+        left.addView(categoryTitle, lp(-1, -2));
+        TextView categorySubtitle = label("Chaînes, pays et favoris",
+                isTelevision() ? 11 : 8, MUTED, false);
+        LinearLayout.LayoutParams categorySubtitleP = lp(-1, -2);
+        categorySubtitleP.topMargin = dp(4);
+        categorySubtitleP.bottomMargin = dp(10);
+        left.addView(categorySubtitle, categorySubtitleP);
 
         categorySearchInput = new EditText(this);
         categorySearchInput.setSingleLine(true);
-        categorySearchInput.setTextSize(isTelevision() ? 14 : 11);
+        categorySearchInput.setTextSize(isTelevision() ? 13 : 9);
         categorySearchInput.setTextColor(Color.WHITE);
-        categorySearchInput.setHintTextColor(0xEEFFFFFF);
-        categorySearchInput.setHint("Filtrer les pays…");
-        categorySearchInput.setPadding(dp(14), 0, dp(14), 0);
-        categorySearchInput.setBackground(outlined(0xFF171F2A, 18, 0xFF39485B));
+        categorySearchInput.setHintTextColor(0xFF9999A2);
+        categorySearchInput.setHint("Rechercher un pays…");
+        categorySearchInput.setPadding(dp(13), 0, dp(10), 0);
+        categorySearchInput.setBackground(outlined(0xFF222630, 13, 0xFF353944));
         categorySearchInput.setText(categorySearch);
-        left.addView(categorySearchInput, lp(-1, isTelevision() ? 46 : 40));
+        categorySearchInput.setContentDescription("Rechercher un pays");
+        left.addView(categorySearchInput, lp(-1, isTelevision() ? 44 : 36));
         categorySearchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -424,124 +1113,252 @@ public class MainActivity extends Activity {
         ScrollView categoryScroll = new ScrollView(this);
         categoryScroll.setVerticalScrollBarEnabled(false);
         countryChoices = vertical();
-        countryChoices.setPadding(0, dp(8), 0, dp(8));
+        countryChoices.setPadding(0, dp(9), 0, dp(9));
         categoryScroll.addView(countryChoices);
-        LinearLayout.LayoutParams catScrollP = new LinearLayout.LayoutParams(-1, 0, 1f);
-        catScrollP.topMargin = dp(6);
-        left.addView(categoryScroll, catScrollP);
+        LinearLayout.LayoutParams categoryScrollP = new LinearLayout.LayoutParams(-1, 0, 1f);
+        categoryScrollP.topMargin = dp(4);
+        left.addView(categoryScroll, categoryScrollP);
 
-        // En-tête de la liste centrale
-        LinearLayout middleHeader = horizontal();
-        TextView sourceTitle = label(sourceFilter, isTelevision() ? 24 : 18, Color.WHITE, true);
-        middleHeader.addView(sourceTitle, new LinearLayout.LayoutParams(0, -2, 1f));
-        countView = label(channels.size() + " chaînes", isTelevision() ? 13 : 10, Color.WHITE, true);
-        countView.setBackground(rounded(0xFF212B38, 15));
-        countView.setPadding(dp(11), dp(6), dp(11), dp(6));
-        middleHeader.addView(countView);
-        middle.addView(middleHeader, lp(-1, -2));
+        LinearLayout right = vertical();
+        right.setPadding(dp(isTelevision() ? 17 : 10), dp(isTelevision() ? 12 : 7),
+                dp(isTelevision() ? 12 : 8), dp(4));
+        body.addView(right, new LinearLayout.LayoutParams(0, -1, 1f));
 
-        TextView listSubtitle = label(
-                "Flux direct · " + ("VAVOO".equals(sourceFilter) ? "VAVOO Server" : "IPTV-ORG Playlist"),
-                isTelevision() ? 12 : 9, 0xEEFFFFFF, false);
-        LinearLayout.LayoutParams lsp = lp(-1, -2);
-        lsp.topMargin = dp(4);
-        lsp.bottomMargin = dp(10);
-        middle.addView(listSubtitle, lsp);
+        LinearLayout heading = horizontal();
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams headingP = lp(-1, -2);
+        headingP.bottomMargin = dp(isTelevision() ? 10 : 7);
+        right.addView(heading, headingP);
+        LinearLayout headingInfo = vertical();
+        heading.addView(headingInfo, new LinearLayout.LayoutParams(0, -2, 1f));
+        String title = favoritesOnly ? "Mes favoris" : recentOnly ? "Récemment vus"
+                : (!"Tous les pays".equals(activeCountry) ? activeCountry : "Chaînes");
+        TextView pageTitle = label(title, isTelevision() ? 29 : 19, TEXT, true);
+        headingInfo.addView(pageTitle);
+        TextView subtitle = label("Une chaîne par ligne. Les meilleurs flux sont rangés dans leur mini-dossier.",
+                isTelevision() ? 11 : 8, MUTED, false);
+        LinearLayout.LayoutParams subtitleP = lp(-1, -2);
+        subtitleP.topMargin = dp(3);
+        headingInfo.addView(subtitle, subtitleP);
+        countView = label(channels.size() + " chaînes", isTelevision() ? 12 : 9,
+                0xFFE7E7EB, true);
+        countView.setGravity(Gravity.CENTER);
+        countView.setPadding(dp(13), dp(7), dp(13), dp(7));
+        countView.setBackground(rounded(0xFF272B35, 16));
+        heading.addView(countView);
 
-        // RecyclerView reuses visible rows instead of inflating a view for every channel.
-        channelListHost = new FrameLayout(this);
-        channelResults = new RecyclerView(this);
-        channelResults.setLayoutManager(new LinearLayoutManager(this));
-        channelResults.setHasFixedSize(true);
-        channelResults.setItemViewCacheSize(8);
-        channelResults.setItemAnimator(null);
-        channelAdapter = new ChannelAdapter(this::play, this::isFavorite);
-        channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-        channelResults.setAdapter(channelAdapter);
-        channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
+        focusedPreviewChannel = currentChannel != null ? currentChannel
+                : (channels.isEmpty() ? null : channels.get(0));
+        Channel initialPreview = focusedPreviewChannel;
+        LinearLayout preview = horizontal();
+        preview.setGravity(Gravity.CENTER_VERTICAL);
+        preview.setPadding(dp(isTelevision() ? 17 : 10), dp(isTelevision() ? 12 : 8),
+                dp(isTelevision() ? 17 : 10), dp(isTelevision() ? 12 : 8));
+        GradientDrawable previewBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF30232D, 0xFF20232B, 0xFF191C23});
+        previewBg.setCornerRadius(dp(18));
+        preview.setBackground(previewBg);
+        LinearLayout.LayoutParams previewP = lp(-1, isTelevision() ? 120 : 94);
+        previewP.bottomMargin = dp(isTelevision() ? 9 : 6);
+        right.addView(preview, previewP);
 
-        channelEmptyView = vertical();
-        channelEmptyView.setGravity(Gravity.CENTER);
-        channelEmptyView.setVisibility(View.GONE);
-        channelListHost.addView(channelEmptyView, new FrameLayout.LayoutParams(-1, -1));
-        middle.addView(channelListHost, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        // Colonne de droite : Aperçu & Actions
-        previewTitle = label(currentChannel == null ? "Aperçu du direct" : safe(currentChannel.name),
-                isTelevision() ? 21 : 16, Color.WHITE, true);
-        previewTitle.setMaxLines(2);
+        LinearLayout previewInfo = vertical();
+        previewInfo.setGravity(Gravity.CENTER_VERTICAL);
+        preview.addView(previewInfo, new LinearLayout.LayoutParams(0, -1, 1f));
+        TextView liveLabel = label(currentChannel == null ? "APERÇU DE CHAÎNE" : "●  EN DIRECT",
+                isTelevision() ? 9 : 7, 0xFFFFA8B7, true);
+        liveLabel.setLetterSpacing(0.1f);
+        previewInfo.addView(liveLabel);
+        previewTitle = label(initialPreview == null ? "Sélectionne une chaîne"
+                : safe(initialPreview.name), isTelevision() ? 20 : 13, TEXT, true);
+        previewTitle.setSingleLine(true);
         previewTitle.setEllipsize(TextUtils.TruncateAt.END);
-        right.addView(previewTitle, lp(-1, -2));
-
-        previewStatus = label(currentChannel == null ? "Sélectionnez une chaîne pour démarrer" : "Connexion au flux…",
-                isTelevision() ? 12 : 10, 0xEEFFFFFF, false);
-        LinearLayout.LayoutParams psp = lp(-1, -2);
-        psp.topMargin = dp(5);
-        psp.bottomMargin = dp(12);
-        right.addView(previewStatus, psp);
+        LinearLayout.LayoutParams previewTitleP = lp(-1, -2);
+        previewTitleP.topMargin = dp(4);
+        previewInfo.addView(previewTitle, previewTitleP);
+        previewStatus = label(initialPreview == null
+                ? (loadingCatalog ? "Préparation du catalogue…" : "Le catalogue est vide")
+                : flag(initialPreview.country, countryCode(initialPreview.country)) + "  "
+                    + safeCountry(initialPreview.country) + "  ·  "
+                    + (initialPreview.isVavoo ? "VAVOO" : "IPTV-ORG"),
+                isTelevision() ? 11 : 8, 0xFFE2DEE4, false);
+        previewStatus.setSingleLine(true);
+        previewStatus.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams previewStatusP = lp(-1, -2);
+        previewStatusP.topMargin = dp(3);
+        previewInfo.addView(previewStatus, previewStatusP);
+        previewDetail = label(initialPreview == null
+                ? "Les chaînes apparaîtront ici dès que le catalogue sera prêt."
+                : (initialPreview.sourceCount() > 1
+                    ? "Meilleur flux choisi · " + initialPreview.sourceCount() + " sources disponibles"
+                    : "Prêt à regarder en direct"),
+                isTelevision() ? 10 : 7, MUTED, false);
+        previewDetail.setSingleLine(true);
+        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams previewDetailP = lp(-1, -2);
+        previewDetailP.topMargin = dp(3);
+        previewInfo.addView(previewDetail, previewDetailP);
 
         playerStage = new FrameLayout(this);
-        playerStage.setBackgroundColor(Color.BLACK);
+        GradientDrawable stageBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF552940, 0xFF28232D, 0xFF191C23});
+        stageBg.setCornerRadius(dp(15));
+        playerStage.setBackground(stageBg);
+        playerStage.setClipToOutline(true);
         playerStage.setFocusable(false);
-        LinearLayout.LayoutParams stageP = lp(-1, isTelevision() ? 280 : 200);
-        right.addView(playerStage, stageP);
+        LinearLayout.LayoutParams stageP = lp(isTelevision() ? 205 : 115,
+                isTelevision() ? 94 : 70);
+        stageP.leftMargin = dp(isTelevision() ? 15 : 8);
+        preview.addView(playerStage, stageP);
+        channelPreviewInitials = label(initialPreview == null ? "N+" : initials(initialPreview.name),
+                isTelevision() ? 28 : 18, 0xFFFFEEF2, true);
+        channelPreviewInitials.setGravity(Gravity.CENTER);
+        playerStage.addView(channelPreviewInitials, new FrameLayout.LayoutParams(-1, -1));
+        channelPreviewImage = new ImageView(this);
+        channelPreviewImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        channelPreviewImage.setPadding(dp(19), dp(16), dp(19), dp(16));
+        channelPreviewImage.setTag("");
+        playerStage.addView(channelPreviewImage, new FrameLayout.LayoutParams(-1, -1));
+        TextView playerBadge = label(initialPreview == null ? "TV" : "●  TV",
+                isTelevision() ? 8 : 6, Color.WHITE, true);
+        playerBadge.setGravity(Gravity.CENTER);
+        playerBadge.setPadding(dp(8), dp(4), dp(8), dp(4));
+        playerBadge.setBackground(rounded(0xCC15171D, 12));
+        FrameLayout.LayoutParams playerBadgeP = new FrameLayout.LayoutParams(-2, -2,
+                Gravity.TOP | Gravity.END);
+        playerBadgeP.setMargins(0, dp(7), dp(7), 0);
+        playerStage.addView(playerBadge, playerBadgeP);
 
         LinearLayout actions = horizontal();
-        LinearLayout.LayoutParams actionsP = lp(-1, isTelevision() ? 48 : 40);
-        actionsP.topMargin = dp(14);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsP = lp(-1, isTelevision() ? 42 : 34);
+        actionsP.bottomMargin = dp(isTelevision() ? 7 : 5);
         right.addView(actions, actionsP);
-
-        TextView favorite = buttonText(currentChannel != null && isFavorite(currentChannel) ? "★ Favori" : "♡ Favori",
-                currentChannel != null && isFavorite(currentChannel));
-        actions.addView(favorite, new LinearLayout.LayoutParams(0, -1, 1f));
-
-        TextView stop = buttonText("■ Arrêter", false);
-        LinearLayout.LayoutParams stopP = lp(-2, -1);
-        stopP.leftMargin = dp(8);
-        actions.addView(stop, stopP);
-
-        favorite.setOnClickListener(v -> {
-            if (currentChannel == null) {
-                Toast.makeText(this, "Sélectionnez une chaîne d’abord.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            toggleFavorite(currentChannel);
-            favorite.setText(isFavorite(currentChannel) ? "★ Favori" : "♡ Favori");
-            favorite.setTextColor(isFavorite(currentChannel) ? YELLOW : Color.WHITE);
+        TextView watch = buttonText("▶  Regarder", true);
+        actions.addView(watch, lp(-2, -1));
+        watch.setEnabled(initialPreview != null);
+        watch.setOnClickListener(v -> {
+            Channel target = focusedPreviewChannel;
+            if (target != null) play(target);
+        });
+        channelFavoriteButton = buttonText(initialPreview != null && isFavorite(initialPreview)
+                ? "★  Favori" : "♡  Ajouter aux favoris", false);
+        LinearLayout.LayoutParams favoriteP = lp(-2, -1);
+        favoriteP.leftMargin = dp(7);
+        actions.addView(channelFavoriteButton, favoriteP);
+        channelFavoriteButton.setOnClickListener(v -> {
+            Channel target = focusedPreviewChannel;
+            if (target == null) return;
+            toggleFavorite(target);
+            channelFavoriteButton.setText(isFavorite(target) ? "★  Favori" : "♡  Ajouter aux favoris");
             renderCountryChoices();
             updateChannelResults();
             if (channelAdapter != null) channelAdapter.refreshDecorations();
         });
-        stop.setOnClickListener(v -> stopPreview());
+        sourceOptionsButton = buttonText("▤  Dossier", false);
+        sourceOptionsButton.setEnabled(initialPreview != null && initialPreview.sourceCount() > 1);
+        sourceOptionsButton.setAlpha(sourceOptionsButton.isEnabled() ? 1f : 0.55f);
+        LinearLayout.LayoutParams sourceButtonP = lp(-2, -1);
+        sourceButtonP.leftMargin = dp(7);
+        actions.addView(sourceOptionsButton, sourceButtonP);
+        sourceOptionsButton.setOnClickListener(v -> {
+            if (focusedPreviewChannel != null) showSourceChoices(focusedPreviewChannel);
+        });
 
-        previewDetail = label(currentChannel == null
-                ? "La lecture s'intègre directement ici."
-                : ("SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(currentChannel.country)),
-                isTelevision() ? 13 : 10, Color.WHITE, false);
-        previewDetail.setPadding(0, dp(12), 0, 0);
-        right.addView(previewDetail, lp(-1, -2));
+        LinearLayout listHeading = horizontal();
+        listHeading.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams listHeadingP = lp(-1, -2);
+        listHeadingP.topMargin = dp(2);
+        listHeadingP.bottomMargin = dp(6);
+        right.addView(listHeading, listHeadingP);
+        TextView listLabel = label("CHAÎNES DISPONIBLES", isTelevision() ? 9 : 7, MUTED, true);
+        listLabel.setLetterSpacing(0.09f);
+        listHeading.addView(listLabel, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView folderHint = label("▤  Mini-dossiers sur les doublons", isTelevision() ? 9 : 7,
+                0xFFFFA8B7, true);
+        listHeading.addView(folderHint);
 
-        if (currentChannel == null) {
-            TextView placeholder = label("▶\n\nPrêt pour la lecture", isTelevision() ? 17 : 13, 0xCCFFFFFF, true);
-            placeholder.setGravity(Gravity.CENTER);
-            placeholder.setBackgroundColor(Color.BLACK);
-            playerStage.addView(placeholder, new FrameLayout.LayoutParams(-1, -1));
-        }
+        channelListHost = new FrameLayout(this);
+        channelResults = new RecyclerView(this);
+        channelResults.setLayoutManager(new LinearLayoutManager(this));
+        channelResults.setHasFixedSize(true);
+        channelResults.setItemViewCacheSize(12);
+        channelResults.setItemAnimator(null);
+        channelAdapter = new ChannelAdapter(this::play, this::isFavorite, this::showSourceChoices);
+        channelAdapter.setFocusListener(this::updateChannelPreview);
+        channelAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.identity());
+        channelResults.setAdapter(channelAdapter);
+        channelListHost.addView(channelResults, new FrameLayout.LayoutParams(-1, -1));
+        channelEmptyView = vertical();
+        channelEmptyView.setGravity(Gravity.CENTER);
+        channelEmptyView.setVisibility(View.GONE);
+        channelListHost.addView(channelEmptyView, new FrameLayout.LayoutParams(-1, -1));
+        right.addView(channelListHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
+        if (initialPreview != null) updateChannelPreview(initialPreview);
         renderCountryChoices();
         updateChannelResults();
+    }
+
+    private void updateChannelPreview(Channel channel) {
+        if (channel == null || !"Live TV".equals(activePage) || previewTitle == null) return;
+        focusedPreviewChannel = channel;
+        previewTitle.setText(safe(channel.name));
+        previewStatus.setText((currentChannel != null && TextUtils.equals(currentChannel.identity(), channel.identity())
+                ? "●  EN DIRECT  ·  " : "")
+                + flag(channel.country, countryCode(channel.country)) + "  "
+                + safeCountry(channel.country) + "  ·  "
+                + (channel.isVavoo ? "VAVOO" : "IPTV-ORG"));
+        previewDetail.setText(channel.sourceCount() > 1
+                ? "Meilleur flux choisi  ·  " + channel.sourceCount() + " sources disponibles"
+                : "Appuie sur OK pour regarder cette chaîne");
+        if (channelPreviewInitials != null) {
+            channelPreviewInitials.setText(initials(channel.name));
+            channelPreviewInitials.setVisibility(View.VISIBLE);
+        }
+        if (channelPreviewImage != null) {
+            String logo = safe(channel.logo);
+            channelPreviewImage.setTag(logo);
+            channelPreviewImage.setImageDrawable(null);
+            if (!logo.isEmpty()) {
+                Bitmap cached = homeLogoLoader == null ? null : homeLogoLoader.getCached(logo);
+                if (cached != null) {
+                    channelPreviewImage.setImageBitmap(cached);
+                    channelPreviewInitials.setVisibility(View.GONE);
+                } else if (homeLogoLoader != null) {
+                    ImageView image = channelPreviewImage;
+                    TextView initials = channelPreviewInitials;
+                    ChannelLogoLoader loader = homeLogoLoader;
+                    loader.load(logo, bitmap -> image.post(() -> {
+                        if (homeLogoLoader != loader || loader.isClosed()
+                                || image != channelPreviewImage || !logo.equals(image.getTag())) return;
+                        image.setImageBitmap(bitmap);
+                        initials.setVisibility(View.GONE);
+                    }));
+                }
+            }
+        }
+        if (channelFavoriteButton != null) {
+            channelFavoriteButton.setText(isFavorite(channel) ? "★  Favori" : "♡  Ajouter aux favoris");
+        }
+        if (sourceOptionsButton != null) {
+            sourceOptionsButton.setEnabled(channel.sourceCount() > 1);
+            sourceOptionsButton.setAlpha(sourceOptionsButton.isEnabled() ? 1f : 0.55f);
+        }
     }
 
     private void renderCountryChoices() {
         if (countryChoices == null) return;
         countryChoices.removeAllViews();
+        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
-        addCategoryRow("Tous", channels.size(),
-                !favoritesOnly && !recentOnly && "Tous les pays".equals(activeCountry),
+        addCategoryRow("Tous les pays", channels.size(),
+                !favoritesOnly && !recentOnly && !groupedOnly && "Tous les pays".equals(activeCountry),
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = false;
+                    groupedOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -550,6 +1367,7 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = false;
                     recentOnly = true;
+                    groupedOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
@@ -558,27 +1376,17 @@ public class MainActivity extends Activity {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
+                    groupedOnly = false;
                     renderCountryChoices();
                     updateChannelResults();
                 });
 
-        View divider = new View(this);
-        divider.setBackgroundColor(LINE);
-        LinearLayout.LayoutParams divP = lp(-1, 1);
-        divP.topMargin = dp(8);
-        divP.bottomMargin = dp(8);
-        countryChoices.addView(divider, divP);
-
+        addCategorySection("PAYS");
         if (countryStatsVersion != catalogVersion) {
             countryCountCache.clear();
             countryCodeCache.clear();
-            // Thousands of channels share the same handful of countries. Normalize
-            // each distinct country only once; do not run Unicode normalization/regex
-            // for every row on the UI thread whenever the category panel is built.
             HashMap<String, String> normalizedCountries = new HashMap<>();
-            channelUrlCache.clear();
             for (Channel ch : channels) {
-                if (ch != null && !safe(ch.url).isEmpty()) channelUrlCache.add(ch.url);
                 String rawCountry = safe(ch.country);
                 String country = normalizedCountries.get(rawCountry);
                 if (country == null) {
@@ -591,58 +1399,161 @@ public class MainActivity extends Activity {
             for (String country : countryCountCache.keySet()) {
                 countryCodeCache.put(country, countryCode(country));
             }
-            channelUrlSetVersion = catalogVersion;
             countryStatsVersion = catalogVersion;
         }
+
+        String query = Channel.normalizeSearch(categorySearch);
         ArrayList<String> names = new ArrayList<>(countryCountCache.keySet());
         Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
-        String query = categorySearch == null ? "" : categorySearch.trim().toLowerCase(Locale.ROOT);
         for (String country : names) {
-            if (!query.isEmpty() && !country.toLowerCase(Locale.ROOT).contains(query)) continue;
+            if (!query.isEmpty() && !Channel.normalizeSearch(country).contains(query)) continue;
             String title = flag(country, countryCodeCache.get(country)) + "  " + country;
             addCategoryRow(title, countryCountCache.get(country),
-                    country.equals(activeCountry) && !favoritesOnly && !recentOnly,
+                    country.equals(activeCountry) && !favoritesOnly && !recentOnly && !groupedOnly,
                     v -> {
                         activeCountry = country;
                         favoritesOnly = false;
                         recentOnly = false;
+                        groupedOnly = false;
                         renderCountryChoices();
                         updateChannelResults();
                     });
         }
+
+
+    }
+
+    private void requestLogoCatalogFallbacks() {
+        if (logoFallbackRequested || channels.isEmpty()) return;
+        boolean needsFallback = false;
+        for (Channel channel : channels) {
+            if (channel != null && channel.isVavoo && safe(channel.logo).isEmpty()) {
+                needsFallback = true;
+                break;
+            }
+        }
+        if (!needsFallback) return;
+        logoFallbackRequested = true;
+        io.execute(() -> {
+            Map<String, String> index = ChannelLogoCatalog.load(getApplicationContext());
+            runOnUiThread(() -> {
+                if (activityDestroyed) return;
+                if (index.isEmpty()) {
+                    logoFallbackRequested = false;
+                    return;
+                }
+                logoFallbackIndex = index;
+                boolean changed = false;
+                for (int i = 0; i < channels.size(); i++) {
+                    Channel channel = channels.get(i);
+                    Channel enriched = withLogoFallback(channel);
+                    if (enriched != channel) {
+                        channels.set(i, enriched);
+                        changed = true;
+                    }
+                }
+                if (!changed) return;
+                markCatalogChanged();
+                if ("Accueil".equals(activePage) || "Guide TV".equals(activePage)) {
+                    renderPage();
+                } else if ("Live TV".equals(activePage)) {
+                    renderCountryChoices();
+                    updateChannelResults();
+                }
+            });
+        });
+    }
+
+    private Channel withLogoFallback(Channel channel) {
+        if (channel == null || logoFallbackIndex.isEmpty()) return channel;
+        if (channel.sourceOptions.isEmpty()) {
+            if (!safe(channel.logo).isEmpty()) return channel;
+            String logo = ChannelLogoCatalog.find(logoFallbackIndex, channel.name, channel.country);
+            return logo.isEmpty() ? channel : channel.withLogo(logo);
+        }
+
+        ArrayList<Channel> options = new ArrayList<>(channel.playbackOptions().size());
+        boolean changed = false;
+        for (Channel option : channel.playbackOptions()) {
+            Channel enriched = option;
+            if (safe(option.logo).isEmpty()) {
+                String logo = ChannelLogoCatalog.find(
+                        logoFallbackIndex, option.name, option.country);
+                if (!logo.isEmpty()) enriched = option.withLogo(logo);
+            }
+            changed |= enriched != option;
+            options.add(enriched);
+        }
+        if (!changed) return channel;
+        return Channel.grouped(options.get(0), options, channel.identity());
+    }
+
+    private void addCategorySection(String title) {
+        TextView heading = label(title, isTelevision() ? 10 : 8, 0xFF9798A1, true);
+        heading.setLetterSpacing(0.12f);
+        LinearLayout.LayoutParams params = lp(-1, -2);
+        params.topMargin = dp(12);
+        params.bottomMargin = dp(6);
+        countryChoices.addView(heading, params);
     }
 
     private void markCatalogChanged() {
         catalogVersion++;
         channelCatalogToken = new Object();
         countryStatsVersion = -1;
+        rebuildChannelLookup();
+    }
+
+    private void rebuildChannelLookup() {
+        channelUrlCache.clear();
+        channelBySavedId.clear();
+        for (Channel channel : channels) {
+            addChannelLookup(channel, channel);
+            for (Channel option : channel.playbackOptions()) addChannelLookup(option, channel);
+        }
+        channelUrlSetVersion = catalogVersion;
+    }
+
+    private void addChannelLookup(Channel key, Channel logical) {
+        if (key == null || logical == null) return;
+        String id = key.identity();
+        String url = safe(key.url);
+        if (!id.isEmpty()) {
+            channelUrlCache.add(id);
+            channelBySavedId.put(id, logical);
+        }
+        if (!url.isEmpty()) {
+            channelUrlCache.add(url);
+            channelBySavedId.put(url, logical);
+        }
     }
 
     private void addCategoryRow(String title, int count, boolean selected, View.OnClickListener click) {
         LinearLayout row = horizontal();
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(13), dp(8), dp(12), dp(8));
-        row.setBackground(rounded(selected ? 0xFF164A60 : 0xFF1D2632, 8));
+        row.setPadding(dp(10), dp(7), dp(8), dp(7));
+        row.setBackground(rounded(selected ? 0xFF3B2027 : 0xFF222329, 11));
         row.setFocusable(true);
         row.setClickable(true);
-        TextView name = label(title, isTelevision() ? 14 : 11, selected ? YELLOW : Color.WHITE, true);
+        TextView name = label(title, isTelevision() ? 13 : 9,
+                selected ? Color.WHITE : 0xFFE2E2E6, true);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView number = label(String.valueOf(count), isTelevision() ? 14 : 11,
-                selected ? YELLOW : Color.WHITE, true);
+        TextView number = label(String.valueOf(count), isTelevision() ? 11 : 8,
+                selected ? 0xFFFFA1AD : MUTED, true);
         number.setGravity(Gravity.CENTER);
-        row.addView(number, lp(30, -2));
-        LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 45 : 38);
-        rowP.bottomMargin = dp(6);
+        row.addView(number, lp(27, -2));
+        LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 42 : 34);
+        rowP.bottomMargin = dp(5);
         countryChoices.addView(row, rowP);
         row.setOnFocusChangeListener((view, focused) -> {
-            row.setBackground(outlined(focused || selected ? 0xFF164A60 : 0xFF1D2632,
-                    8, focused ? 0xFF4CC9F0 : (selected ? 0xFF4CC9F0 : 0x00FFFFFF)));
-            name.setTextColor(focused || selected ? YELLOW : Color.WHITE);
-            number.setTextColor(focused || selected ? YELLOW : Color.WHITE);
-            row.setScaleX(focused ? 1.025f : 1f);
-            row.setScaleY(focused ? 1.025f : 1f);
+            row.setBackground(outlined(focused || selected
+                    ? (focused ? 0xFF3B2027 : 0xFF332126) : 0xFF222329,
+                    11, focused || selected ? CYAN : 0x00202020));
+            row.setScaleX(focused ? 1.035f : 1f);
+            row.setScaleY(focused ? 1.035f : 1f);
+            name.setTextColor(focused || selected ? Color.WHITE : 0xFFE2E2E6);
         });
         row.setOnClickListener(click);
     }
@@ -652,7 +1563,7 @@ public class MainActivity extends Activity {
     }
 
     private void rememberRecentlyViewed(Channel ch) {
-        if (ch != null && recentStore != null) recentStore.remember(ch.url);
+        if (ch != null && recentStore != null) recentStore.remember(ch.identity());
     }
 
     private int countFavoriteChannels() {
@@ -665,6 +1576,12 @@ public class MainActivity extends Activity {
         return favoriteCountCache;
     }
 
+    private int countGroupedChannels() {
+        int count = 0;
+        for (Channel channel : channels) if (channel.sourceCount() > 1) count++;
+        return count;
+    }
+
     private int countRecentChannels() {
         long revision = recentStore == null ? 0L : recentStore.revision();
         if (recentCountCatalogVersion != catalogVersion || recentCountStoreRevision != revision) {
@@ -674,7 +1591,7 @@ public class MainActivity extends Activity {
                 if (channelUrlSetVersion == catalogVersion) {
                     for (String url : recent) if (channelUrlCache.contains(url)) count++;
                 } else {
-                    for (Channel ch : channels) if (recent.contains(ch.url)) count++;
+                    for (Channel ch : channels) if (ch.matchesSavedIds(recent)) count++;
                 }
             }
             recentCountCache = count;
@@ -707,13 +1624,13 @@ public class MainActivity extends Activity {
         final String requestedSearch = searchText;
         final boolean requestedFavorites = favoritesOnly;
         final boolean requestedRecent = recentOnly;
-        final String filterKey = requestedSource + "|" + requestedCountry + "|" + safe(requestedSearch)
-                + "|" + requestedFavorites + "|" + requestedRecent;
+        final boolean requestedGrouped = groupedOnly;
+        final String filterKey = requestedSource + "|" + requestedCountry
+                + "|" + safe(requestedSearch) + "|" + requestedFavorites + "|" + requestedRecent
+                + "|" + requestedGrouped;
         final boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
         lastRenderedFilterKey = filterKey;
 
-        // Only copy the stable inputs on the UI thread. The full scan and search matching
-        // now happen on a worker and stale requests are cancelled when the D-pad/search changes.
         final ArrayList<Channel> channelSnapshot = new ArrayList<>(channels);
         final Set<String> favoriteSnapshot = favoritesStore == null
                 ? Collections.emptySet() : favoritesStore.snapshotUrls();
@@ -724,15 +1641,21 @@ public class MainActivity extends Activity {
             ArrayList<Channel> filtered = ChannelFilter.filter(channelSnapshot, requestedSource,
                     requestedCountry, requestedSearch, requestedFavorites, requestedRecent,
                     favoriteSnapshot, recentSnapshot);
+            if (requestedGrouped) {
+                ArrayList<Channel> grouped = new ArrayList<>();
+                for (Channel channel : filtered) if (channel.sourceCount() > 1) grouped.add(channel);
+                filtered = grouped;
+            }
+            final ArrayList<Channel> resultList = filtered;
 
             runOnUiThread(() -> {
                 if (activityDestroyed || requestId != filterGeneration.get()
                         || targetRecycler != channelResults || targetAdapter != channelAdapter
                         || !requestedSource.equals(sourceFilter)
-                        || !"Live TV".equals(activePage)) return;
+                        || (!"Live TV".equals(activePage) && !"Accueil".equals(activePage))) return;
 
-                if (countView != null) countView.setText(filtered.size() + " chaînes");
-                if (filtered.isEmpty()) {
+                if (countView != null) countView.setText(resultList.size() + " chaînes");
+                if (resultList.isEmpty()) {
                     targetAdapter.submitList(Collections.emptyList());
                     targetRecycler.setVisibility(View.GONE);
                     channelEmptyView.setVisibility(View.VISIBLE);
@@ -741,23 +1664,25 @@ public class MainActivity extends Activity {
                     LinearLayout empty = vertical();
                     empty.setGravity(Gravity.CENTER);
                     empty.setPadding(dp(14), dp(22), dp(14), dp(22));
-                    empty.setBackground(rounded(0xFF151D28, 12));
+                    empty.setBackground(rounded(0xFF222329, 12));
 
                     TextView heading = label(channelSnapshot.isEmpty()
                             ? (loadingCatalog ? "Connexion au catalogue…" : "Catalogue prêt à charger")
-                            : "Aucune chaîne trouvée", isTelevision() ? 18 : 14, Color.WHITE, true);
+                            : (requestedGrouped ? "Aucun dossier de sources" : "Aucune chaîne trouvée"), isTelevision() ? 18 : 14, Color.WHITE, true);
                     heading.setGravity(Gravity.CENTER);
                     empty.addView(heading, lp(-1, -2));
 
                     TextView msg = label(channelSnapshot.isEmpty()
-                            ? requestedSource + " se charge en arrière-plan. Vous pouvez naviguer ou actualiser."
-                            : "Essayez une autre catégorie ou modifiez votre recherche.",
+                            ? "Le catalogue se charge en arrière-plan. Tu peux parcourir les autres rubriques pendant ce temps."
+                            : (requestedGrouped
+                                ? "Aucune chaîne avec plusieurs flux pour les filtres actuels."
+                                : "Modifie le pays ou la recherche pour élargir le résultat."),
                             isTelevision() ? 12 : 10, 0xEEFFFFFF, false);
                     msg.setGravity(Gravity.CENTER);
                     msg.setPadding(0, dp(8), 0, dp(12));
                     empty.addView(msg, lp(-1, -2));
 
-                    TextView retry = buttonText(loadingCatalog ? "Chargement…" : "↻ Actualiser " + requestedSource, true);
+                    TextView retry = buttonText(loadingCatalog ? "Chargement…" : "↻ Actualiser les catalogues", true);
                     empty.addView(retry, lp(-2, isTelevision() ? 46 : 38));
                     retry.setOnClickListener(v -> loadChannels());
                     channelEmptyView.addView(empty, new LinearLayout.LayoutParams(-1, -2));
@@ -766,8 +1691,8 @@ public class MainActivity extends Activity {
 
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
-                targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.url);
-                targetAdapter.submitList(filtered, () -> {
+                targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.identity());
+                targetAdapter.submitList(resultList, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
                     if (filtersChanged && targetAdapter.getItemCount() > 0) {
@@ -778,59 +1703,574 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void renderSettings() {
+    private void renderGuidePage() {
+        if (homeLogoLoader != null) homeLogoLoader.close();
+        homeLogoLoader = new ChannelLogoLoader();
+        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
+
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         LinearLayout page = vertical();
-        page.setPadding(dp(20), dp(20), dp(20), dp(24));
+        int side = isTelevision() ? 42 : 15;
+        page.setPadding(dp(side), dp(isTelevision() ? 18 : 12), dp(side),
+                dp(isTelevision() ? 22 : 16));
         scroll.addView(page);
-        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1,-1));
+        contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
-        page.addView(label("Paramètres", 26, TEXT, true));
-        TextView intro = label("Gestion des moteurs de catalogues et des lecteurs multimédias.", 11, MUTED, false);
-        LinearLayout.LayoutParams ip = lp(-1,-2); ip.topMargin=dp(6); ip.bottomMargin=dp(20); page.addView(intro,ip);
+        ArrayList<Channel> allGuideRows = guideChannels("Tous");
+        ArrayList<Channel> rows = guideChannels(activeGuideCountry);
 
-        TextView playerHeading = label("LECTEUR VIDÉO", 9, MUTED, true);
-        page.addView(playerHeading);
+        LinearLayout heading = horizontal();
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(heading, lp(-1, -2));
+        LinearLayout headingText = vertical();
+        heading.addView(headingText, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView eyebrow = label("PROGRAMMES TV  ·  DIRECT", isTelevision() ? 10 : 8, CYAN, true);
+        eyebrow.setLetterSpacing(0.13f);
+        headingText.addView(eyebrow);
+        TextView title = label("Guide TV", isTelevision() ? 31 : 22, TEXT, true);
+        LinearLayout.LayoutParams titleP = lp(-1, -2);
+        titleP.topMargin = dp(3);
+        headingText.addView(title, titleP);
+        String date = new java.text.SimpleDateFormat("EEEE d MMMM  ·  HH:mm",
+                Locale.FRENCH).format(new java.util.Date());
+        TextView subtitle = label(date, isTelevision() ? 12 : 8, MUTED, false);
+        LinearLayout.LayoutParams subtitleP = lp(-1, -2);
+        subtitleP.topMargin = dp(3);
+        subtitleP.bottomMargin = dp(isTelevision() ? 12 : 8);
+        headingText.addView(subtitle, subtitleP);
+        TextView channelAction = buttonText("Parcourir les chaînes", false);
+        heading.addView(channelAction, lp(-2, isTelevision() ? 44 : 36));
+        channelAction.setOnClickListener(v -> showChannelList(false, false));
 
-        TextView playerMode = buttonText("Lecteur préféré : " + preferredPlayerLabel(), true);
-        LinearLayout.LayoutParams pmp = lp(-1, 48); pmp.topMargin = dp(8); page.addView(playerMode, pmp);
-        
-        TextView playerHelp = label("Media3 est léger. VLC apporte un moteur alternatif pour les flux complexes.", 10, MUTED, false);
-        LinearLayout.LayoutParams php = lp(-1,-2); php.topMargin = dp(6); php.bottomMargin = dp(18); page.addView(playerHelp, php);
-        playerMode.setOnClickListener(v -> {
-            setVlcPreference(!useVlcPlayer());
-            renderSettings();
-            Toast.makeText(this, "Lecteur préféré : " + preferredPlayerLabel(), Toast.LENGTH_SHORT).show();
+        LinearLayout filterRow = horizontal();
+        filterRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams filterP = lp(-1, -2);
+        filterP.bottomMargin = dp(isTelevision() ? 12 : 8);
+        page.addView(filterRow, filterP);
+        addGuideFilter(filterRow, "Toutes", "Tous", allGuideRows.size());
+        addGuideFilter(filterRow, "France", "France", guideCountryCount(allGuideRows, "FR"));
+        addGuideFilter(filterRow, "Maroc", "Maroc", guideCountryCount(allGuideRows, "MA"));
+
+        Channel featured = rows.isEmpty() ? null : rows.get(0);
+        guidePreviewIdentity = featured == null ? "" : featured.identity();
+
+        FrameLayout spotlightFrame = new FrameLayout(this);
+        GradientDrawable spotlightBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF442338, 0xFF26232D, 0xFF171B23});
+        spotlightBg.setCornerRadius(dp(22));
+        spotlightFrame.setBackground(spotlightBg);
+        spotlightFrame.setClipToOutline(true);
+        LinearLayout.LayoutParams spotlightP = lp(-1, isTelevision() ? 134 : 104);
+        spotlightP.bottomMargin = dp(isTelevision() ? 14 : 10);
+        page.addView(spotlightFrame, spotlightP);
+
+        View glow = new View(this);
+        GradientDrawable glowBg = new GradientDrawable();
+        glowBg.setShape(GradientDrawable.OVAL);
+        glowBg.setColor(0x22FF7A9D);
+        glow.setBackground(glowBg);
+        FrameLayout.LayoutParams glowP = new FrameLayout.LayoutParams(
+                dp(isTelevision() ? 245 : 155), dp(isTelevision() ? 245 : 155),
+                Gravity.END | Gravity.CENTER_VERTICAL);
+        glowP.rightMargin = dp(isTelevision() ? 170 : 100);
+        spotlightFrame.addView(glow, glowP);
+
+        LinearLayout spotlight = horizontal();
+        spotlight.setGravity(Gravity.CENTER_VERTICAL);
+        spotlight.setPadding(dp(isTelevision() ? 21 : 13), dp(isTelevision() ? 12 : 8),
+                dp(isTelevision() ? 19 : 12), dp(isTelevision() ? 12 : 8));
+        spotlightFrame.addView(spotlight, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout spotlightInfo = vertical();
+        spotlightInfo.setGravity(Gravity.CENTER_VERTICAL);
+        spotlight.addView(spotlightInfo, new LinearLayout.LayoutParams(0, -1, 1f));
+        TextView focusBadge = label(featured == null ? "GUIDE DU DIRECT" : "À L’AFFICHE",
+                isTelevision() ? 9 : 7, 0xFFFFA8B7, true);
+        focusBadge.setLetterSpacing(0.1f);
+        spotlightInfo.addView(focusBadge);
+        previewTitle = label(featured == null
+                ? (channels.isEmpty() ? "Les programmes arrivent" : "Aucun programme pour ce filtre")
+                : featured.name, isTelevision() ? 20 : 13, TEXT, true);
+        previewTitle.setMaxLines(1);
+        previewTitle.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams spotlightTitleP = lp(-1, -2);
+        spotlightTitleP.topMargin = dp(4);
+        spotlightInfo.addView(previewTitle, spotlightTitleP);
+        EpgProvider.Result featuredGuide = featured == null
+                ? null : guideResults.get(featured.identity());
+        previewStatus = label(featuredGuide == null
+                ? (featured == null ? "France et Maroc" : "Le programme se charge…")
+                : (featuredGuide.now.isEmpty() ? featuredGuide.status : featuredGuide.now),
+                isTelevision() ? 10 : 8, 0xFFF0E9ED, false);
+        previewStatus.setSingleLine(true);
+        previewStatus.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams spotlightStatusP = lp(-1, -2);
+        spotlightStatusP.topMargin = dp(3);
+        spotlightInfo.addView(previewStatus, spotlightStatusP);
+        previewDetail = label(featuredGuide == null
+                ? "Programmes en cours et suivants, pour la France et le Maroc."
+                : (featuredGuide.next.isEmpty() ? "Aucun programme suivant renseigné"
+                    : "ENSUITE  ·  " + featuredGuide.next),
+                isTelevision() ? 9 : 7, MUTED, false);
+        previewDetail.setSingleLine(true);
+        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams spotlightDetailP = lp(-1, -2);
+        spotlightDetailP.topMargin = dp(2);
+        spotlightInfo.addView(previewDetail, spotlightDetailP);
+
+        LinearLayout spotlightActions = horizontal();
+        LinearLayout.LayoutParams spotlightActionsP = lp(-1, -2);
+        spotlightActionsP.topMargin = dp(isTelevision() ? 7 : 4);
+        spotlightInfo.addView(spotlightActions, spotlightActionsP);
+        TextView watch = buttonText("▶  Regarder", true);
+        spotlightActions.addView(watch, lp(-2, isTelevision() ? 36 : 30));
+        watch.setEnabled(featured != null);
+        watch.setOnClickListener(v -> {
+            if (featured != null) play(featured);
         });
 
-        page.addView(sourceCard("VAVOO", "V", "Catalogue IPTV dynamique", "Récupération directe des flux et des métadonnées.", CYAN));
-        LinearLayout.LayoutParams gap = lp(-1,-2); gap.topMargin = dp(14);
-        page.addView(sourceCard("IPTV-ORG", "◉", "Playlist publique internationale", "Catalogue mondial structuré par pays.", PURPLE), gap);
+        FrameLayout art = new FrameLayout(this);
+        art.setBackground(rounded(0xFF1A1C23, 14));
+        art.setClipToOutline(true);
+        LinearLayout.LayoutParams artP = lp(isTelevision() ? 218 : 128,
+                isTelevision() ? 104 : 72);
+        artP.leftMargin = dp(isTelevision() ? 17 : 8);
+        spotlight.addView(art, artP);
+        TextView artInitials = label(featured == null ? "N+" : initials(featured.name),
+                isTelevision() ? 28 : 17, 0xFFFFEEF2, true);
+        artInitials.setGravity(Gravity.CENTER);
+        art.addView(artInitials, new FrameLayout.LayoutParams(-1, -1));
+        if (featured != null && !safe(featured.logo).isEmpty()) {
+            ImageView image = new ImageView(this);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            image.setPadding(dp(18), dp(14), dp(18), dp(14));
+            image.setTag(safe(featured.logo));
+            art.addView(image, new FrameLayout.LayoutParams(-1, -1));
+            bindHomeLogo(image, artInitials, featured.logo);
+        }
+
+        TextView sectionTitle = label("En ce moment", isTelevision() ? 22 : 15, TEXT, true);
+        LinearLayout.LayoutParams sectionTitleP = lp(-1, -2);
+        sectionTitleP.bottomMargin = dp(4);
+        page.addView(sectionTitle, sectionTitleP);
+        TextView sectionSubtitle = label("Sélectionne une chaîne avec la télécommande pour lancer le direct.",
+                isTelevision() ? 11 : 8, MUTED, false);
+        LinearLayout.LayoutParams sectionSubtitleP = lp(-1, -2);
+        sectionSubtitleP.bottomMargin = dp(isTelevision() ? 8 : 5);
+        page.addView(sectionSubtitle, sectionSubtitleP);
+
+        LinearLayout columnHeader = horizontal();
+        columnHeader.setGravity(Gravity.CENTER_VERTICAL);
+        columnHeader.setPadding(dp(13), dp(4), dp(13), dp(6));
+        page.addView(columnHeader, lp(-1, -2));
+        TextView channelCol = label("CHAÎNE", isTelevision() ? 9 : 7, MUTED, true);
+        columnHeader.addView(channelCol, new LinearLayout.LayoutParams(0, -2, 1.8f));
+        TextView nowCol = label("MAINTENANT", isTelevision() ? 9 : 7, MUTED, true);
+        columnHeader.addView(nowCol, new LinearLayout.LayoutParams(0, -2, 2.3f));
+        TextView nextCol = label("ENSUITE", isTelevision() ? 9 : 7, MUTED, true);
+        columnHeader.addView(nextCol, new LinearLayout.LayoutParams(0, -2, 2.0f));
+
+        if (rows.isEmpty()) {
+            LinearLayout empty = vertical();
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(18), dp(23), dp(18), dp(23));
+            empty.setBackground(outlined(0xFF1E222B, 18, 0x22FFFFFF));
+            TextView emptyTitle = label(channels.isEmpty()
+                    ? (loadingCatalog ? "Le guide se prépare" : "Catalogue indisponible")
+                    : "Aucun programme pour ce pays",
+                    isTelevision() ? 19 : 13, TEXT, true);
+            emptyTitle.setGravity(Gravity.CENTER);
+            empty.addView(emptyTitle, lp(-1, -2));
+            TextView emptyText = label(channels.isEmpty()
+                    ? "Les premières chaînes apparaîtront ici dès que le catalogue sera prêt."
+                    : "Essaie l’onglet France ou Maroc pour parcourir les programmes.",
+                    isTelevision() ? 11 : 8, MUTED, false);
+            emptyText.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams emptyTextP = lp(-1, -2);
+            emptyTextP.topMargin = dp(6);
+            empty.addView(emptyText, emptyTextP);
+            page.addView(empty, lp(-1, isTelevision() ? 108 : 82));
+            return;
+        }
+
+        ArrayList<Channel> toLoad = new ArrayList<>();
+        int limit = Math.min(rows.size(), 18);
+        for (int i = 0; i < limit; i++) {
+            Channel channel = rows.get(i);
+            LinearLayout row = horizontal();
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(isTelevision() ? 14 : 9), dp(isTelevision() ? 8 : 6),
+                    dp(isTelevision() ? 13 : 9), dp(isTelevision() ? 8 : 6));
+            row.setBackground(outlined(0xFF1B1F27, 15, 0x18FFFFFF));
+            row.setFocusable(true);
+            row.setFocusableInTouchMode(false);
+            row.setClickable(true);
+            LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 84 : 65);
+            rowP.bottomMargin = dp(isTelevision() ? 6 : 4);
+            page.addView(row, rowP);
+
+            LinearLayout channelInfo = horizontal();
+            channelInfo.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(channelInfo, new LinearLayout.LayoutParams(0, -1, 1.8f));
+            FrameLayout logoTile = new FrameLayout(this);
+            logoTile.setBackground(rounded(0xFFF1EEF0, 11));
+            TextView mark = label(initials(channel.name), isTelevision() ? 14 : 10, 0xFF9D3445, true);
+            mark.setGravity(Gravity.CENTER);
+            logoTile.addView(mark, new FrameLayout.LayoutParams(-1, -1));
+            if (!safe(channel.logo).isEmpty()) {
+                ImageView image = new ImageView(this);
+                image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                image.setPadding(dp(4), dp(4), dp(4), dp(4));
+                image.setTag(safe(channel.logo));
+                logoTile.addView(image, new FrameLayout.LayoutParams(-1, -1));
+                bindHomeLogo(image, mark, channel.logo);
+            }
+            channelInfo.addView(logoTile, lp(isTelevision() ? 48 : 36, isTelevision() ? 48 : 36));
+            LinearLayout channelNames = vertical();
+            channelNames.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams namesP = new LinearLayout.LayoutParams(0, -2, 1f);
+            namesP.leftMargin = dp(9);
+            channelInfo.addView(channelNames, namesP);
+            TextView name = label(channel.name, isTelevision() ? 14 : 10, TEXT, true);
+            name.setMaxLines(1);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            channelNames.addView(name);
+            TextView country = label(flag(channel.country, countryCode(channel.country))
+                    + "  " + safeCountry(channel.country), isTelevision() ? 9 : 7, MUTED, false);
+            country.setSingleLine(true);
+            country.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams countryP = lp(-1, -2);
+            countryP.topMargin = dp(2);
+            channelNames.addView(country, countryP);
+            if (channel.sourceCount() > 1) {
+                TextView dossier = label("▤  " + channel.sourceCount() + " flux",
+                        isTelevision() ? 8 : 6, 0xFFFFA8B7, true);
+                dossier.setFocusable(true);
+                dossier.setClickable(true);
+                dossier.setGravity(Gravity.CENTER);
+                dossier.setPadding(dp(7), dp(2), dp(7), dp(2));
+                dossier.setBackground(rounded(0xFF38232A, 9));
+                dossier.setContentDescription("Ouvrir le mini-dossier des flux de " + channel.name);
+                dossier.setOnFocusChangeListener((view, focused) ->
+                        dossier.setBackground(outlined(focused ? 0xFF542A34 : 0xFF38232A,
+                                9, focused ? CYAN : 0x003B2027)));
+                dossier.setOnClickListener(v -> showSourceChoices(channel));
+                LinearLayout.LayoutParams dossierP = lp(-1, -2);
+                dossierP.topMargin = dp(3);
+                channelNames.addView(dossier, dossierP);
+            }
+
+            LinearLayout nowColumn = vertical();
+            nowColumn.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams nowColumnP = new LinearLayout.LayoutParams(0, -1, 2.3f);
+            nowColumnP.leftMargin = dp(10);
+            row.addView(nowColumn, nowColumnP);
+            TextView now = label("Chargement du programme…",
+                    isTelevision() ? 12 : 8, 0xFFECECEF, true);
+            now.setMaxLines(2);
+            now.setEllipsize(TextUtils.TruncateAt.END);
+            nowColumn.addView(now, lp(-1, -2));
+            ProgressBar timeline = new ProgressBar(this, null,
+                    android.R.attr.progressBarStyleHorizontal);
+            timeline.setMax(100);
+            timeline.setIndeterminate(true);
+            timeline.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(CYAN));
+            timeline.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));
+            timeline.setProgressBackgroundTintList(
+                    android.content.res.ColorStateList.valueOf(0xFF353743));
+            LinearLayout.LayoutParams timelineP = lp(-1, 4);
+            timelineP.topMargin = dp(5);
+            nowColumn.addView(timeline, timelineP);
+
+            TextView next = label("Ensuite · chargement…",
+                    isTelevision() ? 11 : 8, 0xFFB7BBC5, false);
+            next.setMaxLines(2);
+            next.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams nextP = new LinearLayout.LayoutParams(0, -2, 2.0f);
+            nextP.leftMargin = dp(13);
+            row.addView(next, nextP);
+
+            guideProgramViews.put(channel.identity(), new TextView[]{now, next});
+            guideProgressViews.put(channel.identity(), timeline);
+            EpgProvider.Result cached = guideResults.get(channel.identity());
+            if (cached != null) applyGuideResult(channel.identity(), cached);
+            else if (guidePending.add(channel.identity())) toLoad.add(channel);
+
+            row.setContentDescription(channel.name + ", " + safeCountry(channel.country)
+                    + ", appuie pour regarder"
+                    + (channel.sourceCount() > 1 ? ", dossier de " + channel.sourceCount() + " flux" : ""));
+            row.setOnFocusChangeListener((view, focused) -> {
+                row.setBackground(outlined(focused ? 0xFF382431 : 0xFF1B1F27, 15,
+                        focused ? CYAN : 0x18FFFFFF));
+                row.setScaleX(focused ? 1.018f : 1f);
+                row.setScaleY(focused ? 1.018f : 1f);
+            });
+            row.setOnClickListener(v -> play(channel));
+            row.setOnLongClickListener(v -> {
+                if (channel.sourceCount() < 2) return false;
+                showSourceChoices(channel);
+                return true;
+            });
+        }
+        if (!toLoad.isEmpty()) requestGuidePrograms(toLoad);
+        if (featured != null && featuredGuide == null && guidePending.add(featured.identity())) {
+            requestGuidePrograms(Collections.singletonList(featured));
+        }
+    }
+
+    private void updateGuidePreviewResult(String identity, EpgProvider.Result result) {
+        if (result == null || !TextUtils.equals(identity, guidePreviewIdentity)
+                || !"Guide TV".equals(activePage) || previewStatus == null || previewDetail == null
+                || fullscreenPlayback) return;
+        previewStatus.setText(result.now.isEmpty()
+                ? (result.status.isEmpty() ? "Programme en cours indisponible" : result.status)
+                : result.now);
+        previewDetail.setText(result.next.isEmpty()
+                ? "Aucun programme suivant renseigné"
+                : "ENSUITE  ·  " + result.next);
+    }
+
+    private void addGuideFilter(LinearLayout parent, String title, String key, int count) {
+        boolean selected = key.equals(activeGuideCountry);
+        TextView chip = label(title + "  " + count, isTelevision() ? 12 : 9,
+                selected ? Color.WHITE : 0xFFD6D6DC, true);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(isTelevision() ? 15 : 11), dp(isTelevision() ? 9 : 7),
+                dp(isTelevision() ? 15 : 11), dp(isTelevision() ? 9 : 7));
+        chip.setBackground(rounded(selected ? 0xFF3B2027 : 0xFF24252B, 18));
+        chip.setFocusable(true);
+        chip.setClickable(true);
+        LinearLayout.LayoutParams chipP = lp(-2, isTelevision() ? 38 : 32);
+        chipP.rightMargin = dp(7);
+        parent.addView(chip, chipP);
+        chip.setOnFocusChangeListener((view, focused) -> {
+            chip.setBackground(outlined(focused || selected
+                    ? (focused ? 0xFF3B2027 : 0xFF332126) : 0xFF24252B,
+                    18, focused || selected ? CYAN : 0x00202020));
+            chip.setScaleX(focused ? 1.04f : 1f);
+            chip.setScaleY(focused ? 1.04f : 1f);
+        });
+        chip.setOnClickListener(v -> {
+            if (key.equals(activeGuideCountry)) return;
+            activeGuideCountry = key;
+            renderPage();
+        });
+    }
+
+    private int guideCountryCount(List<Channel> rows, String code) {
+        int count = 0;
+        Set<String> seen = new HashSet<>();
+        for (Channel channel : channels) {
+            if (code.equals(ChannelCatalogPolicy.countryCode(channel.country))
+                    && seen.add(channel.identity())) count++;
+        }
+        return count;
+    }
+
+    private boolean isGuideEligible(Channel channel) {
+        String code = channel == null ? "" : ChannelCatalogPolicy.countryCode(channel.country);
+        return "FR".equals(code) || "MA".equals(code);
+    }
+
+    private void applyHomeGuideResult(Channel channel, EpgProvider.Result result) {
+        if (channel == null || result == null || !TextUtils.equals(
+                homePreviewIdentity, channel.identity()) || previewStatus == null
+                || previewDetail == null || !"Accueil".equals(activePage)
+                || fullscreenPlayback || player != null) return;
+        String programme = result.now.isEmpty() ? "Programme en cours indisponible" : result.now;
+        previewStatus.setText("●  EN CE MOMENT  ·  " + programme);
+        String next = result.next.isEmpty() ? "Aucun programme suivant renseigné" : result.next;
+        previewDetail.setText("ENSUITE  ·  " + next + "  ·  "
+                + channel.sourceCount() + " flux · "
+                + (channel.isVavoo ? "VAVOO" : "IPTV-ORG") + " recommandé");
+    }
+
+    private ArrayList<Channel> guideChannels(String countryFilter) {
+        ArrayList<Channel> ordered = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        if (favoritesStore != null) {
+            appendGuideChannels(channelsForSaved(new ArrayList<>(favoritesStore.snapshotUrls()), 30),
+                    ordered, seen);
+        }
+        if (recentStore != null) {
+            appendGuideChannels(channelsForSaved(recentStore.orderedUrls(), 30), ordered, seen);
+        }
+        appendGuideChannels(channels, ordered, seen);
+        ArrayList<Channel> result = new ArrayList<>();
+        for (Channel channel : ordered) {
+            String code = ChannelCatalogPolicy.countryCode(channel.country);
+            if (!"FR".equals(code) && !"MA".equals(code)) continue;
+            if ("France".equals(countryFilter) && !"FR".equals(code)) continue;
+            if ("Maroc".equals(countryFilter) && !"MA".equals(code)) continue;
+            result.add(channel);
+            if (result.size() >= 18) break;
+        }
+        return result;
+    }
+
+    private void appendGuideChannels(List<Channel> source, List<Channel> result, Set<String> seen) {
+        if (source == null) return;
+        for (Channel channel : source) {
+            if (channel == null || !seen.add(channel.identity())) continue;
+            String code = ChannelCatalogPolicy.countryCode(channel.country);
+            if ("FR".equals(code) || "MA".equals(code)) result.add(channel);
+        }
+    }
+
+    private void requestGuidePrograms(List<Channel> requested) {
+        ArrayList<Channel> copy = new ArrayList<>(requested);
+        io.execute(() -> {
+            for (Channel channel : copy) {
+                EpgProvider.Result result = EpgProvider.lookup(MainActivity.this, channel);
+                runOnUiThread(() -> {
+                    guidePending.remove(channel.identity());
+                    if (activityDestroyed) return;
+                    guideResults.put(channel.identity(), result);
+                    applyGuideResult(channel.identity(), result);
+                    applyHomeGuideResult(channel, result);
+                });
+            }
+        });
+    }
+
+    private void applyGuideResult(String identity, EpgProvider.Result result) {
+        if (result == null) return;
+        TextView[] views = guideProgramViews.get(identity);
+        if (views != null) {
+            views[0].setText(result.now.isEmpty()
+                    ? (result.status.isEmpty() ? "Programme non disponible" : result.status)
+                    : result.now);
+            views[1].setText(result.next.isEmpty() ? "Aucun programme ensuite" : result.next);
+        }
+        ProgressBar timeline = guideProgressViews.get(identity);
+        if (timeline != null) {
+            if (result.nowStartMs > 0L && result.nowStopMs > result.nowStartMs) {
+                timeline.setIndeterminate(false);
+                timeline.setVisibility(View.VISIBLE);
+                timeline.setProgress(result.progressPercent(System.currentTimeMillis()));
+            } else {
+                timeline.setVisibility(View.GONE);
+            }
+        }
+        updateGuidePreviewResult(identity, result);
+    }
+
+    private void renderSettings() {
+        FrameLayout frame = new FrameLayout(this);
+        contentHost.addView(frame, new FrameLayout.LayoutParams(-1, -1));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        FrameLayout.LayoutParams scrollP = new FrameLayout.LayoutParams(
+                isTelevision() ? dp(1080) : -1, -1, Gravity.CENTER);
+        frame.addView(scroll, scrollP);
+        LinearLayout page = vertical();
+        page.setPadding(dp(isTelevision() ? 20 : 16), dp(isTelevision() ? 22 : 14),
+                dp(isTelevision() ? 20 : 16), dp(24));
+        scroll.addView(page);
+
+        page.addView(label("Paramètres", isTelevision() ? 29 : 22, TEXT, true));
+        TextView intro = label("Une expérience TV simple, avec une seule lecture et des flux de secours automatiques.",
+                isTelevision() ? 13 : 9, MUTED, false);
+        LinearLayout.LayoutParams introP = lp(-1, -2);
+        introP.topMargin = dp(5);
+        introP.bottomMargin = dp(isTelevision() ? 18 : 12);
+        page.addView(intro, introP);
+
+        LinearLayout playerCard = horizontal();
+        playerCard.setGravity(Gravity.CENTER_VERTICAL);
+        playerCard.setPadding(dp(16), dp(isTelevision() ? 14 : 11),
+                dp(16), dp(isTelevision() ? 14 : 11));
+        playerCard.setBackground(outlined(0xFF222329, 15, 0x22FFFFFF));
+        page.addView(playerCard, lp(-1, -2));
+        TextView playerMark = label("▶", isTelevision() ? 20 : 15, Color.WHITE, true);
+        playerMark.setGravity(Gravity.CENTER);
+        playerMark.setBackground(rounded(CYAN, 12));
+        playerCard.addView(playerMark, lp(isTelevision() ? 44 : 36, isTelevision() ? 44 : 36));
+        LinearLayout playerInfo = vertical();
+        LinearLayout.LayoutParams playerInfoP = new LinearLayout.LayoutParams(0, -2, 1f);
+        playerInfoP.leftMargin = dp(12);
+        playerCard.addView(playerInfo, playerInfoP);
+        playerInfo.addView(label("LECTEUR NATIF", isTelevision() ? 12 : 9, TEXT, true));
+        TextView playerHelp = label("Media3 · lecture plein écran · commandes au pavé directionnel",
+                isTelevision() ? 10 : 8, MUTED, false);
+        LinearLayout.LayoutParams playerHelpP = lp(-1, -2);
+        playerHelpP.topMargin = dp(4);
+        playerInfo.addView(playerHelp, playerHelpP);
+        TextView playerState = label("ACTIF", isTelevision() ? 9 : 7, GREEN, true);
+        playerState.setPadding(dp(9), dp(5), dp(9), dp(5));
+        playerState.setBackground(rounded(0xFF203229, 12));
+        playerCard.addView(playerState);
+
+        TextView sourceHeading = label("VOS SOURCES", isTelevision() ? 10 : 8, MUTED, true);
+        sourceHeading.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams sourceHeadingP = lp(-1, -2);
+        sourceHeadingP.topMargin = dp(isTelevision() ? 21 : 15);
+        sourceHeadingP.bottomMargin = dp(8);
+        page.addView(sourceHeading, sourceHeadingP);
+        if (isTelevision()) {
+            LinearLayout sources = horizontal();
+            page.addView(sources, lp(-1, -2));
+            LinearLayout.LayoutParams cardP = new LinearLayout.LayoutParams(0, -2, 1f);
+            cardP.rightMargin = dp(7);
+            sources.addView(sourceCard("VAVOO", "V", "France · Maghreb · pays arabes",
+                    "Chaînes regroupées · meilleur flux recommandé.", CYAN), cardP);
+            LinearLayout.LayoutParams cardP2 = new LinearLayout.LayoutParams(0, -2, 1f);
+            cardP2.leftMargin = dp(7);
+            sources.addView(sourceCard("IPTV-ORG", "◉", "Maroc uniquement",
+                    "Catalogue public filtré sur les chaînes marocaines.", PURPLE), cardP2);
+        } else {
+            page.addView(sourceCard("VAVOO", "V", "France · Maghreb · pays arabes",
+                    "Chaînes regroupées · meilleur flux recommandé.", CYAN));
+            LinearLayout.LayoutParams cardP = lp(-1, -2);
+            cardP.topMargin = dp(9);
+            page.addView(sourceCard("IPTV-ORG", "◉", "Maroc uniquement",
+                    "Catalogue public filtré sur les chaînes marocaines.", PURPLE), cardP);
+        }
 
         LinearLayout statusCard = vertical();
-        statusCard.setPadding(dp(18), dp(16), dp(18), dp(16));
-        statusCard.setBackground(outlined(PANEL, 14, LINE));
-        LinearLayout.LayoutParams sp = lp(-1,-2); sp.topMargin = dp(16); page.addView(statusCard, sp);
-        
-        statusCard.addView(label("ÉTAT DU CATALOGUE", 9, MUTED, true));
-        TextView details = label(catalogStatus, 11, TEXT, false);
+        statusCard.setPadding(dp(16), dp(13), dp(16), dp(13));
+        statusCard.setBackground(outlined(0xFF222329, 15, 0x22FFFFFF));
+        LinearLayout.LayoutParams statusP = lp(-1, -2);
+        statusP.topMargin = dp(isTelevision() ? 14 : 10);
+        page.addView(statusCard, statusP);
+        LinearLayout statusHeader = horizontal();
+        statusHeader.setGravity(Gravity.CENTER_VERTICAL);
+        statusCard.addView(statusHeader);
+        statusHeader.addView(label("ÉTAT DU CATALOGUE", isTelevision() ? 10 : 8, MUTED, true),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView statusDot = label(loadingCatalog ? "● CHARGEMENT" : "● PRÊT",
+                isTelevision() ? 9 : 7, loadingCatalog ? CYAN : GREEN, true);
+        statusHeader.addView(statusDot);
+        TextView details = label(catalogStatus, isTelevision() ? 12 : 9, TEXT, false);
         details.setTextIsSelectable(true);
-        details.setPadding(0, dp(10), 0, dp(4));
-        statusCard.addView(details);
+        details.setMaxLines(3);
+        details.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams detailsP = lp(-1, -2);
+        detailsP.topMargin = dp(8);
+        statusCard.addView(details, detailsP);
 
-        TextView refresh = buttonText(loadingCatalog ? "Actualisation en cours…" : "↻  Actualiser " + sourceFilter, true);
-        LinearLayout.LayoutParams rp = lp(-1, 48); rp.topMargin = dp(16); page.addView(refresh, rp);
+        LinearLayout actions = horizontal();
+        LinearLayout.LayoutParams actionsP = lp(-1, -2);
+        actionsP.topMargin = dp(isTelevision() ? 13 : 10);
+        page.addView(actions, actionsP);
+        TextView refresh = buttonText(loadingCatalog ? "Actualisation…" : "↻  Actualiser", true);
+        actions.addView(refresh, new LinearLayout.LayoutParams(0, dp(isTelevision() ? 46 : 40), 1f));
         refresh.setOnClickListener(v -> loadChannels(true));
         if (loadingCatalog) refresh.setAlpha(0.65f);
-
-        TextView cache = buttonText("Effacer le cache local", false);
-        LinearLayout.LayoutParams cp = lp(-1, 46); cp.topMargin = dp(10); page.addView(cache, cp);
+        TextView cache = buttonText("Effacer le cache", false);
+        LinearLayout.LayoutParams cacheP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 46 : 40), 1f);
+        cacheP.leftMargin = dp(8);
+        actions.addView(cache, cacheP);
         cache.setOnClickListener(v -> new AlertDialog.Builder(this)
             .setTitle("Effacer le cache ?")
             .setMessage("Les chaînes enregistrées sur cet appareil seront supprimées. Vos favoris sont conservés.")
             .setNegativeButton("Annuler", null)
             .setPositiveButton("Effacer", (dialog, which) -> {
                 CatalogCache.clear(MainActivity.this);
+                CombinedCatalogCache.clear(MainActivity.this);
                 Toast.makeText(this, "Cache local effacé.", Toast.LENGTH_SHORT).show();
                 channels.clear();
                 markCatalogChanged();
@@ -838,29 +2278,45 @@ public class MainActivity extends Activity {
                 lastRenderedFilterKey = "";
                 renderPage();
             }).show());
-
-        TextView note = label("NISSKENZI+ utilise exclusivement VAVOO et IPTV-ORG. La disponibilité des flux dépend des sources externes.", 10, MUTED, false);
-        note.setPadding(dp(2), dp(14), dp(2), 0);
-        page.addView(note);
+        TextView note = label("NISSKENZI+ · direct TV",
+                isTelevision() ? 10 : 8, MUTED, false);
+        LinearLayout.LayoutParams noteP = lp(-1, -2);
+        noteP.topMargin = dp(15);
+        page.addView(note, noteP);
     }
 
-    private View sourceCard(String title, String icon, String tagline, String description, int accent) {
+    private View sourceCard(String title, String icon, String tagline,
+                             String description, int accent) {
         LinearLayout card = vertical();
-        card.setPadding(dp(16), dp(15), dp(16), dp(15));
-        card.setBackground(outlined(PANEL, 14, LINE));
+        card.setPadding(dp(isTelevision() ? 17 : 14), dp(isTelevision() ? 15 : 12),
+                dp(isTelevision() ? 17 : 14), dp(isTelevision() ? 15 : 12));
+        card.setBackground(outlined(0xFF222329, 15, 0x22FFFFFF));
         LinearLayout head = horizontal();
-        TextView mark = label(icon, 21, accent, true); mark.setGravity(Gravity.CENTER); mark.setBackground(rounded(0xFF182840, 10));
-        head.addView(mark, lp(44, 44));
-        LinearLayout names = vertical(); names.setPadding(dp(12), 0, 0, 0);
-        names.addView(label(title, 15, TEXT, true));
-        names.addView(label(tagline, 10, accent, false));
-        head.addView(names);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView mark = label(icon, isTelevision() ? 20 : 16, Color.WHITE, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(rounded(accent, 11));
+        head.addView(mark, lp(isTelevision() ? 44 : 36, isTelevision() ? 44 : 36));
+        LinearLayout names = vertical();
+        names.setPadding(dp(11), 0, 0, 0);
+        names.addView(label(title, isTelevision() ? 16 : 12, TEXT, true));
+        TextView region = label(tagline, isTelevision() ? 10 : 8, accent, true);
+        region.setMaxLines(1);
+        region.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams regionP = lp(-1, -2);
+        regionP.topMargin = dp(3);
+        names.addView(region, regionP);
+        head.addView(names, new LinearLayout.LayoutParams(0, -2, 1f));
         card.addView(head);
-        TextView desc = label(description, 11, MUTED, false);
-        desc.setLineSpacing(dp(3), 1f);
-        LinearLayout.LayoutParams dp = lp(-1,-2); dp.topMargin = dp(12); card.addView(desc, dp);
-        TextView state = label("État : " + sourceStatus(title), 10, GREEN, true);
-        LinearLayout.LayoutParams stp = lp(-1,-2); stp.topMargin = dp(8); card.addView(state, stp);
+        TextView desc = label(description, isTelevision() ? 10 : 8, MUTED, false);
+        desc.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams descP = lp(-1, -2);
+        descP.topMargin = dp(10);
+        card.addView(desc, descP);
+        TextView state = label("●  " + sourceStatus(title), isTelevision() ? 9 : 7, GREEN, true);
+        LinearLayout.LayoutParams stateP = lp(-1, -2);
+        stateP.topMargin = dp(7);
+        card.addView(state, stateP);
         return card;
     }
 
@@ -890,6 +2346,7 @@ public class MainActivity extends Activity {
             activeCountry = "Tous les pays";
             favoritesOnly = false;
             recentOnly = false;
+            groupedOnly = false;
             categorySearch = "";
             searchText = "";
             if (searchInput != null) searchInput.setText("");
@@ -901,7 +2358,197 @@ public class MainActivity extends Activity {
 
     private void loadChannels() { loadChannels(false); }
 
+    private int countSources(List<Channel> list) {
+        int count = 0;
+        if (list != null) for (Channel channel : list) count += channel.sourceCount();
+        return count;
+    }
+
+    private String combinedSummary(List<Channel> list, int sourceEntries, boolean cached) {
+        int channelCount = list == null ? 0 : list.size();
+        int duplicates = Math.max(0, sourceEntries - channelCount);
+        int sourceCount = countSources(list);
+        String summary = channelCount + " chaînes · " + duplicates + " doublons regroupés · "
+                + sourceCount + " flux disponibles";
+        return cached ? summary + " · affichage immédiat, vérification en arrière-plan" : summary;
+    }
+
+    private ArrayList<Channel> loadVavooSnapshot(boolean forceRefresh, String[] errors) {
+        ArrayList<Channel> vavoo = VavooSnapshotProvider.readBundled(
+                MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
+        if (forceRefresh) {
+            try {
+                VavooProvider.invalidateCatalogCache();
+                List<VavooProvider.VavooChannel> online = VavooProvider.loadChannels();
+                if (online != null && !online.isEmpty()) vavoo = convertVavooChannels(online);
+                else errors[0] = "VAVOO indisponible";
+            } catch (Exception e) {
+                errors[0] = "VAVOO indisponible";
+            }
+        }
+        if (vavoo == null || vavoo.isEmpty()) {
+            vavoo = CatalogCache.readFull(MainActivity.this, "VAVOO", MAX_CATALOG_CHANNELS);
+            if (vavoo.isEmpty()) vavoo = CatalogCache.readQuick(
+                    MainActivity.this, "VAVOO", MAX_CACHED_CHANNELS);
+        }
+        vavoo = filterSourceCatalog(vavoo, "VAVOO");
+        if (!vavoo.isEmpty()) {
+            // The quick recovery snapshot is intentionally bounded; the binary M3U cache
+            // already holds the full catalogue without serializing thousands of JSON rows.
+            CatalogCache.saveQuick(MainActivity.this, vavoo, "VAVOO", MAX_CACHED_CHANNELS);
+            if (forceRefresh) CatalogCache.saveFull(
+                    MainActivity.this, vavoo, "VAVOO", MAX_CATALOG_CHANNELS);
+        }
+        return filterSourceCatalog(vavoo, "VAVOO");
+    }
+
+    private ArrayList<Channel> loadIptvSnapshot(boolean forceRefresh, String[] errors) {
+        ArrayList<Channel> iptv = IptvOrgProvider.loadBundledChannels(
+                MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
+        if (forceRefresh) {
+            try {
+                ArrayList<Channel> online = IptvOrgProvider.loadChannels(
+                        MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry,
+                        null, true);
+                if (online != null && !online.isEmpty()) iptv = online;
+                else errors[1] = "IPTV-ORG indisponible";
+            } catch (Exception e) {
+                errors[1] = "IPTV-ORG indisponible";
+            }
+        }
+        if (iptv == null || iptv.isEmpty()) {
+            iptv = CatalogCache.readFull(MainActivity.this, "IPTV-ORG", MAX_CATALOG_CHANNELS);
+            if (iptv.isEmpty()) iptv = CatalogCache.readQuick(
+                    MainActivity.this, "IPTV-ORG", MAX_CACHED_CHANNELS);
+        }
+        iptv = filterSourceCatalog(iptv, "IPTV-ORG");
+        if (!iptv.isEmpty()) {
+            CatalogCache.saveQuick(MainActivity.this, iptv, "IPTV-ORG", MAX_CACHED_CHANNELS);
+            if (forceRefresh) CatalogCache.saveFull(
+                    MainActivity.this, iptv, "IPTV-ORG", MAX_CATALOG_CHANNELS);
+        }
+        return filterSourceCatalog(iptv, "IPTV-ORG");
+    }
+
+    private void loadCombinedChannels(boolean forceRefresh) {
+        if (loadingCatalog) return;
+        loadingVavoo = true;
+        loadingIptv = true;
+        loadingCatalog = true;
+        catalogStatus = forceRefresh ? "Actualisation des catalogues…"
+                : "Ouverture du catalogue…";
+        updateStatus();
+        if ("Paramètres".equals(activePage)) renderSettings();
+        else if ("Accueil".equals(activePage)) renderPage();
+
+        final int generation = loadGeneration.incrementAndGet();
+        final String revision = CombinedCatalogCache.assetRevision(MainActivity.this);
+
+        // Reuse the already grouped binary catalogue immediately on repeat launches.
+        // The bundled sources are still checked and re-ranked in the background.
+        if (!forceRefresh) {
+            io.execute(() -> {
+                ArrayList<Channel> cached = CombinedCatalogCache.read(
+                        MainActivity.this, revision, MAX_CATALOG_CHANNELS,
+                        this::sourceReliabilityScore);
+                if (cached.isEmpty()) return;
+                int cachedSourceCount = countSources(cached);
+                runOnUiThread(() -> {
+                    if (activityDestroyed || generation != loadGeneration.get()) return;
+                    channels.clear();
+                    channels.addAll(cached);
+                    markCatalogChanged();
+                    catalogStatus = combinedSummary(cached, cachedSourceCount, true);
+                    updateStatus();
+                    updateHeaderTabs();
+                    if ("Paramètres".equals(activePage)) renderSettings();
+                    if (fullscreenPlayback) updateChannelResults();
+                    else renderPage();
+                });
+            });
+        }
+
+        final String[] refreshErrors = {"", ""};
+        final Future<ArrayList<Channel>> vavooTask = io.submit(
+                () -> loadVavooSnapshot(forceRefresh, refreshErrors));
+        final Future<ArrayList<Channel>> iptvTask = io.submit(
+                () -> loadIptvSnapshot(forceRefresh, refreshErrors));
+
+        io.execute(() -> {
+            ArrayList<Channel> vavoo;
+            ArrayList<Channel> iptv;
+            try {
+                vavoo = vavooTask.get();
+            } catch (Exception e) {
+                vavoo = new ArrayList<>();
+                refreshErrors[0] = "VAVOO indisponible";
+            }
+            try {
+                iptv = iptvTask.get();
+            } catch (Exception e) {
+                iptv = new ArrayList<>();
+                refreshErrors[1] = "IPTV-ORG indisponible";
+            }
+
+            int sourceEntryCount = vavoo.size() + iptv.size();
+            ArrayList<Channel> merged = ChannelDeduplicator.merge(
+                    vavoo, iptv, this::sourceReliabilityScore);
+            final ArrayList<Channel> result = merged;
+            final int sourceCount = sourceEntryCount;
+            String refreshNote = "";
+            if (!refreshErrors[0].isEmpty()) refreshNote = refreshErrors[0];
+            if (!refreshErrors[1].isEmpty()) {
+                refreshNote += (refreshNote.isEmpty() ? "" : " · ") + refreshErrors[1];
+            }
+            final String note = refreshNote;
+
+            runOnUiThread(() -> {
+                loadingVavoo = false;
+                loadingIptv = false;
+                loadingCatalog = false;
+                if (activityDestroyed) return;
+                if (generation != loadGeneration.get()) {
+                    updateStatus();
+                    return;
+                }
+                if (!result.isEmpty()) {
+                    channels.clear();
+                    channels.addAll(result);
+                    markCatalogChanged();
+                    catalogStatus = combinedSummary(result, sourceCount, false);
+                    if (!note.isEmpty()) {
+                        catalogStatus += " · " + note + " (catalogue intégré conservé)";
+                    }
+                } else if (!channels.isEmpty()) {
+                    catalogStatus = combinedSummary(channels, countSources(channels), true)
+                            + " · actualisation impossible, catalogue enregistré conservé";
+                } else {
+                    catalogStatus = "Aucun catalogue disponible";
+                    if (!note.isEmpty()) catalogStatus += " · " + note;
+                }
+                updateStatus();
+                updateHeaderTabs();
+                if ("Paramètres".equals(activePage)) renderSettings();
+                if (fullscreenPlayback) updateChannelResults();
+                else renderPage();
+                if (channels.isEmpty()) {
+                    Toast.makeText(MainActivity.this,
+                            "Catalogue indisponible. Vérifie ta connexion ou réessaie plus tard.",
+                            Toast.LENGTH_LONG).show();
+                }
+            });
+
+            if (!result.isEmpty()) {
+                CombinedCatalogCache.write(MainActivity.this, revision, result, MAX_CATALOG_CHANNELS);
+            }
+        });
+    }
+
     private void loadChannels(boolean forceRefresh) {
+        if ("TOUS".equals(sourceFilter)) {
+            loadCombinedChannels(forceRefresh);
+            return;
+        }
         final String requestedSource = "IPTV-ORG".equals(sourceFilter) ? "IPTV-ORG" : "VAVOO";
         final boolean requestVavoo = "VAVOO".equals(requestedSource);
         if (requestVavoo ? loadingVavoo : loadingIptv) return;
@@ -910,6 +2557,7 @@ public class MainActivity extends Activity {
         loadingCatalog = loadingVavoo || loadingIptv;
         catalogStatus = requestedSource + " · chargement en arrière-plan…";
         updateStatus();
+        if ("Accueil".equals(activePage)) renderPage();
 
         if ("Live TV".equals(activePage) && channels.isEmpty()) updateChannelResults();
         if ("Paramètres".equals(activePage)) renderSettings();
@@ -997,12 +2645,12 @@ public class MainActivity extends Activity {
 
             // Only the fallback/manual-refresh path reads the legacy disk cache and
             // performs a remote catalogue request. The normal VAVOO start above returns early.
-            ArrayList<Channel> quickCached = CatalogCache.readQuick(
-                    MainActivity.this, requestedSource, MAX_CACHED_CHANNELS);
+            ArrayList<Channel> quickCached = filterSourceCatalog(CatalogCache.readQuick(
+                    MainActivity.this, requestedSource, MAX_CACHED_CHANNELS), requestedSource);
             showCachedSnapshot(quickCached, requestedSource, currentGen);
 
-            ArrayList<Channel> diskCached = CatalogCache.readFull(
-                    MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS);
+            ArrayList<Channel> diskCached = filterSourceCatalog(CatalogCache.readFull(
+                    MainActivity.this, requestedSource, MAX_CATALOG_CHANNELS), requestedSource);
 
             if (!forceRefresh && !diskCached.isEmpty()
                     && CatalogCache.isFresh(MainActivity.this, requestedSource, 12L * 60L * 60L * 1000L)) {
@@ -1071,7 +2719,7 @@ public class MainActivity extends Activity {
                 }
             }
 
-            final ArrayList<Channel> result = loaded;
+            final ArrayList<Channel> result = filterSourceCatalog(loaded, requestedSource);
             final String loadError = error;
             if (!result.isEmpty()) {
                 CatalogCache.saveQuick(MainActivity.this, result, requestedSource, MAX_CACHED_CHANNELS);
@@ -1128,10 +2776,23 @@ public class MainActivity extends Activity {
         });
     }
 
+    private ArrayList<Channel> filterSourceCatalog(List<Channel> sourceChannels, String source) {
+        return "IPTV-ORG".equalsIgnoreCase(safe(source))
+                ? ChannelCatalogPolicy.filterIptvOrg(sourceChannels)
+                : ChannelCatalogPolicy.filterVavoo(sourceChannels);
+    }
+
     private Channel toAppChannel(VavooProvider.VavooChannel item) {
         String country = knownCountry(item.country);
         if (country.isEmpty()) country = knownCountry(item.group);
-        if (country.isEmpty()) country = "Pays non précisé";
+        if (country.isEmpty() && item.country != null && !item.country.trim().isEmpty()) {
+            country = item.country.trim();
+        }
+        if (country.isEmpty()) {
+            String metadata = Channel.normalizeSearch(item.group);
+            country = metadata.contains("arab") ? "Pays arabes"
+                    : (metadata.contains("maghreb") ? "Maghreb" : "Pays non précisé");
+        }
         return new Channel(item.name, "vavoo://" + item.id, item.logo,
                 "VAVOO · " + (item.group == null || item.group.trim().isEmpty()
                 ? "Direct" : item.group), true, item.sourceUrl, country);
@@ -1143,17 +2804,19 @@ public class MainActivity extends Activity {
             if (converted.size() >= MAX_CATALOG_CHANNELS) break;
             converted.add(toAppChannel(item));
         }
-        return converted;
+        return ChannelCatalogPolicy.filterVavoo(converted);
     }
 
     private void publishCatalogSnapshot(ArrayList<Channel> snapshot, String requestedSource,
                                         int generation) {
         if (snapshot == null || snapshot.isEmpty()) return;
-        final ArrayList<Channel> copy = new ArrayList<>(snapshot);
+        final ArrayList<Channel> sourceEntries = filterSourceCatalog(snapshot, requestedSource);
+        final ArrayList<Channel> copy = ChannelDeduplicator.merge(
+                sourceEntries, Collections.emptyList(), this::sourceReliabilityScore);
         runOnUiThread(() -> {
             if (activityDestroyed || generation != loadGeneration.get()
                     || !requestedSource.equals(sourceFilter)
-                    || copy.size() <= channels.size()) return;
+                    || copy.isEmpty() || copy.size() <= channels.size()) return;
             channels.clear();
             channels.addAll(copy);
             markCatalogChanged();
@@ -1169,10 +2832,13 @@ public class MainActivity extends Activity {
     private void showCachedSnapshot(ArrayList<Channel> cacheSnapshot, String requestedSource,
                                     int generation) {
         if (cacheSnapshot == null || cacheSnapshot.isEmpty()) return;
-        final ArrayList<Channel> snapshot = new ArrayList<>(cacheSnapshot);
+        final ArrayList<Channel> sourceEntries = filterSourceCatalog(cacheSnapshot, requestedSource);
+        final ArrayList<Channel> snapshot = ChannelDeduplicator.merge(
+                sourceEntries, Collections.emptyList(), this::sourceReliabilityScore);
         runOnUiThread(() -> {
             if (activityDestroyed || generation != loadGeneration.get()
-                    || !requestedSource.equals(sourceFilter) || snapshot.size() <= channels.size()) return;
+                    || !requestedSource.equals(sourceFilter) || snapshot.isEmpty()
+                    || snapshot.size() <= channels.size()) return;
             channels.clear();
             channels.addAll(snapshot);
             markCatalogChanged();
@@ -1290,41 +2956,44 @@ public class MainActivity extends Activity {
     private String safe(String value) { return value == null ? "" : value.trim(); }
 
     private boolean isFavorite(Channel ch) {
-        return ch != null && (favoritesStore != null
-                ? favoritesStore.contains(ch.url)
-                : getSharedPreferences("favorites", MODE_PRIVATE).getBoolean(ch.url, false));
+        if (ch == null) return false;
+        if (favoritesStore != null) return ch.matchesSavedIds(favoritesStore.snapshotUrls());
+        SharedPreferences preferences = getSharedPreferences("favorites", MODE_PRIVATE);
+        if (preferences.getBoolean(ch.identity(), false) || preferences.getBoolean(ch.url, false)) return true;
+        for (Channel option : ch.playbackOptions()) {
+            if (preferences.getBoolean(option.url, false)) return true;
+        }
+        return false;
     }
 
     private void toggleFavorite(Channel ch) {
         if (ch == null) return;
+        boolean nowFavorite = !isFavorite(ch);
         if (favoritesStore != null) {
-            favoritesStore.toggle(ch.url);
+            favoritesStore.setFavorite(ch.identity(), nowFavorite);
+            if (!nowFavorite) {
+                for (Channel option : ch.playbackOptions()) {
+                    favoritesStore.setFavorite(option.url, false);
+                }
+            }
         } else {
-            SharedPreferences p = getSharedPreferences("favorites", MODE_PRIVATE);
-            p.edit().putBoolean(ch.url, !p.getBoolean(ch.url, false)).apply();
+            SharedPreferences preferences = getSharedPreferences("favorites", MODE_PRIVATE);
+            SharedPreferences.Editor editor = preferences.edit().putBoolean(ch.identity(), nowFavorite);
+            if (!nowFavorite) for (Channel option : ch.playbackOptions()) editor.remove(option.url);
+            editor.apply();
         }
-    }
-
-    private boolean useVlcPlayer() {
-        return getSharedPreferences("settings", MODE_PRIVATE).getBoolean("use_vlc_player", false);
-    }
-
-    private void setVlcPreference(boolean enabled) {
-        getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("use_vlc_player", enabled).apply();
-    }
-
-    private String preferredPlayerLabel() {
-        return useVlcPlayer() ? "VLC (compatibilité étendue)" : "Media3 (léger)";
     }
 
     private void enterFullscreenPlayback() {
         if (fullscreenPlayback || playerStage == null || contentHost == null
-                || !"Live TV".equals(activePage)) return;
+                || (!"Live TV".equals(activePage) && !"Accueil".equals(activePage)
+                    && !"Guide TV".equals(activePage))) return;
         if (!(playerStage.getParent() instanceof ViewGroup)) return;
 
         playerStageParent = (ViewGroup) playerStage.getParent();
         playerStageOriginalIndex = playerStageParent.indexOfChild(playerStage);
         playerStageOriginalLayoutParams = playerStage.getLayoutParams();
+        if (getCurrentFocus() != null) playbackReturnFocus = getCurrentFocus();
 
         View placeholder = new FrameLayout(this);
         placeholder.setBackgroundColor(Color.BLACK);
@@ -1374,63 +3043,324 @@ public class MainActivity extends Activity {
         playerStageOriginalIndex = -1;
         if (headerView != null) headerView.setVisibility(View.VISIBLE);
         if (statusView != null) statusView.setVisibility(View.VISIBLE);
-        if (channelResults != null) channelResults.requestFocus();
+        if (playbackReturnFocus != null && playbackReturnFocus.isAttachedToWindow()) {
+            playbackReturnFocus.requestFocus();
+        } else if (channelResults != null) {
+            channelResults.requestFocus();
+        } else if (liveTab != null) {
+            liveTab.requestFocus();
+        }
+    }
+
+    private void showSourceChoices(Channel channel) {
+        if (channel == null) {
+            Toast.makeText(this, "Sélectionne une chaîne pour voir ses flux.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ArrayList<Channel> options = new ArrayList<>(channel.playbackOptions());
+        Collections.sort(options, (left, right) ->
+                Integer.compare(sourceReliabilityScore(right), sourceReliabilityScore(left)));
+        if (options.size() < 2) {
+            Toast.makeText(this, "Cette chaîne n’a qu’un seul flux disponible.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        LinearLayout dossier = vertical();
+        dossier.setPadding(dp(isTelevision() ? 24 : 16), dp(isTelevision() ? 22 : 14),
+                dp(isTelevision() ? 24 : 16), dp(isTelevision() ? 18 : 12));
+        dossier.setBackground(outlined(0xFF1B1C21, 20, 0x22FFFFFF));
+
+        LinearLayout titleRow = horizontal();
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        dossier.addView(titleRow, lp(-1, -2));
+        TextView folderIcon = label("▤", isTelevision() ? 25 : 19, Color.WHITE, true);
+        folderIcon.setGravity(Gravity.CENTER);
+        folderIcon.setBackground(rounded(CYAN, 12));
+        titleRow.addView(folderIcon, lp(isTelevision() ? 50 : 40, isTelevision() ? 50 : 40));
+        LinearLayout heading = vertical();
+        LinearLayout.LayoutParams headingP = new LinearLayout.LayoutParams(0, -2, 1f);
+        headingP.leftMargin = dp(12);
+        titleRow.addView(heading, headingP);
+        TextView eyebrow = label("DOSSIER DE CHAÎNE", isTelevision() ? 9 : 7, CYAN, true);
+        eyebrow.setLetterSpacing(0.1f);
+        heading.addView(eyebrow);
+        TextView title = label(channel.name, isTelevision() ? 22 : 16, TEXT, true);
+        title.setMaxLines(1);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams titleP = lp(-1, -2);
+        titleP.topMargin = dp(3);
+        heading.addView(title, titleP);
+        TextView summary = label(options.size() + " flux réunis · la source la plus fiable d’abord",
+                isTelevision() ? 11 : 8, MUTED, false);
+        LinearLayout.LayoutParams summaryP = lp(-1, -2);
+        summaryP.topMargin = dp(3);
+        heading.addView(summary, summaryP);
+
+        LinearLayout recommended = horizontal();
+        recommended.setGravity(Gravity.CENTER_VERTICAL);
+        recommended.setPadding(dp(14), dp(11), dp(12), dp(11));
+        recommended.setBackground(outlined(0xFF352127, 15, CYAN));
+        LinearLayout.LayoutParams recommendedP = lp(-1, isTelevision() ? 78 : 64);
+        recommendedP.topMargin = dp(isTelevision() ? 18 : 12);
+        dossier.addView(recommended, recommendedP);
+        LinearLayout recommendedInfo = vertical();
+        recommendedInfo.setGravity(Gravity.CENTER_VERTICAL);
+        recommended.addView(recommendedInfo, new LinearLayout.LayoutParams(0, -1, 1f));
+        recommendedInfo.addView(label("✦  MEILLEUR FLUX", isTelevision() ? 9 : 7, CYAN, true));
+        Channel best = options.get(0);
+        TextView bestSource = label((best.isVavoo ? "VAVOO" : "IPTV-ORG")
+                + "  ·  " + safeCountry(best.country), isTelevision() ? 14 : 10, TEXT, true);
+        LinearLayout.LayoutParams bestSourceP = lp(-1, -2);
+        bestSourceP.topMargin = dp(4);
+        recommendedInfo.addView(bestSource, bestSourceP);
+        TextView watchBest = buttonText("▶  Regarder", true);
+        recommended.addView(watchBest, lp(-2, isTelevision() ? 46 : 38));
+        recommended.setFocusable(true);
+        recommended.setClickable(true);
+        recommended.setOnClickListener(v -> {
+            sourceDialog.dismiss();
+            play(channel);
+        });
+        watchBest.setOnClickListener(v -> recommended.performClick());
+
+        TextView alternativesTitle = label("AUTRES SOURCES", isTelevision() ? 9 : 7, MUTED, true);
+        alternativesTitle.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams alternativesTitleP = lp(-1, -2);
+        alternativesTitleP.topMargin = dp(isTelevision() ? 17 : 12);
+        alternativesTitleP.bottomMargin = dp(6);
+        dossier.addView(alternativesTitle, alternativesTitleP);
+
+        ScrollView alternativesScroll = new ScrollView(this);
+        alternativesScroll.setVerticalScrollBarEnabled(false);
+        LinearLayout alternatives = vertical();
+        alternativesScroll.addView(alternatives);
+        dossier.addView(alternativesScroll, new LinearLayout.LayoutParams(-1, -2));
+        for (int i = 1; i < options.size(); i++) {
+            final int sourceIndex = i;
+            Channel option = options.get(i);
+            LinearLayout row = horizontal();
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(12), dp(8), dp(8), dp(8));
+            row.setBackground(outlined(0xFF26272D, 12, 0x00202020));
+            row.setFocusable(true);
+            row.setClickable(true);
+            LinearLayout.LayoutParams rowP = lp(-1, isTelevision() ? 58 : 48);
+            rowP.bottomMargin = dp(5);
+            alternatives.addView(row, rowP);
+            TextView number = label(String.format(Locale.ROOT, "%02d", i + 1),
+                    isTelevision() ? 12 : 9, MUTED, true);
+            row.addView(number, lp(34, -2));
+            LinearLayout sourceInfo = vertical();
+            LinearLayout.LayoutParams sourceInfoP = new LinearLayout.LayoutParams(0, -2, 1f);
+            sourceInfoP.leftMargin = dp(8);
+            row.addView(sourceInfo, sourceInfoP);
+            TextView provider = label(option.isVavoo ? "VAVOO" : "IPTV-ORG",
+                    isTelevision() ? 12 : 9, TEXT, true);
+            provider.setSingleLine(true);
+            provider.setEllipsize(TextUtils.TruncateAt.END);
+            sourceInfo.addView(provider);
+            TextView country = label(flag(option.country, countryCode(option.country))
+                    + "  " + safeCountry(option.country), isTelevision() ? 9 : 7, MUTED, false);
+            sourceInfo.addView(country);
+            TextView choose = label("Choisir", isTelevision() ? 10 : 8, 0xFFFFB1BA, true);
+            row.addView(choose);
+            row.setOnFocusChangeListener((view, focused) -> {
+                row.setBackground(outlined(focused ? 0xFF39232A : 0xFF26272D,
+                        12, focused ? CYAN : 0x00202020));
+                row.setScaleX(focused ? 1.02f : 1f);
+                row.setScaleY(focused ? 1.02f : 1f);
+            });
+            row.setOnClickListener(v -> {
+                sourceDialog.dismiss();
+                playSourceChoice(channel, options, sourceIndex);
+            });
+        }
+
+        sourceDialog = new AlertDialog.Builder(this)
+                .setView(dossier)
+                .setNegativeButton("Fermer", null)
+                .create();
+        sourceDialog.setOnShowListener(dialog -> {
+            if (sourceDialog.getWindow() != null) {
+                sourceDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+                sourceDialog.getWindow().setLayout(
+                        isTelevision()
+                                ? Math.min(dp(670), getResources().getDisplayMetrics().widthPixels - dp(64))
+                                : getResources().getDisplayMetrics().widthPixels - dp(32),
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+            recommended.requestFocus();
+        });
+        sourceDialog.show();
+    }
+
+    private AlertDialog sourceDialog;
+
+    private void playSourceChoice(Channel channel, List<Channel> options, int selectedIndex) {
+        if (channel == null || options == null || selectedIndex < 0 || selectedIndex >= options.size()) return;
+        ArrayList<Channel> remaining = new ArrayList<>(options.subList(selectedIndex, options.size()));
+        Channel selected = Channel.grouped(remaining.get(0), remaining, channel.identity());
+        preserveManualSourceOrder = true;
+        play(selected);
     }
 
     private void play(Channel ch) {
         if (ch == null) return;
+        playbackReturnFocus = getCurrentFocus();
         currentChannel = ch;
-        if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.url);
+        if (playerView != null) playerView.setCurrentChannel(ch);
+        if (sourceOptionsButton != null) {
+            sourceOptionsButton.setText("▤ Dossier (" + ch.sourceCount() + ")");
+            sourceOptionsButton.setEnabled(ch.sourceCount() > 1);
+            sourceOptionsButton.setAlpha(sourceOptionsButton.isEnabled() ? 1f : 0.55f);
+        }
+        if (channelAdapter != null) channelAdapter.setSelectedUrl(ch.identity());
         rememberRecentlyViewed(ch);
         if (previewTitle != null) previewTitle.setText(safe(ch.name));
-        if (previewStatus != null) previewStatus.setText("Connexion au flux " + sourceFilter + "…");
+        if (previewStatus != null) previewStatus.setText(
+                "Source " + (ch.isVavoo ? "VAVOO" : "IPTV-ORG")
+                        + (ch.sourceCount() > 1
+                            ? " · " + ch.sourceCount() + " flux, secours automatique prêt…"
+                            : " · connexion au direct…"));
         if (previewDetail != null) previewDetail.setText(
-                "SOURCE  " + sourceFilter + "     ·     PAYS  " + safeCountry(ch.country));
+                "AUTO  ·  " + safeCountry(ch.country) + "  ·  " + ch.sourceCount() + " sources");
         renderCountryChoices();
         enterFullscreenPlayback();
         startPlayback(ch);
     }
 
-    private void startPlayback(Channel ch) {
-        releaseMediaEngine();
-        if (playerStage != null) playerStage.removeAllViews();
-        if (ch.isVavoo) {
-            Toast.makeText(this, "Résolution du flux VAVOO…", Toast.LENGTH_SHORT).show();
-            io.execute(() -> {
-                try {
-                    String resolved = VavooProvider.resolveStream(ch.vavooSourceUrl);
-                    runOnUiThread(() -> {
-                        if (currentChannel != ch || playerStage == null) return;
-                        startResolvedPlayback(ch, resolved);
-                    });
-                } catch (Exception e) {
-                    String message = e.getMessage() == null ? "Résolution VAVOO impossible" : e.getMessage();
-                    runOnUiThread(() -> { if (currentChannel == ch) Toast.makeText(MainActivity.this, "VAVOO : " + message, Toast.LENGTH_LONG).show(); });
-                }
-            });
+    private void zapChannel(Channel current, int direction) {
+        if (current == null || channels.isEmpty()) return;
+        int currentIndex = -1;
+        for (int i = 0; i < channels.size(); i++) {
+            if (TextUtils.equals(channels.get(i).identity(), current.identity())) {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex < 0) return;
+        int nextIndex = (currentIndex + direction + channels.size()) % channels.size();
+        play(channels.get(nextIndex));
+    }
+
+    private int sourceReliabilityScore(Channel source) {
+        if (source == null) return Integer.MIN_VALUE;
+        SharedPreferences preferences = sourceHealthPreferences == null
+                ? getSharedPreferences("source_health", MODE_PRIVATE) : sourceHealthPreferences;
+        String key = "source_" + Integer.toHexString(source.url.hashCode());
+        int successes = preferences.getInt(key + "_ok", 0);
+        int failures = preferences.getInt(key + "_fail", 0);
+        int score = (int) (((long) (successes + 1) * 1000L) / (successes + failures + 2L));
+        if (successes == 0 && failures == 0) {
+            boolean morocco = "MA".equals(ChannelCatalogPolicy.countryCode(source.country));
+            score += (source.isVavoo == morocco) ? 6 : 18;
+        }
+        if (!source.logo.isEmpty()) score += 3;
+        long lastSuccess = preferences.getLong(key + "_last_ok", 0L);
+        if (lastSuccess > 0L) {
+            long hours = Math.max(0L, (System.currentTimeMillis() - lastSuccess) / 3_600_000L);
+            score += (int) Math.max(0L, 40L - Math.min(40L, hours));
+        }
+        return score;
+    }
+
+    private void recordSourceOutcome(Channel source, boolean success) {
+        if (source == null) return;
+        SharedPreferences preferences = sourceHealthPreferences == null
+                ? getSharedPreferences("source_health", MODE_PRIVATE) : sourceHealthPreferences;
+        String key = "source_" + Integer.toHexString(source.url.hashCode());
+        SharedPreferences.Editor edit = preferences.edit();
+        if (success) {
+            edit.putInt(key + "_ok", preferences.getInt(key + "_ok", 0) + 1);
+            edit.putLong(key + "_last_ok", System.currentTimeMillis());
         } else {
-            startResolvedPlayback(ch, ch.url);
+            edit.putInt(key + "_fail", preferences.getInt(key + "_fail", 0) + 1);
+        }
+        edit.apply();
+    }
+
+    private void startPlayback(Channel ch) {
+        playbackCandidates = new ArrayList<>(ch.playbackOptions());
+        if (!preserveManualSourceOrder) {
+            Collections.sort(playbackCandidates, (left, right) ->
+                    Integer.compare(sourceReliabilityScore(right), sourceReliabilityScore(left)));
+        }
+        preserveManualSourceOrder = false;
+        playbackCandidateIndex = -1;
+        activePlaybackSource = null;
+        if (!attemptNextSource(ch)) {
+            if (previewStatus != null) previewStatus.setText("Aucune source disponible");
+            Toast.makeText(this, "Aucun flux disponible pour cette chaîne.", Toast.LENGTH_LONG).show();
         }
     }
 
-    private void startResolvedPlayback(Channel ch, String streamUrl) {
-        if (playerStage == null || currentChannel != ch) return;
-        if (useVlcPlayer()) startVlcPlayback(ch, streamUrl);
-        else startMedia3Playback(ch, streamUrl);
+    private boolean attemptNextSource(Channel logicalChannel) {
+        if (currentChannel != logicalChannel) return false;
+        int next = playbackCandidateIndex + 1;
+        if (next >= playbackCandidates.size()) return false;
+        playbackCandidateIndex = next;
+        Channel candidate = playbackCandidates.get(next);
+        activePlaybackSource = candidate;
+        activeSourceSucceeded = false;
+        releaseMediaEngine();
+        if (playerStage == null) return false;
+        playerStage.removeAllViews();
+        if (previewStatus != null) previewStatus.setText(
+                "Essai de la source " + (next + 1) + " sur " + playbackCandidates.size() + "…");
+        if (previewDetail != null) previewDetail.setText(
+                (candidate.isVavoo ? "VAVOO" : "IPTV-ORG") + "  ·  " + safeCountry(logicalChannel.country));
+
+        if (candidate.isVavoo) {
+            io.execute(() -> {
+                try {
+                    String resolved = VavooProvider.resolveStream(candidate.vavooSourceUrl);
+                    runOnUiThread(() -> {
+                        if (currentChannel != logicalChannel || activePlaybackSource != candidate) return;
+                        startResolvedPlayback(logicalChannel, candidate, resolved);
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        if (currentChannel != logicalChannel || activePlaybackSource != candidate) return;
+                        recordSourceOutcome(candidate, false);
+                        if (!attemptNextSource(logicalChannel)) showNoWorkingSource(logicalChannel);
+                    });
+                }
+            });
+        } else {
+            startResolvedPlayback(logicalChannel, candidate, candidate.url);
+        }
+        return true;
     }
 
-    private void startMedia3Playback(Channel ch, String streamUrl) {
+    private void showNoWorkingSource(Channel logicalChannel) {
+        if (previewStatus != null) previewStatus.setText("Aucune source ne répond");
+        if (playerView != null) playerView.setErrorMessage("Toutes les sources sont indisponibles");
+        Toast.makeText(this, "Toutes les sources de cette chaîne sont indisponibles.", Toast.LENGTH_LONG).show();
+    }
+
+    private void startResolvedPlayback(Channel logicalChannel, Channel candidate, String streamUrl) {
+        if (playerStage == null || currentChannel != logicalChannel || activePlaybackSource != candidate) return;
+        startMedia3Playback(logicalChannel, candidate, streamUrl);
+    }
+
+    private void startMedia3Playback(Channel ch, Channel candidate, String streamUrl) {
         NativeLivePlayerView nativeView = new NativeLivePlayerView(this);
         try {
             ExoPlayer active = LivePlaybackFactory.create(this,
-                    ch.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
+                    candidate.isVavoo ? "VAVOO/2.6" : "NISSKENZI+/2.1");
             nativeView.setChannelName(ch.name);
-            nativeView.setSourceLabel(ch.isVavoo ? "VAVOO" : "IPTV-ORG");
+            nativeView.setSourceLabel((candidate.isVavoo ? "VAVOO" : "IPTV-ORG")
+                    + " · source " + (playbackCandidateIndex + 1) + "/" + playbackCandidates.size());
             // The visible Back button dismisses the on-screen bars. Physical Back
             // closes the drawer, then hides controls, then exits fullscreen.
-            nativeView.setBackAction(nativeView::hideControls);
-            nativeView.setDrawerChannels(channels, channelCatalogToken, ch.url, this::play,
+            nativeView.setDrawerChannels(channels, channelCatalogToken, ch.identity(), this::play,
                     this::loadEpgForCurrentChannel);
+            nativeView.setCurrentChannel(ch);
+            nativeView.setSourceFolderAction(() -> {
+                if (currentChannel != null) showSourceChoices(currentChannel);
+            });
+            nativeView.setChannelZapActions(
+                    () -> zapChannel(ch, -1), () -> zapChannel(ch, 1));
             nativeView.setPlaybackState(Player.STATE_BUFFERING);
 
             player = active;
@@ -1444,10 +3374,15 @@ public class MainActivity extends Activity {
 
             active.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int playbackState) {
-                    if (currentChannel != ch || playerView != nativeView || previewStatus == null) return;
+                    if (currentChannel != ch || activePlaybackSource != candidate
+                            || playerView != nativeView || previewStatus == null) return;
                     nativeView.setPlaybackState(playbackState);
                     if (playbackState == Player.STATE_READY) {
-                        previewStatus.setText("● EN DIRECT");
+                        if (!activeSourceSucceeded) {
+                            recordSourceOutcome(candidate, true);
+                            activeSourceSucceeded = true;
+                        }
+                        previewStatus.setText("● EN DIRECT · " + (candidate.isVavoo ? "VAVOO" : "IPTV-ORG"));
                     } else if (playbackState == Player.STATE_BUFFERING) {
                         previewStatus.setText("Connexion · mise en mémoire tampon…");
                     } else {
@@ -1456,36 +3391,29 @@ public class MainActivity extends Activity {
                 }
 
                 @Override public void onPlayerError(PlaybackException e) {
-                    if (currentChannel == ch && playerView == nativeView) {
-                        nativeView.setErrorMessage("Flux indisponible · un autre lecteur peut être nécessaire");
+                    if (currentChannel == ch && activePlaybackSource == candidate && playerView == nativeView) {
+                        recordSourceOutcome(candidate, false);
+                        if (attemptNextSource(ch)) return;
+                        nativeView.setErrorMessage("Toutes les sources sont indisponibles");
                         if (previewStatus != null) {
-                            previewStatus.setText("Flux indisponible · essayez l’autre lecteur");
+                            previewStatus.setText("Flux indisponible · toutes les sources ont échoué");
                         }
                     }
                     Toast.makeText(MainActivity.this,
-                            "Media3 : lecture impossible (" + e.getErrorCodeName() + ").",
-                            Toast.LENGTH_LONG).show();
-                    if (!useVlcPlayer()) {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Essayer un autre lecteur ?")
-                            .setMessage("Ce flux semble nécessiter un moteur vidéo plus compatible. VLC est disponible en option.")
-                            .setNegativeButton("Pas maintenant", null)
-                            .setPositiveButton("Essayer VLC", (dialog, which) -> {
-                                setVlcPreference(true);
-                                startPlayback(ch);
-                            }).show();
-                    }
+                            "Lecture impossible (" + e.getErrorCodeName() + ").",
+                            Toast.LENGTH_SHORT).show();
                 }
             });
             active.setMediaItem(LivePlaybackFactory.mediaItem(streamUrl, ch.name));
             active.prepare();
             active.setPlayWhenReady(true);
         } catch (Exception e) {
-            if (nativeView != null) {
-                nativeView.setErrorMessage("Démarrage impossible");
+            recordSourceOutcome(candidate, false);
+            if (!attemptNextSource(ch)) {
+                if (nativeView != null) nativeView.setErrorMessage("Démarrage impossible");
+                Toast.makeText(this, "Impossible de démarrer le flux : " + safe(e.getMessage()),
+                        Toast.LENGTH_LONG).show();
             }
-            Toast.makeText(this, "Impossible de démarrer Media3 : " + safe(e.getMessage()),
-                    Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1497,54 +3425,10 @@ public class MainActivity extends Activity {
         io.execute(() -> {
             EpgProvider.Result result = EpgProvider.lookup(MainActivity.this, requested);
             runOnUiThread(() -> {
-                if (activityDestroyed || currentChannel != requested || playerView != target
-                        || !target.isChannelDrawerOpen()) return;
+                if (activityDestroyed || currentChannel != requested || playerView != target) return;
                 target.setEpgInfo(result);
             });
         });
-    }
-
-    private void startVlcPlayback(Channel ch, String streamUrl) {
-        try {
-            ArrayList<String> options = new ArrayList<>();
-            options.add("--network-caching=1500");
-            options.add("--no-drop-late-frames");
-            options.add("--no-skip-frames");
-            libVLC = new LibVLC(this, options);
-            org.videolan.libvlc.MediaPlayer active = new org.videolan.libvlc.MediaPlayer(libVLC);
-            vlcPlayer = active;
-            vlcVideoLayout = new VLCVideoLayout(this);
-            playerStage.addView(vlcVideoLayout, new FrameLayout.LayoutParams(-1, -1));
-            active.attachViews(vlcVideoLayout, null, false, false);
-            active.setEventListener(event -> {
-                if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                    runOnUiThread(() -> {
-                        if (vlcPlayer != active || currentChannel != ch) return;
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("VLC n’a pas pu lire le flux")
-                            .setMessage("Le flux est peut-être indisponible. Souhaitez-vous tenter le lecteur Media3 ?")
-                            .setNegativeButton("Fermer", null)
-                            .setPositiveButton("Essayer Media3", (dialog, which) -> {
-                                setVlcPreference(false);
-                                startPlayback(ch);
-                            }).show();
-                    });
-                }
-            });
-            Media media = new Media(libVLC, Uri.parse(streamUrl));
-            media.setHWDecoderEnabled(true, false);
-            media.addOption(":network-caching=1500");
-            active.setMedia(media);
-            media.release();
-            active.play();
-        } catch (Exception e) {
-            releaseMediaEngine();
-            Toast.makeText(this, "Impossible de démarrer VLC : " + safe(e.getMessage()), Toast.LENGTH_LONG).show();
-            if (currentChannel == ch && playerStage != null) {
-                setVlcPreference(false);
-                startMedia3Playback(ch, streamUrl);
-            }
-        }
     }
 
     private void releaseMediaEngine() {
@@ -1556,23 +3440,19 @@ public class MainActivity extends Activity {
             try { playerView.setPlayer(null); if (playerStage != null) playerStage.removeView(playerView); } catch (Exception ignored) {}
             playerView = null;
         }
-        if (vlcPlayer != null) {
-            try { vlcPlayer.stop(); vlcPlayer.detachViews(); vlcPlayer.release(); } catch (Exception ignored) {}
-            vlcPlayer = null;
-        }
-        if (libVLC != null) {
-            try { libVLC.release(); } catch (Exception ignored) {}
-            libVLC = null;
-        }
-        if (vlcVideoLayout != null) {
-            try { if (playerStage != null) playerStage.removeView(vlcVideoLayout); } catch (Exception ignored) {}
-            vlcVideoLayout = null;
-        }
     }
 
     private void stopPreview() {
         releaseMediaEngine();
         currentChannel = null;
+        if (sourceOptionsButton != null) {
+            sourceOptionsButton.setText("▤ Dossier");
+            sourceOptionsButton.setEnabled(false);
+            sourceOptionsButton.setAlpha(0.55f);
+        }
+        activePlaybackSource = null;
+        playbackCandidates.clear();
+        playbackCandidateIndex = -1;
         if (channelAdapter != null) channelAdapter.setSelectedUrl(null);
         if (playerStage != null) {
             playerStage.removeAllViews();
@@ -1597,9 +3477,10 @@ public class MainActivity extends Activity {
         if (fullscreenPlayback) {
             if (playerView != null && playerView.handleBackPressed()) return;
             exitFullscreenPlayback();
-        } else if ("Paramètres".equals(activePage)) {
-            setPage("Live TV");
-        } else if (player != null || vlcPlayer != null) {
+        } else if ("Paramètres".equals(activePage) || "Live TV".equals(activePage)
+                || "Guide TV".equals(activePage)) {
+            setPage("Accueil");
+        } else if (player != null) {
             stopPreview();
         } else {
             super.onBackPressed();
@@ -1616,6 +3497,7 @@ public class MainActivity extends Activity {
         releasePlayer();
         io.shutdownNow();
         if (channelAdapter != null) channelAdapter.shutdown();
+        if (homeLogoLoader != null) homeLogoLoader.close();
         super.onDestroy();
     }
 }

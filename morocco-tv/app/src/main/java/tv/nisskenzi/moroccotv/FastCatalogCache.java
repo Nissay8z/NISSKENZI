@@ -26,7 +26,7 @@ import java.util.List;
  */
 public final class FastCatalogCache {
     private static final int MAGIC = 0x4E534B43; // "NSKC"
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private static final long MAX_CACHE_BYTES = 48L * 1024L * 1024L;
     private static final int MAX_STORED_CHANNELS = 30_000;
 

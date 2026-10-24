@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.text.Normalizer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -41,12 +42,16 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         boolean isFavorite(Channel channel);
     }
 
+    public interface OnChannelFocusListener {
+        void onChannelFocus(Channel channel);
+    }
+
     private static final DiffUtil.ItemCallback<Channel> DIFF_CALLBACK =
             new DiffUtil.ItemCallback<Channel>() {
                 @Override
                 public boolean areItemsTheSame(@NonNull Channel oldItem,
                                                @NonNull Channel newItem) {
-                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url));
+                    return TextUtils.equals(oldItem.identity(), newItem.identity());
                 }
 
                 @Override
@@ -57,23 +62,39 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
                             && TextUtils.equals(safe(oldItem.country), safe(newItem.country))
                             && oldItem.isVavoo == newItem.isVavoo
-                            && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl));
+                            && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl))
+                            && TextUtils.equals(safe(oldItem.url), safe(newItem.url))
+                            && oldItem.sourceCount() == newItem.sourceCount();
                 }
             };
 
     private static final Map<String, String> COUNTRY_CODES = buildCountryCodes();
 
     private final OnChannelClickListener listener;
+    private final OnChannelClickListener sourceChoiceListener;
     private final FavoriteChecker favoriteChecker;
+    private OnChannelFocusListener focusListener;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
+    private final Map<String, Integer> positionByUrl = new HashMap<>();
     private volatile boolean shutDown;
 
     public ChannelAdapter(@NonNull OnChannelClickListener listener,
                           @NonNull FavoriteChecker favoriteChecker) {
+        this(listener, favoriteChecker, null);
+    }
+
+    public ChannelAdapter(@NonNull OnChannelClickListener listener,
+                          @NonNull FavoriteChecker favoriteChecker,
+                          @Nullable OnChannelClickListener sourceChoiceListener) {
         super(DIFF_CALLBACK);
         this.listener = listener;
         this.favoriteChecker = favoriteChecker;
+        this.sourceChoiceListener = sourceChoiceListener;
+    }
+
+    public void setFocusListener(@Nullable OnChannelFocusListener listener) {
+        focusListener = listener;
     }
 
     /** Updates the highlighted channel without rebinding the entire catalogue. */
@@ -97,10 +118,18 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
     private int findPosition(String url) {
         if (url == null || url.isEmpty()) return -1;
-        for (int i = 0; i < getCurrentList().size(); i++) {
-            if (TextUtils.equals(url, safe(getItem(i).url))) return i;
+        Integer position = positionByUrl.get(url);
+        return position == null ? -1 : position;
+    }
+
+    @Override
+    public void onCurrentListChanged(@NonNull List<Channel> previousList,
+                                        @NonNull List<Channel> currentList) {
+        positionByUrl.clear();
+        for (int i = 0; i < currentList.size(); i++) {
+            String url = currentList.get(i).identity();
+            if (!url.isEmpty() && !positionByUrl.containsKey(url)) positionByUrl.put(url, i);
         }
-        return -1;
     }
 
     @NonNull
@@ -108,8 +137,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     public ChannelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
         boolean television = isTelevision(context);
-        int rowHeight = dp(context, television ? 63 : 54);
-        int bottomMargin = dp(context, 5);
+        int rowHeight = dp(context, television ? 82 : 66);
+        int bottomMargin = dp(context, television ? 7 : 5);
 
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.HORIZONTAL);
@@ -117,9 +146,9 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.setFocusable(true);
         card.setFocusableInTouchMode(false);
         card.setClickable(true);
-        card.setPadding(dp(context, television ? 11 : 8), dp(context, 6),
-                dp(context, 9), dp(context, 6));
-        card.setBackground(roundedDrawable(0xFF1D2632, 8, 0x00FFFFFF, context));
+        card.setPadding(dp(context, television ? 14 : 9), dp(context, 7),
+                dp(context, television ? 13 : 9), dp(context, 7));
+        card.setBackground(roundedDrawable(0xFF1D2028, 13, 0x18FFFFFF, context));
         RecyclerView.LayoutParams cardParams =
                 new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight);
         cardParams.bottomMargin = bottomMargin;
@@ -127,17 +156,17 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
         TextView number = new TextView(context);
         number.setTextSize(television ? 15 : 12);
-        number.setTextColor(Color.WHITE);
+        number.setTextColor(0xFFB8BBC5);
         number.setGravity(Gravity.CENTER);
         number.setIncludeFontPadding(false);
-        card.addView(number, new LinearLayout.LayoutParams(dp(context, television ? 30 : 26),
+        card.addView(number, new LinearLayout.LayoutParams(dp(context, television ? 34 : 27),
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         FrameLayout logoFrame = new FrameLayout(context);
         logoFrame.setBackground(roundedDrawable(0xEEFFFFFF, 7, 0x00FFFFFF, context));
         TextView initials = new TextView(context);
         initials.setTextSize(10);
-        initials.setTextColor(0xFF168AAD);
+        initials.setTextColor(0xFF9D3445);
         initials.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         initials.setGravity(Gravity.CENTER);
         logoFrame.addView(initials, new FrameLayout.LayoutParams(
@@ -150,8 +179,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
-                dp(context, television ? 44 : 38), dp(context, television ? 44 : 38));
-        logoParams.rightMargin = dp(context, 10);
+                dp(context, television ? 50 : 40), dp(context, television ? 50 : 40));
+        logoParams.rightMargin = dp(context, 13);
         card.addView(logoFrame, logoParams);
 
         LinearLayout info = new LinearLayout(context);
@@ -161,7 +190,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
         TextView name = new TextView(context);
-        name.setTextSize(television ? 14 : 11);
+        name.setTextSize(television ? 15 : 11);
         name.setTextColor(Color.WHITE);
         name.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         name.setSingleLine(true);
@@ -171,7 +200,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
         TextView meta = new TextView(context);
         meta.setTextSize(television ? 9 : 8);
-        meta.setTextColor(0xEEFFFFFF);
+        meta.setTextColor(0xFFB9BBC5);
         meta.setSingleLine(true);
         meta.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(
@@ -179,23 +208,37 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         metaParams.topMargin = dp(context, 2);
         info.addView(meta, metaParams);
 
+        TextView dossier = new TextView(context);
+        dossier.setTextSize(television ? 9 : 7);
+        dossier.setTextColor(Color.WHITE);
+        dossier.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        dossier.setGravity(Gravity.CENTER);
+        dossier.setBackground(roundedDrawable(0xFF37232D, 12, 0x66EA5265, context));
+        dossier.setContentDescription("Ouvrir le dossier des flux réunis");
+        dossier.setFocusable(true);
+        dossier.setVisibility(View.GONE);
+        LinearLayout.LayoutParams dossierParams = new LinearLayout.LayoutParams(
+                dp(context, television ? 106 : 78), dp(context, television ? 38 : 30));
+        dossierParams.rightMargin = dp(context, 8);
+        card.addView(dossier, dossierParams);
+
         TextView favorite = new TextView(context);
         favorite.setText("★");
         favorite.setTextSize(television ? 15 : 12);
-        favorite.setTextColor(0xFFFFFF00);
+        favorite.setTextColor(0xFFFFE8EA);
         favorite.setGravity(Gravity.CENTER);
         favorite.setVisibility(View.GONE);
         card.addView(favorite, new LinearLayout.LayoutParams(dp(context, 22),
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        return new ChannelViewHolder(card, number, image, initials, name, meta, favorite);
+        return new ChannelViewHolder(card, number, image, initials, name, meta, favorite, dossier);
     }
 
     @Override
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         Channel channel = getItem(position);
-        holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
-                listener, favoriteChecker, logoLoader, this);
+        holder.bind(channel, position, TextUtils.equals(selectedUrl, channel.identity()),
+                listener, sourceChoiceListener, favoriteChecker, logoLoader, this);
     }
 
     @Override
@@ -217,11 +260,13 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         final TextView name;
         final TextView meta;
         final TextView favorite;
+        final TextView dossier;
         private String boundUrl = "";
         private ChannelLogoLoader.Request logoRequest;
 
         ChannelViewHolder(LinearLayout card, TextView number, ImageView image,
-                          TextView initials, TextView name, TextView meta, TextView favorite) {
+                          TextView initials, TextView name, TextView meta,
+                          TextView favorite, TextView dossier) {
             super(card);
             this.card = card;
             this.number = number;
@@ -230,29 +275,44 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             this.name = name;
             this.meta = meta;
             this.favorite = favorite;
+            this.dossier = dossier;
         }
 
         void bind(Channel channel, int index, boolean selected,
-                  OnChannelClickListener listener, FavoriteChecker favoriteChecker,
-                  ChannelLogoLoader loader, ChannelAdapter owner) {
+                  OnChannelClickListener listener, OnChannelClickListener sourceChoiceListener,
+                  FavoriteChecker favoriteChecker, ChannelLogoLoader loader, ChannelAdapter owner) {
             if (logoRequest != null) {
                 logoRequest.cancel();
                 logoRequest = null;
             }
-            boundUrl = safe(channel.url);
+            boundUrl = channel.identity();
             number.setText(String.valueOf(index + 1));
             name.setText(emptyFallback(channel.name, "Chaîne"));
 
             String country = emptyFallback(channel.country, "Pays non précisé");
-            String group = safe(channel.group)
-                    .replace("VAVOO · ", "")
-                    .replace("IPTV-ORG · ", "");
+            String provider = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
             String metaText = countryFlag(country) + "  " + country
-                    + (group.isEmpty() ? "" : "  ·  " + group);
+                    + "  ·  " + provider + " recommandé"
+                    + (channel.sourceCount() > 1
+                        ? "  ·  " + channel.sourceCount() + " flux" : "");
             meta.setText(metaText);
 
             boolean isFavorite = favoriteChecker != null && favoriteChecker.isFavorite(channel);
             favorite.setVisibility(isFavorite ? View.VISIBLE : View.GONE);
+            dossier.setVisibility(channel.sourceCount() > 1 ? View.VISIBLE : View.GONE);
+            dossier.setText("▤  Dossier (" + channel.sourceCount() + ")");
+            dossier.setContentDescription("Ouvrir le mini dossier des " + channel.sourceCount()
+                    + " flux de " + channel.name);
+            dossier.setOnClickListener(view -> {
+                if (sourceChoiceListener != null && channel.sourceCount() > 1) {
+                    sourceChoiceListener.onChannelClick(channel);
+                }
+            });
+            dossier.setOnFocusChangeListener((view, focused) -> {
+                dossier.setBackground(roundedDrawable(focused ? 0xFF542A34 : 0xFF37232D,
+                        12, focused ? 0xFFFFA1AD : 0x66EA5265, dossier.getContext()));
+                applyState(focused || card.hasFocus(), selected);
+            });
 
             image.setTag(safe(channel.logo));
             image.setImageDrawable(null);
@@ -276,9 +336,23 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 image.setImageDrawable(null);
             }
 
-            card.setOnFocusChangeListener((view, hasFocus) -> applyState(hasFocus, owner.isSelected(boundUrl)));
+            card.setOnFocusChangeListener((view, hasFocus) -> {
+                applyState(hasFocus, owner.isSelected(boundUrl));
+                if (hasFocus && owner.focusListener != null) {
+                    owner.focusListener.onChannelFocus(channel);
+                }
+            });
             card.setOnClickListener(view -> {
                 if (listener != null) listener.onChannelClick(channel);
+            });
+            card.setContentDescription(channel.name + ", " + country
+                    + ", source recommandée " + provider
+                    + (channel.sourceCount() > 1
+                        ? ", " + channel.sourceCount() + " flux, maintenir pour choisir" : ""));
+            card.setOnLongClickListener(view -> {
+                if (sourceChoiceListener == null || channel.sourceCount() < 2) return false;
+                sourceChoiceListener.onChannelClick(channel);
+                return true;
             });
             applyState(card.hasFocus(), selected);
         }
@@ -294,17 +368,21 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             initials.setVisibility(View.VISIBLE);
             card.setOnFocusChangeListener(null);
             card.setOnClickListener(null);
+            card.setOnLongClickListener(null);
+            dossier.setOnClickListener(null);
+            dossier.setOnFocusChangeListener(null);
+            dossier.setVisibility(View.GONE);
         }
 
         private void applyState(boolean focused, boolean selected) {
             Context context = itemView.getContext();
             boolean active = focused || selected;
-            card.setBackground(roundedDrawable(active ? 0xFF164A60 : 0xFF1D2632,
-                    8, active ? 0xFF4CC9F0 : 0x00FFFFFF, context));
-            card.setScaleX(focused ? 1.02f : 1f);
-            card.setScaleY(focused ? 1.02f : 1f);
-            name.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
-            number.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
+            card.setBackground(roundedDrawable(active ? 0xFF382431 : 0xFF1D2028,
+                    13, active ? 0xFFEA5265 : 0x18FFFFFF, context));
+            card.setScaleX(focused ? 1.025f : 1f);
+            card.setScaleY(focused ? 1.025f : 1f);
+            name.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
+            number.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
         }
     }
 

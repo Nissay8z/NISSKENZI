@@ -50,7 +50,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
                     HashMap<String, Integer> built = new HashMap<>(
                             Math.max(16, channels.size() * 4 / 3));
                     for (int i = 0; i < channels.size(); i++) {
-                        String url = safe(channels.get(i).url);
+                        String url = channels.get(i).identity();
                         if (!url.isEmpty() && !built.containsKey(url)) built.put(url, i);
                     }
                     cached = Collections.unmodifiableMap(built);
@@ -68,17 +68,28 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
 
     /** O(1) lookup: opening the left drawer must not scan thousands of rows. */
     public int selectedPosition() {
-        Integer position = positionByUrl.get(selectedUrl);
-        return position == null ? 0 : position;
+        int position = positionOf(selectedUrl);
+        return position < 0 ? 0 : position;
     }
 
     public void setSelectedUrl(String url) {
-        selectedUrl = safe(url);
-        notifyDataSetChanged();
+        String next = safe(url);
+        if (TextUtils.equals(selectedUrl, next)) return;
+        int oldPosition = positionOf(selectedUrl);
+        selectedUrl = next;
+        int newPosition = positionOf(selectedUrl);
+        if (oldPosition >= 0) notifyItemChanged(oldPosition);
+        if (newPosition >= 0 && newPosition != oldPosition) notifyItemChanged(newPosition);
+    }
+
+    private int positionOf(String url) {
+        if (url == null || url.isEmpty()) return -1;
+        Integer position = positionByUrl.get(url);
+        return position == null ? -1 : position;
     }
 
     @Override public long getItemId(int position) {
-        return safe(channels.get(position).url).hashCode();
+        return channels.get(position).identity().hashCode();
     }
 
     @Override public int getItemCount() {
@@ -108,7 +119,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         row.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView meta = new TextView(context);
-        meta.setTextColor(0xFFB8C4D2);
+        meta.setTextColor(0xFFB6B7C0);
         meta.setTextSize(isTelevision(context) ? 10 : 9);
         meta.setSingleLine(true);
         meta.setEllipsize(TextUtils.TruncateAt.END);
@@ -120,19 +131,21 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
 
     @Override public void onBindViewHolder(@NonNull Holder holder, int position) {
         Channel channel = channels.get(position);
-        boolean selected = safe(channel.url).equals(selectedUrl);
+        boolean selected = channel.identity().equals(selectedUrl);
         holder.title.setText(channel.name);
-        String group = safe(channel.group).replace("VAVOO · ", "").replace("IPTV-ORG · ", "");
-        holder.meta.setText(safe(channel.country) + (group.isEmpty() ? "" : "  ·  " + group));
-        holder.row.setBackground(background(selected ? 0xFF164A60 : 0xFF1A222D,
-                selected ? 0xFF4CC9F0 : 0x003C4654, holder.row.getContext()));
-        holder.title.setTextColor(selected ? 0xFFFFFF00 : Color.WHITE);
+        String provider = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
+        holder.meta.setText(safe(channel.country) + "  ·  " + provider + " recommandé"
+                + (channel.sourceCount() > 1
+                    ? "  ·  ▤ dossier de " + channel.sourceCount() + " flux" : ""));
+        holder.row.setBackground(background(selected ? 0xFF3B2027 : 0xFF202126,
+                selected ? 0xFFEA5265 : 0x003C4654, holder.row.getContext()));
+        holder.title.setTextColor(selected ? 0xFFFFE8EA : Color.WHITE);
         holder.row.setOnFocusChangeListener((v, focused) -> {
-            boolean active = focused || safe(channel.url).equals(selectedUrl);
-            holder.row.setBackground(background(active ? 0xFF164A60 : 0xFF1A222D,
-                    focused ? 0xFF4CC9F0 : (active ? 0xFF4CC9F0 : 0x003C4654),
+            boolean active = focused || channel.identity().equals(selectedUrl);
+            holder.row.setBackground(background(active ? 0xFF3B2027 : 0xFF202126,
+                    focused ? 0xFFEA5265 : (active ? 0xFFEA5265 : 0x003C4654),
                     holder.row.getContext()));
-            holder.title.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
+            holder.title.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
             holder.row.setScaleX(focused ? 1.02f : 1f);
             holder.row.setScaleY(focused ? 1.02f : 1f);
         });

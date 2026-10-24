@@ -1,30 +1,24 @@
 # NISSKENZI TV
 
-Application Android TV pour les chaînes marocaines avec une source VAVOO Live configurable.
+Application Android TV native pour le direct, avec un guide organisé par pays et par genres, des doublons regroupés et plusieurs sources conservées derrière chaque chaîne.
 
-## Chaînes marocaines
-- La liste communautaire IPTV-org est rechargée à l'ouverture / actualisation.
-- Des liens publics de diffuseurs sont ajoutés en complément ; leur disponibilité peut changer.
+## Catalogue et classement
 
-## Ajouter VAVOO Live
-La rubrique **VAVOO LIVE** de l'application lit le catalogue d'un proxy que tu héberges et contrôles. Elle ne contient pas de liens VAVOO figés : elle demande `/channels.m3u8` au serveur, puis lit les URLs de flux renvoyées.
+- VAVOO affiche uniquement la France, les pays arabes et le Maghreb.
+- IPTV-org affiche uniquement le Maroc.
+- Les entrées correspondant à la même chaîne et au même pays deviennent une seule carte. L’app recommande le flux qui a donné les meilleurs résultats sur l’appareil et passe au suivant si la lecture échoue.
+- La France, le Maghreb, les autres pays arabes et les genres disposent de rangées dédiées sur l’accueil. Le guide permet de combiner le pays, le genre, les favoris, les chaînes récentes et la recherche.
+- Les logos sont chargés en arrière-plan et gardés dans un cache mémoire limité.
 
-Proxy communautaire compatible : https://github.com/Haehnchen/vavoo-iptv-stream-proxy
+## Application TV
 
-### Lancer le proxy
-1. Sur un PC, mini-PC, Raspberry Pi ou appareil Android avec un environnement Node.js compatible, installe Node.js **24 ou plus récent**.
-2. Clone le projet du proxy et installe ses dépendances avec `npm install`.
-3. Démarre-le en indiquant une adresse réseau joignable depuis la TV. Exemple, si le serveur est sur `192.168.1.20` :
+- Navigation au pavé directionnel avec un focus visible et des actions faciles à atteindre depuis l’accueil.
+- Un seul moteur vidéo natif Android : Media3 / ExoPlayer. VLC et son paquet natif ne sont pas embarqués.
+- L’écran de lecture affiche l’état du direct, le guide et le tiroir des chaînes. Les touches Chaîne +/− changent de chaîne.
+- Le catalogue regroupé est enregistré localement. Les sources sont lues en parallèle et les lancements suivants peuvent afficher immédiatement le catalogue en cache.
 
-   ```sh
-   node index.js --http-host 192.168.1.20 --http-port 8888 --vavoo-language en --vavoo-region US --vavoo-url-list both
-   ```
+## Sources
 
-   Consulte le README du projet proxy pour ses options et les changements éventuels de l'API amont. L'adresse IP doit être celle du serveur sur ton réseau ; elle ne doit pas être `127.0.0.1` si le serveur tourne sur un autre appareil que la TV.
-4. Sur l'APK, sélectionne **VAVOO LIVE** et entre l'adresse de base du serveur, par exemple `http://192.168.1.20:8888`. L'application ajoute automatiquement `/channels.m3u8`.
-5. Pour que la lecture fonctionne, les URLs de flux générées par le proxy doivent aussi être accessibles depuis la TV. Garde le serveur en marche pendant le visionnage.
+- VAVOO Live est configurable via un proxy que tu héberges et contrôles. Les liens VAVOO ne sont pas figés dans l’application : le proxy renvoie le catalogue et les URLs des flux.
+- IPTV-org est un catalogue communautaire. Les liens publics et leur disponibilité peuvent évoluer.
 
-Le catalogue et les flux dépendent de la disponibilité du service amont, des règles applicables et de la connectivité. Cette intégration ne contourne pas les DRM ni les contrôles d'accès payants. L'application n'embarque pas le proxy : il faut le faire tourner sur un appareil/serveur séparé.
-
-## Construire l'APK
-Le workflow GitHub Actions `.github/workflows/build-morocco-tv.yml` compile l'application en debug APK lors d'une modification du projet ou depuis l'onglet **Actions** avec le lancement manuel. L'APK est publiée comme artefact du workflow.

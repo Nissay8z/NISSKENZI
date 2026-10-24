@@ -57,7 +57,7 @@ public final class FavoritesStore {
         int count = 0;
         if (channels == null) return count;
         for (Channel channel : channels) {
-            if (channel != null && favoriteUrls.contains(channel.url)) count++;
+            if (channel != null && (favoriteUrls.contains(channel.url) || channel.matchesAnyUrl(favoriteUrls))) count++;
         }
         return count;
     }

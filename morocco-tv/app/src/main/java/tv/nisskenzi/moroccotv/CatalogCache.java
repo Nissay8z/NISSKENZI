@@ -171,6 +171,16 @@ public final class CatalogCache {
             if (full.exists()) full.delete();
             if (temporary.exists()) temporary.delete();
             if (backup.exists()) backup.delete();
+
+            // Clear the compact binary snapshots too, so an explicit cache reset
+            // really restores the packaged M3U on the next launch.
+            String suffix = "VAVOO".equals(source) ? "vavoo" : "iptv_org";
+            File fast = new File(context.getFilesDir(), "nisskenzi_fast_catalog_" + suffix + ".bin");
+            File fastTemporary = new File(context.getFilesDir(), fast.getName() + ".tmp");
+            File fastBackup = new File(context.getFilesDir(), fast.getName() + ".bak");
+            if (fast.exists()) fast.delete();
+            if (fastTemporary.exists()) fastTemporary.delete();
+            if (fastBackup.exists()) fastBackup.delete();
         }
         VavooProvider.invalidateCatalogCache();
     }

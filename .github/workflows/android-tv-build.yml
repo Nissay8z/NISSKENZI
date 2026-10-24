@@ -25,6 +25,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate catalogue updater and source manifest
+        run: |
+          node --check scripts/refresh-vavoo-catalog.mjs
+          node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('morocco-tv/app/src/main/assets/world_playlist_sources.json','utf8')); if (!Array.isArray(m.sources) || m.sources.filter(s=>s.enabled!==false).length < 2) process.exit(1); console.log('Playlist sources configured:',m.sources.map(s=>s.id).join(', '));"
+      - name: Refresh public playlists for this APK when available
+        continue-on-error: true
+        run: node scripts/refresh-vavoo-catalog.mjs --world-only
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -49,6 +60,7 @@ jobs:
           cp morocco-tv/app/src/main/assets/vavoo_catalog.json source-review/assets/
           cp morocco-tv/app/src/main/assets/vavoo_catalog.m3u source-review/assets/
           cp morocco-tv/app/src/main/assets/iptv_org_catalog.m3u source-review/assets/
+          cp morocco-tv/app/src/main/assets/world_playlist_sources.json source-review/assets/
           cp scripts/refresh-vavoo-catalog.mjs source-review/
           cat > source-review/README.md <<'EOF'
           # NISSKENZI+ Android TV — source review bundle
@@ -62,8 +74,10 @@ jobs:
           - CatalogCache.java / FavoritesStore.java / RecentChannelsStore.java: per-source local caches and in-memory user indexes.
           - VavooProvider.java / IptvOrgProvider.java: separate catalog providers and network parsing.
           - VavooSnapshotProvider.java: stream-parses the preloaded all-country VAVOO M3U; stream resolution remains in VavooProvider.
+          - WorldPlaylistRegistry.java / WorldPlaylistParser.java / WorldPlaylistProvider.java: independent source definitions, streaming M3U parsing, validation, de-duplication, and last-known-good fallback.
+          - assets/world_playlist_sources.json: public playlist sources, source priorities, and size/count safety limits.
           - assets/vavoo_catalog.m3u and assets/iptv_org_catalog.m3u: bundled all-country metadata/playlists for local-first startup.
-          - refresh-vavoo-catalog.mjs: updater for both embedded M3U catalogues.
+          - refresh-vavoo-catalog.mjs: refreshes VAVOO and merges the configured public worldwide M3U sources.
           - EpgProvider.java: on-demand compressed XMLTV lookup for IPTV-org tvg-id and VAVOO name matches.
           - NativeLivePlayerView.java / PlayerChannelDrawerAdapter.java: fullscreen controller, left channel drawer, and EPG preview.
           - build.gradle: dependency versions and Android build settings.

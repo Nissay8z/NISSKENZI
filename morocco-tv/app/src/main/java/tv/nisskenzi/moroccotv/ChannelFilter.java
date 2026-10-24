@@ -33,8 +33,8 @@ public final class ChannelFilter {
             String source = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
             if (!safe(sourceFilter).equals(source)) continue;
             if (!allCountries && !countryFilter.equals(safeCountry(channel.country))) continue;
-            if (useFavorites && !favoriteUrls.contains(channel.url)) continue;
-            if (useRecent && !recentUrls.contains(channel.url)) continue;
+            if (useFavorites && !channel.matchesAnyUrl(favoriteUrls)) continue;
+            if (useRecent && !channel.matchesAnyUrl(recentUrls)) continue;
             if (!query.isEmpty() && !channel.searchIndex().contains(query)) continue;
             result.add(channel);
         }

@@ -43,6 +43,7 @@ public final class NativeLivePlayerView extends FrameLayout {
     private final TextView sourceView;
     private final TextView stateView;
     private final TextView playPauseButton;
+    private final TextView sourceSwitchButton;
     private final TextView drawerNow;
     private final TextView drawerNext;
     private final TextView drawerEpgStatus;
@@ -156,6 +157,13 @@ public final class NativeLivePlayerView extends FrameLayout {
         playPauseButton.setContentDescription("Mettre en pause ou reprendre la lecture");
         bottomBar.addView(playPauseButton, new LinearLayout.LayoutParams(-2, dp(48)));
         playPauseButton.setOnClickListener(v -> togglePlayback());
+
+        sourceSwitchButton = button("📁 SOURCE 1/1", false);
+        sourceSwitchButton.setContentDescription("Changer de source pour cette chaîne");
+        sourceSwitchButton.setVisibility(GONE);
+        LinearLayout.LayoutParams sourceBtnParams = new LinearLayout.LayoutParams(-2, dp(48));
+        sourceBtnParams.leftMargin = dp(10);
+        bottomBar.addView(sourceSwitchButton, sourceBtnParams);
 
         drawerLayer = new FrameLayout(context);
         drawerLayer.setVisibility(GONE);
@@ -276,6 +284,28 @@ public final class NativeLivePlayerView extends FrameLayout {
 
     public void setSourceLabel(String source) {
         sourceView.setText("NISSKENZI+  •  " + (source == null ? "TV EN DIRECT" : source));
+    }
+
+    public interface OnSourceCycleListener {
+        void onCycleSource();
+    }
+    private OnSourceCycleListener sourceCycleListener;
+
+    public void setSourceInfo(int currentIndex, int totalSources, String qualityLabel, OnSourceCycleListener listener) {
+        this.sourceCycleListener = listener;
+        if (sourceSwitchButton != null) {
+            if (totalSources > 1) {
+                sourceSwitchButton.setVisibility(VISIBLE);
+                String q = (qualityLabel == null || qualityLabel.isEmpty()) ? "" : " (" + qualityLabel + ")";
+                sourceSwitchButton.setText("📁 SOURCE " + (currentIndex + 1) + "/" + totalSources + q);
+                sourceSwitchButton.setOnClickListener(v -> {
+                    if (sourceCycleListener != null) sourceCycleListener.onCycleSource();
+                    showControls();
+                });
+            } else {
+                sourceSwitchButton.setVisibility(GONE);
+            }
+        }
     }
 
     /** The player drawer uses the existing source catalogue and only virtualizes visible rows. */

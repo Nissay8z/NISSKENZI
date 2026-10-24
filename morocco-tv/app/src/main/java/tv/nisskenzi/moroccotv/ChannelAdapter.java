@@ -21,15 +21,17 @@ import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.text.Normalizer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * RecyclerView adapter for the live-channel list.
  *
- * Reuses row views, loads logos away from the UI thread, bounds the logo cache,
- * and keeps selection/focus styling compatible with an Android TV D-pad.
+ * Supports smart channel folders with multiple sources, resolution badges,
+ * asynchronous logo loading, and D-pad navigation on Android TV.
  */
 public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.ChannelViewHolder> {
 
@@ -53,10 +55,12 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 public boolean areContentsTheSame(@NonNull Channel oldItem,
                                                   @NonNull Channel newItem) {
                     return TextUtils.equals(safe(oldItem.name), safe(newItem.name))
+                            && TextUtils.equals(safe(oldItem.cleanTitle), safe(newItem.cleanTitle))
                             && TextUtils.equals(safe(oldItem.logo), safe(newItem.logo))
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
                             && TextUtils.equals(safe(oldItem.country), safe(newItem.country))
                             && oldItem.isVavoo == newItem.isVavoo
+                            && oldItem.getSourceCount() == newItem.getSourceCount()
                             && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl));
                 }
             };
@@ -97,8 +101,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
     private int findPosition(String url) {
         if (url == null || url.isEmpty()) return -1;
+        Set<String> set = Collections.singleton(url);
         for (int i = 0; i < getCurrentList().size(); i++) {
-            if (TextUtils.equals(url, safe(getItem(i).url))) return i;
+            Channel ch = getItem(i);
+            if (ch != null && ch.matchesAnyUrl(set)) return i;
         }
         return -1;
     }
@@ -108,7 +114,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     public ChannelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
         boolean television = isTelevision(context);
-        int rowHeight = dp(context, television ? 63 : 54);
+        int rowHeight = dp(context, television ? 66 : 56);
         int bottomMargin = dp(context, 5);
 
         LinearLayout card = new LinearLayout(context);
@@ -160,14 +166,39 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.addView(info, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
+        LinearLayout titleRow = new LinearLayout(context);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        info.addView(titleRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         TextView name = new TextView(context);
         name.setTextSize(television ? 14 : 11);
         name.setTextColor(Color.WHITE);
         name.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
-        info.addView(name, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        titleRow.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView qualityBadge = new TextView(context);
+        qualityBadge.setTextSize(television ? 9 : 8);
+        qualityBadge.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        qualityBadge.setGravity(Gravity.CENTER);
+        qualityBadge.setVisibility(View.GONE);
+        LinearLayout.LayoutParams qbParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        qbParams.leftMargin = dp(context, 6);
+        titleRow.addView(qualityBadge, qbParams);
+
+        TextView folderBadge = new TextView(context);
+        folderBadge.setTextSize(television ? 9 : 8);
+        folderBadge.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        folderBadge.setGravity(Gravity.CENTER);
+        folderBadge.setVisibility(View.GONE);
+        LinearLayout.LayoutParams fbParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fbParams.leftMargin = dp(context, 5);
+        titleRow.addView(folderBadge, fbParams);
 
         TextView meta = new TextView(context);
         meta.setTextSize(television ? 9 : 8);
@@ -188,14 +219,19 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.addView(favorite, new LinearLayout.LayoutParams(dp(context, 22),
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        return new ChannelViewHolder(card, number, image, initials, name, meta, favorite);
+        return new ChannelViewHolder(card, number, image, initials, name, qualityBadge, folderBadge, meta, favorite);
     }
 
     @Override
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         Channel channel = getItem(position);
-        holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
-                listener, favoriteChecker, logoLoader, this);
+        boolean isSelected = isChannelSelected(channel);
+        holder.bind(channel, position, isSelected, listener, favoriteChecker, logoLoader, this);
+    }
+
+    public boolean isChannelSelected(Channel channel) {
+        if (channel == null || selectedUrl == null || selectedUrl.isEmpty()) return false;
+        return channel.matchesAnyUrl(Collections.singleton(selectedUrl));
     }
 
     @Override
@@ -215,19 +251,24 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         final ImageView image;
         final TextView initials;
         final TextView name;
+        final TextView qualityBadge;
+        final TextView folderBadge;
         final TextView meta;
         final TextView favorite;
-        private String boundUrl = "";
+        private Channel boundChannel;
         private ChannelLogoLoader.Request logoRequest;
 
         ChannelViewHolder(LinearLayout card, TextView number, ImageView image,
-                          TextView initials, TextView name, TextView meta, TextView favorite) {
+                          TextView initials, TextView name, TextView qualityBadge,
+                          TextView folderBadge, TextView meta, TextView favorite) {
             super(card);
             this.card = card;
             this.number = number;
             this.image = image;
             this.initials = initials;
             this.name = name;
+            this.qualityBadge = qualityBadge;
+            this.folderBadge = folderBadge;
             this.meta = meta;
             this.favorite = favorite;
         }
@@ -239,16 +280,62 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 logoRequest.cancel();
                 logoRequest = null;
             }
-            boundUrl = safe(channel.url);
+            boundChannel = channel;
+            Context context = card.getContext();
             number.setText(String.valueOf(index + 1));
-            name.setText(emptyFallback(channel.name, "Chaîne"));
+
+            // Titre propre et élégant (ex: "TF1", "CANAL+ CINEMA")
+            String displayName = !channel.cleanTitle.isEmpty() ? channel.cleanTitle : channel.name;
+            name.setText(emptyFallback(displayName, "Chaîne"));
+
+            // Badge de qualité (4K, FHD, HD)
+            String bestQuality = channel.getBestQualityBadge();
+            if (!bestQuality.isEmpty()) {
+                qualityBadge.setVisibility(View.VISIBLE);
+                qualityBadge.setText(bestQuality);
+                if ("4K".equals(bestQuality)) {
+                    qualityBadge.setBackground(roundedDrawable(0xFF7B2CBF, 4, 0xFF9D4EDD, context));
+                    qualityBadge.setTextColor(0xFFFFFFFF);
+                } else if ("FHD".equals(bestQuality)) {
+                    qualityBadge.setBackground(roundedDrawable(0xFF0F4C5C, 4, 0xFF4CC9F0, context));
+                    qualityBadge.setTextColor(0xFF4CC9F0);
+                } else if ("HD".equals(bestQuality)) {
+                    qualityBadge.setBackground(roundedDrawable(0xFF1E293B, 4, 0xFF38BDF8, context));
+                    qualityBadge.setTextColor(0xFF38BDF8);
+                } else {
+                    qualityBadge.setBackground(roundedDrawable(0xFF1E293B, 4, 0x00FFFFFF, context));
+                    qualityBadge.setTextColor(0xFFB0BEC5);
+                }
+                qualityBadge.setPadding(dp(context, 5), dp(context, 1), dp(context, 5), dp(context, 1));
+            } else {
+                qualityBadge.setVisibility(View.GONE);
+            }
+
+            // Dossier de chaîne : badge de flux multiples
+            if (channel.hasMultipleSources()) {
+                folderBadge.setVisibility(View.VISIBLE);
+                folderBadge.setText("📁 " + channel.getSourceCount() + " flux");
+                folderBadge.setBackground(roundedDrawable(0xFF143042, 4, 0xFF2A6B8A, context));
+                folderBadge.setTextColor(0xFF4CC9F0);
+                folderBadge.setPadding(dp(context, 6), dp(context, 1), dp(context, 6), dp(context, 1));
+            } else {
+                folderBadge.setVisibility(View.GONE);
+            }
 
             String country = emptyFallback(channel.country, "Pays non précisé");
             String group = safe(channel.group)
                     .replace("VAVOO · ", "")
                     .replace("IPTV-ORG · ", "");
-            String metaText = countryFlag(country) + "  " + country
-                    + (group.isEmpty() ? "" : "  ·  " + group);
+
+            String metaText;
+            if (channel.hasMultipleSources()) {
+                metaText = countryFlag(country) + "  " + country
+                        + "  ·  📁 " + channel.getSourceCount() + " sources (Meilleure: "
+                        + (bestQuality.isEmpty() ? "Auto" : bestQuality) + ")";
+            } else {
+                metaText = countryFlag(country) + "  " + country
+                        + (group.isEmpty() ? "" : "  ·  " + group);
+            }
             meta.setText(metaText);
 
             boolean isFavorite = favoriteChecker != null && favoriteChecker.isFavorite(channel);
@@ -257,7 +344,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             image.setTag(safe(channel.logo));
             image.setImageDrawable(null);
             image.setVisibility(View.VISIBLE);
-            initials.setText(makeInitials(channel.name));
+            initials.setText(makeInitials(displayName));
             initials.setVisibility(View.VISIBLE);
 
             String logoUrl = safe(channel.logo);
@@ -276,7 +363,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 image.setImageDrawable(null);
             }
 
-            card.setOnFocusChangeListener((view, hasFocus) -> applyState(hasFocus, owner.isSelected(boundUrl)));
+            card.setOnFocusChangeListener((view, hasFocus) ->
+                    applyState(hasFocus, owner.isChannelSelected(boundChannel)));
             card.setOnClickListener(view -> {
                 if (listener != null) listener.onChannelClick(channel);
             });
@@ -288,7 +376,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 logoRequest.cancel();
                 logoRequest = null;
             }
-            boundUrl = "";
+            boundChannel = null;
             image.setTag(null);
             image.setImageDrawable(null);
             initials.setVisibility(View.VISIBLE);
@@ -306,10 +394,6 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             name.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
             number.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
         }
-    }
-
-    private boolean isSelected(String url) {
-        return !url.isEmpty() && TextUtils.equals(selectedUrl, url);
     }
 
     private static GradientDrawable roundedDrawable(int color, int radiusDp, int strokeColor,

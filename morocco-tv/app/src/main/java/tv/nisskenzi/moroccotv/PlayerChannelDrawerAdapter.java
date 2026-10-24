@@ -50,8 +50,15 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
                     HashMap<String, Integer> built = new HashMap<>(
                             Math.max(16, channels.size() * 4 / 3));
                     for (int i = 0; i < channels.size(); i++) {
-                        String url = safe(channels.get(i).url);
+                        Channel ch = channels.get(i);
+                        String url = safe(ch.url);
                         if (!url.isEmpty() && !built.containsKey(url)) built.put(url, i);
+                        if (ch.sources != null) {
+                            for (Channel s : ch.sources) {
+                                String sUrl = safe(s.url);
+                                if (!sUrl.isEmpty() && !built.containsKey(sUrl)) built.put(sUrl, i);
+                            }
+                        }
                     }
                     cached = Collections.unmodifiableMap(built);
                     if (catalogToken != null) INDEX_CACHE.put(catalogToken, cached);
@@ -120,15 +127,23 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
 
     @Override public void onBindViewHolder(@NonNull Holder holder, int position) {
         Channel channel = channels.get(position);
-        boolean selected = safe(channel.url).equals(selectedUrl);
-        holder.title.setText(channel.name);
+        boolean selected = channel.matchesAnyUrl(Collections.singleton(selectedUrl));
+        holder.title.setText(!channel.cleanTitle.isEmpty() ? channel.cleanTitle : channel.name);
         String group = safe(channel.group).replace("VAVOO · ", "").replace("IPTV-ORG · ", "");
-        holder.meta.setText(safe(channel.country) + (group.isEmpty() ? "" : "  ·  " + group));
+        String metaText;
+        if (channel.hasMultipleSources()) {
+            String bestQuality = channel.getBestQualityBadge();
+            metaText = safe(channel.country) + "  ·  📁 " + channel.getSourceCount() + " flux"
+                    + (bestQuality.isEmpty() ? "" : " · " + bestQuality);
+        } else {
+            metaText = safe(channel.country) + (group.isEmpty() ? "" : "  ·  " + group);
+        }
+        holder.meta.setText(metaText);
         holder.row.setBackground(background(selected ? 0xFF164A60 : 0xFF1A222D,
                 selected ? 0xFF4CC9F0 : 0x003C4654, holder.row.getContext()));
         holder.title.setTextColor(selected ? 0xFFFFFF00 : Color.WHITE);
         holder.row.setOnFocusChangeListener((v, focused) -> {
-            boolean active = focused || safe(channel.url).equals(selectedUrl);
+            boolean active = focused || channel.matchesAnyUrl(Collections.singleton(selectedUrl));
             holder.row.setBackground(background(active ? 0xFF164A60 : 0xFF1A222D,
                     focused ? 0xFF4CC9F0 : (active ? 0xFF4CC9F0 : 0x003C4654),
                     holder.row.getContext()));

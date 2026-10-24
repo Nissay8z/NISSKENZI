@@ -5,6 +5,7 @@ Application Android TV pour les chaînes marocaines avec une source VAVOO Live c
 ## Chaînes marocaines
 - La liste communautaire IPTV-org est rechargée à l'ouverture / actualisation.
 - Des liens publics de diffuseurs sont ajoutés en complément ; leur disponibilité peut changer.
+- La recherche ignore les accents, tolère les petites fautes de frappe et place les correspondances les plus directes en premier.
 
 ## Ajouter VAVOO Live
 La rubrique **VAVOO LIVE** de l'application lit le catalogue d'un proxy que tu héberges et contrôles. Elle ne contient pas de liens VAVOO figés : elle demande `/channels.m3u8` au serveur, puis lit les URLs de flux renvoyées.

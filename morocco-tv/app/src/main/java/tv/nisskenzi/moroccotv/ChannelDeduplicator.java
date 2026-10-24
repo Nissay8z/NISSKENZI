@@ -139,54 +139,135 @@ public final class ChannelDeduplicator {
     }
 
     /**
-     * Removes quality markers and market/language suffixes that commonly differ
-     * between copies of the same channel in IPTV playlists.
+     * Uses a conservative key: exact channel names always share a source dossier.
+     * A suffix such as HD/4K is ignored only for an explicitly known channel, so
+     * semantic variants (Arabic/English, Sport/News, channel numbers, etc.) stay apart.
      */
     public static String canonicalTitle(String name) {
-        String value = cleanFeedSuffix(name);
-        value = value.replaceAll("(?i)\\s*[\\[(]\\s*(?:fr|ma|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|us|uk|gb|be|ch|es|it|de|pt|france|maroc|morocco)\\s*[\\])]\\s*$", " ");
-        value = value.replaceAll("(?i)\\b(?:not\\s*24\\s*/?\\s*7|not\\s+24/7)\\b", " ");
-        value = value.replaceAll("(?i)\\b(?:full\\s+hd|high\\s+definition|h\\s*[.-]?\\s*264|h\\s*[.-]?\\s*265)\\b", " ");
+        String normalized = Channel.normalizeSearch(cleanFeedSuffix(name))
+                .replaceAll("\\s+", " ").trim();
+        if (normalized.isEmpty()) return "";
 
-        String normalized = Channel.normalizeSearch(value)
-                .replaceAll("\\bnot\\s+24\\s+7\\b", " ")
-                .replaceAll("\\b(?:8k|4k|uhd|fhd|qhd|hd|sd|hdtv|hevc|x264|x265|av1|"
-                        + "2160p?|1440p?|1080p?|720p?|576p?|480p?|360p?|h264|h265|"
-                        + "backup|bkp|test|alternate|alt|copy)\\b", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
+        String knownVariant = knownChannelVariantBase(normalized);
+        return knownVariant == null ? normalized : knownVariant;
+    }
 
-        // Some M3U feeds put the market before the real channel name.
-        normalized = normalized.replaceFirst(
-                "^(?:fr|ma|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|us|uk|gb|be|ch|es|it|de|pt)\\s+",
-                "").trim();
+    private static final java.util.Set<String> WELL_KNOWN_CHANNELS;
+    static {
+        java.util.Set<String> known = new java.util.HashSet<>();
+        Collections.addAll(known,
+                // Morocco / Maghreb
+                "al aoula", "2m", "arryadia", "al maghribia", "athaqafia",
+                "assadissa", "tamazight", "medi1 tv", "snrt news",
+                // France
+                "tf1", "france 2", "france 3", "france 4", "france 5",
+                "france 24", "france 24 arabic", "france 24 english",
+                "m6", "w9", "tfx", "tmc", "c8", "cnews", "lci", "bfm tv",
+                "arte", "tv5 monde", "gulli", "6ter", "rmc story",
+                "rmc decouverte", "cherie 25", "nrj 12", "cstar",
+                "l equipe", "eurosport 1", "eurosport 2", "canal",
+                "canal plus", "canal sport", "canal cinema", "paris premiere",
+                "public senat", "la chaine parlementaire",
+                // Popular international channels. Language editions remain separate.
+                "cnn", "cnn arabic", "cnn international",
+                "bbc news", "bbc world news", "bbc arabic",
+                "al jazeera", "al jazeera arabic", "al jazeera english",
+                "al arabiya", "al arabiya english", "al hadath",
+                "sky news", "sky news arabia",
+                "bein sports", "bein sports 1", "bein sports 2",
+                "bein sports 3", "bein sports news",
+                "mbc 1", "mbc 2", "mbc 3", "mbc 4", "mbc action",
+                "mbc drama", "mbc max", "rotana cinema", "rotana classic",
+                "rotana music", "rotana khalijia", "dw arabic", "dw english",
+                "france info", "franceinfo", "lcp", "equidia");
+        WELL_KNOWN_CHANNELS = Collections.unmodifiableSet(known);
+    }
 
-        // Only strip a regional/language qualifier at the end. Do not erase these words
-        // from the middle of a real channel name (for example, "Al Arabiya").
-        for (int i = 0; i < 3; i++) {
-            String withoutMarket = normalized.replaceAll(
-                    "\\s+(?:maroc|morocco|france|french|francais|francaise|maghreb|arabic|arabe|international|intl|english|eng|spanish|espanol|portuguese|portugues|global|ma|fr|dz|tn|arab)$",
-                    "").trim();
-            if (withoutMarket.equals(normalized)) break;
-            normalized = withoutMarket;
+    /**
+     * Returns a known channel's stable key only when removing feed/quality/market
+     * decoration lands on a recognised title. Language and edition qualifiers are
+     * deliberately not removed: "France 24 Arabic" is not "France 24 English".
+     */
+    private static String knownChannelVariantBase(String normalized) {
+        String candidate = normalized;
+        for (int i = 0; i < 8; i++) {
+            if (WELL_KNOWN_CHANNELS.contains(candidate)) return candidate;
+
+            String next = candidate.replaceFirst(
+                    "\\s+(?:8k|4k|uhd|fhd|qhd|hd\\s*\\+?|sd|hdtv|hevc|x264|x265|av1|"
+                            + "2160p?|1440p?|1080p?|720p?|576p?|480p?|360p?|h264|h265)$", "")
+                    .trim();
+            if (!next.equals(candidate)) {
+                candidate = next;
+                continue;
+            }
+
+            // Market/country tags are decoration only when the remaining name is known.
+            next = candidate.replaceFirst(
+                    "\\s+(?:maroc|morocco|france|french|francais|francaise|"
+                            + "ma|fr|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|"
+                            + "us|uk|gb|be|ch|es|it|de|pt)$", "").trim();
+            if (!next.equals(candidate)) {
+                candidate = next;
+                continue;
+            }
+
+            // Some playlists prefix the market code instead of appending it.
+            next = candidate.replaceFirst(
+                    "^(?:fr|ma|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|"
+                            + "us|uk|gb|be|ch|es|it|de|pt)\\s+", "").trim();
+            if (!next.equals(candidate)) {
+                candidate = next;
+                continue;
+            }
+            break;
         }
-        return normalized.replaceAll("\\s+", " ").trim();
+        return WELL_KNOWN_CHANNELS.contains(candidate) ? candidate : null;
     }
 
-    /** Produces a readable name while removing feed-only suffixes from the displayed title. */
+    /** Keeps semantic suffixes visible; cleans decoration only for known variants. */
     private static String displayTitle(String name) {
-        String value = cleanFeedSuffix(name);
-        value = value.replaceAll("(?i)\\s*\\(\\s*(?:\\d{3,4}\\s*p?|8k|4k|uhd|fhd|qhd|hd\\s*\\+?|sd|"
-                + "backup|test|not\\s+24/7)[^)]*\\)\\s*$", "");
-        value = value.replaceAll("(?i)\\s*\\[\\s*(?:\\d{3,4}\\s*p?|8k|4k|uhd|fhd|qhd|hd\\s*\\+?|sd|"
-                + "backup|test|not\\s+24/7)[^\\]]*\\]\\s*$", "");
-        value = value.replaceAll("(?i)\\s+(?:8k|4k|uhd|fhd|qhd|hd\\s*\\+?|sd|"
-                + "2160p?|1440p?|1080p?|720p?|576p?|480p?|360p?|backup|bkp|test|copy)\\s*$", "");
-        value = value.replaceAll("(?i)\\s+(?:maroc|morocco|france|french|francais|francaise|maghreb|arabic|arabe|international|intl)$", "");
+        String value = cleanFeedSuffix(name).trim();
+        String canonical = canonicalTitle(name);
+        if (canonical.isEmpty() || !WELL_KNOWN_CHANNELS.contains(canonical)) {
+            return value;
+        }
+
+        // Mirror the canonicalisation in the visible title, preserving the source's casing.
+        for (int i = 0; i < 8; i++) {
+            if (Channel.normalizeSearch(value).replaceAll("\\s+", " ").trim().equals(canonical)) {
+                break;
+            }
+            String next = value.replaceFirst(
+                    "(?i)\\s*[\\[(]?\\s*(?:8k|4k|uhd|fhd|qhd|hd\\s*\\+?|sd|hdtv|hevc|x264|x265|av1|"
+                            + "2160p?|1440p?|1080p?|720p?|576p?|480p?|360p?|h264|h265)\\s*[\\])]?$", "")
+                    .trim();
+            if (!next.equals(value)) {
+                value = next;
+                continue;
+            }
+            next = value.replaceFirst(
+                    "(?i)\\s+(?:maroc|morocco|france|french|francais|francaise|"
+                            + "ma|fr|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|"
+                            + "us|uk|gb|be|ch|es|it|de|pt)$", "").trim();
+            if (!next.equals(value)) {
+                value = next;
+                continue;
+            }
+            next = value.replaceFirst(
+                    "(?i)^(?:fr|ma|dz|tn|eh|sa|ae|qa|eg|lb|ly|mr|ps|iq|jo|kw|bh|om|sy|"
+                            + "us|uk|gb|be|ch|es|it|de|pt)\\s+", "").trim();
+            if (!next.equals(value)) {
+                value = next;
+                continue;
+            }
+            break;
+        }
         value = value.replaceAll("[\\s._-]+$", "").trim();
-        return value.isEmpty() ? (name == null ? "" : name.trim()) : value;
+        return value.isEmpty() ? name == null ? "" : name.trim() : value;
     }
 
+    /** Feed-only marker cleanup. These suffixes are transport labels, not channel names. */
     private static String cleanFeedSuffix(String name) {
         if (name == null) return "";
         return name.trim()

@@ -2810,7 +2810,9 @@ public class MainActivity extends Activity {
     private void publishCatalogSnapshot(ArrayList<Channel> snapshot, String requestedSource,
                                         int generation) {
         if (snapshot == null || snapshot.isEmpty()) return;
-        final ArrayList<Channel> copy = filterSourceCatalog(snapshot, requestedSource);
+        final ArrayList<Channel> sourceEntries = filterSourceCatalog(snapshot, requestedSource);
+        final ArrayList<Channel> copy = ChannelDeduplicator.merge(
+                sourceEntries, Collections.emptyList(), this::sourceReliabilityScore);
         runOnUiThread(() -> {
             if (activityDestroyed || generation != loadGeneration.get()
                     || !requestedSource.equals(sourceFilter)
@@ -2830,7 +2832,9 @@ public class MainActivity extends Activity {
     private void showCachedSnapshot(ArrayList<Channel> cacheSnapshot, String requestedSource,
                                     int generation) {
         if (cacheSnapshot == null || cacheSnapshot.isEmpty()) return;
-        final ArrayList<Channel> snapshot = filterSourceCatalog(cacheSnapshot, requestedSource);
+        final ArrayList<Channel> sourceEntries = filterSourceCatalog(cacheSnapshot, requestedSource);
+        final ArrayList<Channel> snapshot = ChannelDeduplicator.merge(
+                sourceEntries, Collections.emptyList(), this::sourceReliabilityScore);
         runOnUiThread(() -> {
             if (activityDestroyed || generation != loadGeneration.get()
                     || !requestedSource.equals(sourceFilter) || snapshot.isEmpty()
@@ -3204,6 +3208,7 @@ public class MainActivity extends Activity {
         if (ch == null) return;
         playbackReturnFocus = getCurrentFocus();
         currentChannel = ch;
+        if (playerView != null) playerView.setCurrentChannel(ch);
         if (sourceOptionsButton != null) {
             sourceOptionsButton.setText("▤ Dossier (" + ch.sourceCount() + ")");
             sourceOptionsButton.setEnabled(ch.sourceCount() > 1);
@@ -3350,6 +3355,10 @@ public class MainActivity extends Activity {
             // closes the drawer, then hides controls, then exits fullscreen.
             nativeView.setDrawerChannels(channels, channelCatalogToken, ch.identity(), this::play,
                     this::loadEpgForCurrentChannel);
+            nativeView.setCurrentChannel(ch);
+            nativeView.setSourceFolderAction(() -> {
+                if (currentChannel != null) showSourceChoices(currentChannel);
+            });
             nativeView.setChannelZapActions(
                     () -> zapChannel(ch, -1), () -> zapChannel(ch, 1));
             nativeView.setPlaybackState(Player.STATE_BUFFERING);

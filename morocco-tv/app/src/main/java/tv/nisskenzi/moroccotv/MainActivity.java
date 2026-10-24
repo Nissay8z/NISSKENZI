@@ -1056,7 +1056,7 @@ public class MainActivity extends Activity {
         TextView categoryTitle = label("BIBLIOTHÈQUE", isTelevision() ? 10 : 8, CYAN, true);
         categoryTitle.setLetterSpacing(0.12f);
         left.addView(categoryTitle, lp(-1, -2));
-        TextView categorySubtitle = label("Chaînes · Pays · Favoris",
+        TextView categorySubtitle = label("Tout au même endroit",
                 isTelevision() ? 11 : 8, MUTED, false);
         LinearLayout.LayoutParams categorySubtitleP = lp(-1, -2);
         categorySubtitleP.topMargin = dp(4);
@@ -1391,8 +1391,10 @@ public class MainActivity extends Activity {
             if (!query.isEmpty() && !Channel.normalizeSearch(country).contains(query)) continue;
             String title = flag(country, countryCodeCache.get(country)) + "  " + country;
             addCategoryRow(title, countryCountCache.get(country),
-                    country.equals(activeCountry) && !favoritesOnly && !recentOnly && !groupedOnly,
+                    "Chaînes".equals(activeLibraryView) && country.equals(activeCountry)
+                            && !favoritesOnly && !recentOnly && !groupedOnly,
                     v -> {
+                        displayLibraryChannelPanel();
                         activeCountry = country;
                         favoritesOnly = false;
                         recentOnly = false;
@@ -1767,35 +1769,35 @@ public class MainActivity extends Activity {
                 isTelevision() ? 9 : 7, 0xFFFFA8B7, true);
         focusBadge.setLetterSpacing(0.1f);
         spotlightInfo.addView(focusBadge);
-        previewTitle = label(featured == null
+        guideSpotlightTitle = label(featured == null
                 ? (channels.isEmpty() ? "Les programmes arrivent" : "Aucun programme pour ce filtre")
                 : featured.name, isTelevision() ? 20 : 13, TEXT, true);
-        previewTitle.setMaxLines(1);
-        previewTitle.setEllipsize(TextUtils.TruncateAt.END);
+        guideSpotlightTitle.setMaxLines(1);
+        guideSpotlightTitle.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams spotlightTitleP = lp(-1, -2);
         spotlightTitleP.topMargin = dp(4);
-        spotlightInfo.addView(previewTitle, spotlightTitleP);
+        spotlightInfo.addView(guideSpotlightTitle, spotlightTitleP);
         EpgProvider.Result featuredGuide = featured == null
                 ? null : guideResults.get(featured.identity());
-        previewStatus = label(featuredGuide == null
+        guideSpotlightStatus = label(featuredGuide == null
                 ? (featured == null ? "France et Maroc" : "Le programme se charge…")
                 : (featuredGuide.now.isEmpty() ? featuredGuide.status : featuredGuide.now),
                 isTelevision() ? 10 : 8, 0xFFF0E9ED, false);
-        previewStatus.setSingleLine(true);
-        previewStatus.setEllipsize(TextUtils.TruncateAt.END);
+        guideSpotlightStatus.setSingleLine(true);
+        guideSpotlightStatus.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams spotlightStatusP = lp(-1, -2);
         spotlightStatusP.topMargin = dp(3);
-        spotlightInfo.addView(previewStatus, spotlightStatusP);
-        previewDetail = label(featuredGuide == null
+        spotlightInfo.addView(guideSpotlightStatus, spotlightStatusP);
+        guideSpotlightDetail = label(featuredGuide == null
                 ? "Programmes en cours et suivants, pour la France et le Maroc."
                 : (featuredGuide.next.isEmpty() ? "Aucun programme suivant renseigné"
                     : "ENSUITE  ·  " + featuredGuide.next),
                 isTelevision() ? 9 : 7, MUTED, false);
-        previewDetail.setSingleLine(true);
-        previewDetail.setEllipsize(TextUtils.TruncateAt.END);
+        guideSpotlightDetail.setSingleLine(true);
+        guideSpotlightDetail.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams spotlightDetailP = lp(-1, -2);
         spotlightDetailP.topMargin = dp(2);
-        spotlightInfo.addView(previewDetail, spotlightDetailP);
+        spotlightInfo.addView(guideSpotlightDetail, spotlightDetailP);
 
         LinearLayout spotlightActions = horizontal();
         LinearLayout.LayoutParams spotlightActionsP = lp(-1, -2);

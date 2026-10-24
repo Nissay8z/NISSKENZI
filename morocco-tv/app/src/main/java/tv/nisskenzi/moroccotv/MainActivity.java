@@ -475,7 +475,9 @@ public class MainActivity extends Activity {
     }
 
     private void scrollToChannelSection(boolean focusFirstChannel) {
+        boolean switchedFromGuide = !"Chaînes".equals(activeLibraryView);
         displayLibraryChannelPanel();
+        if (switchedFromGuide && countryChoices != null) renderCountryChoices();
         final ScrollView targetScroll = homeScroll;
         final View targetSection = channelLibrarySection;
         if (targetScroll == null || targetSection == null) return;
@@ -502,7 +504,6 @@ public class MainActivity extends Activity {
         activeLibraryView = "Chaînes";
         if (channelBrowserPanel != null) channelBrowserPanel.setVisibility(View.VISIBLE);
         if (guideScrollContainer != null) guideScrollContainer.setVisibility(View.GONE);
-        if (switchedFromGuide && countryChoices != null) renderCountryChoices();
     }
 
     private void showAllChannelsInLibrary() {
@@ -537,6 +538,53 @@ public class MainActivity extends Activity {
                 if (row != null) row.requestFocus();
             });
         }
+    }
+
+    private Object focusedTagInside(ViewGroup container, String prefix) {
+        if (container == null) return null;
+        View cursor = getCurrentFocus();
+        while (cursor != null && cursor != container) {
+            Object tag = cursor.getTag();
+            if (tag instanceof String && ((String) tag).startsWith(prefix)) return tag;
+            android.view.ViewParent parent = cursor.getParent();
+            cursor = parent instanceof View ? (View) parent : null;
+        }
+        return null;
+    }
+
+    private void restoreFocusTag(ViewGroup container, Object tag) {
+        if (container == null || tag == null) return;
+        final ViewGroup targetContainer = container;
+        targetContainer.post(() -> {
+            if (targetContainer != countryChoices && targetContainer != guideSectionContainer) return;
+            View restored = targetContainer.findViewWithTag(tag);
+            if (restored != null && restored.isFocusable()) restored.requestFocus();
+        });
+    }
+
+    /** Refresh data in-place so asynchronous catalogue changes do not eject TV focus. */
+    private void refreshCatalogUi() {
+        if ("Paramètres".equals(activePage)) {
+            renderSettings();
+            return;
+        }
+        if (fullscreenPlayback) {
+            renderCountryChoices();
+            updateChannelResults();
+            return;
+        }
+        if (("Accueil".equals(activePage) || "Live TV".equals(activePage))
+                && channelLibrarySection != null && channelResults != null && channelAdapter != null) {
+            renderCountryChoices();
+            updateChannelResults();
+            if ("Guide TV".equals(activeLibraryView)) renderGuideSectionContent();
+            Channel refreshed = focusedPreviewChannel == null ? null
+                    : channelBySavedId.get(focusedPreviewChannel.identity());
+            if (refreshed == null && !channels.isEmpty()) refreshed = channels.get(0);
+            if (refreshed != null) updateChannelPreview(refreshed);
+            return;
+        }
+        renderPage();
     }
 
     private void setTabState(TextView tab, boolean selected) {
@@ -1338,6 +1386,7 @@ public class MainActivity extends Activity {
 
     private void renderCountryChoices() {
         if (countryChoices == null) return;
+        Object focusedCategoryTag = focusedTagInside(countryChoices, "library-category:");
         countryChoices.removeAllViews();
         if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
@@ -1399,6 +1448,8 @@ public class MainActivity extends Activity {
                     });
         }
 
+        restoreFocusTag(countryChoices, focusedCategoryTag);
+
 
     }
 
@@ -1433,11 +1484,9 @@ public class MainActivity extends Activity {
                 }
                 if (!changed) return;
                 markCatalogChanged();
-                if ("Accueil".equals(activePage) || "Guide TV".equals(activePage)) {
-                    renderPage();
-                } else if ("Live TV".equals(activePage)) {
-                    renderCountryChoices();
-                    updateChannelResults();
+                if ("Accueil".equals(activePage) || "Guide TV".equals(activePage)
+                        || "Live TV".equals(activePage)) {
+                    refreshCatalogUi();
                 }
             });
         });
@@ -1464,7 +1513,16 @@ public class MainActivity extends Activity {
             options.add(enriched);
         }
         if (!changed) return channel;
-        return Channel.grouped(options.get(0), options, channel.identity());
+        Channel display = options.get(0);
+        if (safe(display.logo).isEmpty()) {
+            for (Channel option : options) {
+                if (!safe(option.logo).isEmpty()) {
+                    display = display.withLogo(option.logo);
+                    break;
+                }
+            }
+        }
+        return Channel.grouped(display, options, channel.identity());
     }
 
     private void addCategorySection(String title) {
@@ -1688,6 +1746,7 @@ public class MainActivity extends Activity {
     private void renderGuideSectionContent() {
         if (guideSectionContainer == null) return;
         LinearLayout page = guideSectionContainer;
+        Object focusedGuideTag = focusedTagInside(page, "guide-");
         page.removeAllViews();
         guideProgramViews.clear();
         guideProgressViews.clear();
@@ -1866,6 +1925,7 @@ public class MainActivity extends Activity {
             emptyTextP.topMargin = dp(6);
             empty.addView(emptyText, emptyTextP);
             page.addView(empty, lp(-1, isTelevision() ? 108 : 82));
+            restoreFocusTag(page, focusedGuideTag);
             return;
         }
 
@@ -1972,6 +2032,7 @@ public class MainActivity extends Activity {
             if (cached != null) applyGuideResult(channel.identity(), cached);
             else if (guidePending.add(channel.identity())) toLoad.add(channel);
 
+            row.setTag("guide-channel:" + channel.identity());
             row.setContentDescription(channel.name + ", " + safeCountry(channel.country)
                     + ", appuie pour regarder"
                     + (channel.sourceCount() > 1 ? ", dossier de " + channel.sourceCount() + " flux" : ""));
@@ -1990,6 +2051,7 @@ public class MainActivity extends Activity {
         if (featured != null && featuredGuide == null && guidePending.add(featured.identity())) {
             requestGuidePrograms(Collections.singletonList(featured));
         }
+        restoreFocusTag(page, focusedGuideTag);
     }
 
     private void updateGuidePreviewResult(String identity, EpgProvider.Result result) {
@@ -2423,7 +2485,7 @@ public class MainActivity extends Activity {
                 : "Ouverture du catalogue…";
         updateStatus();
         if ("Paramètres".equals(activePage)) renderSettings();
-        else if ("Accueil".equals(activePage)) renderPage();
+        else if ("Accueil".equals(activePage) && homeScroll == null) renderPage();
 
         final int generation = loadGeneration.incrementAndGet();
         final String revision = CombinedCatalogCache.assetRevision(MainActivity.this);
@@ -2445,9 +2507,7 @@ public class MainActivity extends Activity {
                     catalogStatus = combinedSummary(cached, cachedSourceCount, true);
                     updateStatus();
                     updateHeaderTabs();
-                    if ("Paramètres".equals(activePage)) renderSettings();
-                    if (fullscreenPlayback) updateChannelResults();
-                    else renderPage();
+                    refreshCatalogUi();
                 });
             });
         }
@@ -2512,9 +2572,8 @@ public class MainActivity extends Activity {
                 }
                 updateStatus();
                 updateHeaderTabs();
-                if ("Paramètres".equals(activePage)) renderSettings();
-                if (fullscreenPlayback) updateChannelResults();
-                else renderPage();
+                updateHeaderTabs();
+                refreshCatalogUi();
                 if (channels.isEmpty()) {
                     Toast.makeText(MainActivity.this,
                             "Catalogue indisponible. Vérifie ta connexion ou réessaie plus tard.",
@@ -2541,7 +2600,7 @@ public class MainActivity extends Activity {
         loadingCatalog = loadingVavoo || loadingIptv;
         catalogStatus = requestedSource + " · chargement en arrière-plan…";
         updateStatus();
-        if ("Accueil".equals(activePage)) renderPage();
+        if ("Accueil".equals(activePage) && homeScroll == null) renderPage();
 
         if (("Live TV".equals(activePage) || "Accueil".equals(activePage)) && channels.isEmpty()) {
             updateChannelResults();
@@ -2580,12 +2639,7 @@ public class MainActivity extends Activity {
                                 + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
-                        if (fullscreenPlayback) {
-                            renderCountryChoices();
-                            updateChannelResults();
-                        } else {
-                            renderPage();
-                        }
+                        refreshCatalogUi();
                     });
                     return;
                 }
@@ -2660,12 +2714,7 @@ public class MainActivity extends Activity {
                             + " chaînes · catalogue local prêt";
                     updateStatus();
                     updateHeaderTabs();
-                    if (fullscreenPlayback) {
-                        renderCountryChoices();
-                        updateChannelResults();
-                    } else {
-                        renderPage();
-                    }
+                    refreshCatalogUi();
                 });
                 return;
             }

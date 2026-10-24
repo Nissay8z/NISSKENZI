@@ -21,7 +21,12 @@ import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Native fullscreen live-TV surface. It provides a custom TV controller, a
@@ -39,6 +44,11 @@ public final class NativeLivePlayerView extends FrameLayout {
     private final FrameLayout drawerLayer;
     private final RecyclerView drawerRecycler;
     private final PlayerChannelDrawerAdapter drawerAdapter;
+    private final LinearLayout drawerCountryColumn;
+    private final LinearLayout drawerCountryList;
+    private final Map<String, CountryButton> drawerCountryButtons = new LinkedHashMap<>();
+    private final Map<String, Object> drawerIndexTokens = new HashMap<>();
+    private final ArrayList<Channel> allDrawerChannels = new ArrayList<>();
     private final TextView titleView;
     private final TextView sourceView;
     private final TextView stateView;
@@ -46,6 +56,7 @@ public final class NativeLivePlayerView extends FrameLayout {
     private final TextView channelListButton;
     private final TextView channelDownButton;
     private final TextView channelUpButton;
+    private final TextView dossierButton;
     private final TextView currentProgramView;
     private final TextView nextProgramView;
     private final TextView drawerNow;
@@ -59,6 +70,10 @@ public final class NativeLivePlayerView extends FrameLayout {
     private Runnable previousChannelAction;
     private Runnable nextChannelAction;
     private PlayerChannelDrawerAdapter.OnChannelSelected channelSelectionAction;
+    private Runnable sourceFolderAction;
+    private Object drawerCatalogToken;
+    private String drawerSelectedUrl = "";
+    private String activeDrawerCountry = "";
     private boolean controlsVisible = true;
     private boolean controlsVisibleBeforeDrawer = true;
     private boolean channelDrawerOpen = false;
@@ -186,6 +201,16 @@ public final class NativeLivePlayerView extends FrameLayout {
         controlRow.addView(channelListButton, listButtonParams);
         channelListButton.setOnClickListener(v -> openChannelDrawer());
 
+        dossierButton = button("▤  FLUX", false);
+        dossierButton.setContentDescription("Dossier des sources de la chaîne");
+        dossierButton.setVisibility(GONE);
+        LinearLayout.LayoutParams dossierParams = new LinearLayout.LayoutParams(-2, dp(48));
+        dossierParams.rightMargin = dp(7);
+        controlRow.addView(dossierButton, dossierParams);
+        dossierButton.setOnClickListener(v -> {
+            if (sourceFolderAction != null) sourceFolderAction.run();
+        });
+
         channelDownButton = button("CH −", false);
         channelDownButton.setContentDescription("Chaîne précédente");
         LinearLayout.LayoutParams channelDownParams = new LinearLayout.LayoutParams(-2, dp(48));
@@ -228,8 +253,9 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerPanel.setPadding(dp(17), dp(16), dp(13), dp(13));
         drawerPanel.setBackground(panelBackground());
         drawerPanel.setClickable(true);
-        int drawerWidth = Math.min(dp(430), Math.max(dp(280),
-                getResources().getDisplayMetrics().widthPixels - dp(48)));
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int drawerWidth = Math.min(dp(760), Math.max(dp(540), screenWidth * 3 / 5));
+        drawerWidth = Math.min(drawerWidth, Math.max(dp(280), screenWidth - dp(24)));
         FrameLayout.LayoutParams drawerParams = new FrameLayout.LayoutParams(
                 drawerWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START);
         drawerLayer.addView(drawerPanel, drawerParams);
@@ -251,7 +277,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerTitles.addView(drawerTitle, new LinearLayout.LayoutParams(-1, -2));
 
         TextView drawerSubtitle = new TextView(context);
-        drawerSubtitle.setText("Sélectionne une chaîne · Gauche pour ouvrir");
+        drawerSubtitle.setText("Choisis un pays à gauche, puis une chaîne");
         drawerSubtitle.setTextColor(MUTED);
         drawerSubtitle.setTextSize(10);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(-1, -2);
@@ -311,7 +337,45 @@ public final class NativeLivePlayerView extends FrameLayout {
             if (channelSelectionAction != null) channelSelectionAction.onChannelSelected(channel);
         });
         drawerRecycler.setAdapter(drawerAdapter);
-        drawerPanel.addView(drawerRecycler, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout drawerBrowser = new LinearLayout(context);
+        drawerBrowser.setOrientation(LinearLayout.HORIZONTAL);
+        drawerBrowser.setGravity(Gravity.FILL);
+        drawerPanel.addView(drawerBrowser, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        drawerCountryColumn = new LinearLayout(context);
+        drawerCountryColumn.setOrientation(LinearLayout.VERTICAL);
+        drawerCountryColumn.setPadding(0, 0, dp(8), 0);
+        drawerBrowser.addView(drawerCountryColumn,
+                new LinearLayout.LayoutParams(dp(148), -1));
+
+        TextView countryHeading = new TextView(context);
+        countryHeading.setText("PAYS");
+        countryHeading.setTextColor(CYAN);
+        countryHeading.setTextSize(10);
+        countryHeading.setLetterSpacing(0.1f);
+        countryHeading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        LinearLayout.LayoutParams countryHeadingParams = new LinearLayout.LayoutParams(-1, -2);
+        countryHeadingParams.bottomMargin = dp(6);
+        drawerCountryColumn.addView(countryHeading, countryHeadingParams);
+
+        ScrollView countryScroll = new ScrollView(context);
+        countryScroll.setVerticalScrollBarEnabled(false);
+        drawerCountryList = new LinearLayout(context);
+        drawerCountryList.setOrientation(LinearLayout.VERTICAL);
+        drawerCountryList.setClipChildren(false);
+        drawerCountryList.setClipToPadding(false);
+        countryScroll.addView(drawerCountryList);
+        drawerCountryColumn.addView(countryScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        View browserDivider = new View(context);
+        browserDivider.setBackgroundColor(0x33FFFFFF);
+        LinearLayout.LayoutParams browserDividerParams =
+                new LinearLayout.LayoutParams(dp(1), -1);
+        browserDividerParams.rightMargin = dp(9);
+        drawerBrowser.addView(browserDivider, browserDividerParams);
+
+        drawerBrowser.addView(drawerRecycler, new LinearLayout.LayoutParams(0, -1, 1f));
 
         setOnClickListener(v -> showControls());
         scheduleAutoHide();
@@ -338,7 +402,31 @@ public final class NativeLivePlayerView extends FrameLayout {
                                   Runnable onOpen) {
         channelSelectionAction = onSelected;
         drawerOpenAction = onOpen;
-        drawerAdapter.setChannels(channels, selectedUrl, catalogToken);
+        if (drawerCatalogToken != catalogToken) {
+            drawerCatalogToken = catalogToken;
+            drawerIndexTokens.clear();
+        }
+        allDrawerChannels.clear();
+        if (channels != null) allDrawerChannels.addAll(channels);
+        drawerSelectedUrl = safe(selectedUrl);
+        if (!activeDrawerCountry.isEmpty() && !containsDrawerCountry(activeDrawerCountry)) {
+            activeDrawerCountry = "";
+        }
+        renderDrawerCountries();
+        applyDrawerCountryFilter();
+    }
+
+    public void setCurrentChannel(Channel channel) {
+        int count = channel == null ? 1 : channel.sourceCount();
+        dossierButton.setVisibility(VISIBLE);
+        dossierButton.setText("▤  FLUX (" + count + ")");
+        dossierButton.setContentDescription("Dossier de chaîne, " + count + " flux");
+        dossierButton.setEnabled(count > 1);
+        dossierButton.setAlpha(count > 1 ? 1f : 0.58f);
+    }
+
+    public void setSourceFolderAction(Runnable action) {
+        sourceFolderAction = action;
     }
 
     public void setChannelZapActions(Runnable previous, Runnable next) {
@@ -417,18 +505,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         if (hideControlsTask != null) handler.removeCallbacks(hideControlsTask);
         if (drawerOpenAction != null) drawerOpenAction.run();
 
-        drawerRecycler.post(() -> {
-            if (!channelDrawerOpen) return;
-            LinearLayoutManager manager = (LinearLayoutManager) drawerRecycler.getLayoutManager();
-            int position = drawerAdapter.selectedPosition();
-            if (manager != null) manager.scrollToPositionWithOffset(position, dp(8));
-            drawerRecycler.post(() -> {
-                if (!channelDrawerOpen) return;
-                RecyclerView.ViewHolder holder = drawerRecycler.findViewHolderForAdapterPosition(position);
-                if (holder != null) holder.itemView.requestFocus();
-                else drawerRecycler.requestFocus();
-            });
-        });
+        drawerRecycler.post(this::focusDrawerChannel);
     }
 
     public void closeChannelDrawer() {
@@ -537,10 +614,14 @@ public final class NativeLivePlayerView extends FrameLayout {
             }
             if (channelDrawerOpen) {
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    closeChannelDrawer();
+                    if (drawerCountryColumn.hasFocus()) focusDrawerChannel();
+                    else closeChannelDrawer();
                     return true;
                 }
-                if (key == KeyEvent.KEYCODE_DPAD_LEFT) return true;
+                if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    if (drawerRecycler.hasFocus()) focusDrawerCountry();
+                    return true;
+                }
                 return super.dispatchKeyEvent(event);
             }
             if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -570,6 +651,189 @@ public final class NativeLivePlayerView extends FrameLayout {
     @Override protected void onDetachedFromWindow() {
         if (hideControlsTask != null) handler.removeCallbacks(hideControlsTask);
         super.onDetachedFromWindow();
+    }
+
+    private void renderDrawerCountries() {
+        drawerCountryList.removeAllViews();
+        drawerCountryButtons.clear();
+
+        addDrawerCountryButton("", "Tous les pays", allDrawerChannels.size());
+        Map<String, CountryCount> counts = new HashMap<>();
+        for (Channel channel : allDrawerChannels) {
+            if (channel == null) continue;
+            String key = drawerCountryKey(channel.country);
+            CountryCount count = counts.get(key);
+            if (count == null) {
+                count = new CountryCount(key, drawerCountryName(channel.country));
+                counts.put(key, count);
+            }
+            count.count++;
+        }
+        ArrayList<CountryCount> sorted = new ArrayList<>(counts.values());
+        Collections.sort(sorted, (left, right) ->
+                left.name.compareToIgnoreCase(right.name));
+        for (CountryCount country : sorted) {
+            addDrawerCountryButton(country.key, country.name, country.count);
+        }
+        updateDrawerCountrySelection();
+    }
+
+    private void addDrawerCountryButton(String key, String name, int count) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(6), dp(7), dp(6));
+        row.setFocusable(true);
+        row.setClickable(true);
+
+        TextView title = new TextView(getContext());
+        title.setText((key.isEmpty() ? "" : flagForCountryKey(key) + "  ") + name);
+        title.setTextColor(MUTED);
+        title.setTextSize(11);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView number = new TextView(getContext());
+        number.setText(String.valueOf(count));
+        number.setTextColor(0xFF9FA1AB);
+        number.setTextSize(9);
+        number.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        row.addView(number, new LinearLayout.LayoutParams(-2, -2));
+
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(40));
+        rowParams.bottomMargin = dp(4);
+        drawerCountryList.addView(row, rowParams);
+        CountryButton countryButton = new CountryButton(row, title, number);
+        drawerCountryButtons.put(key, countryButton);
+        row.setOnFocusChangeListener((view, focused) -> {
+            styleDrawerCountryButton(key, countryButton, focused);
+            if (focused) showControls();
+        });
+        row.setOnClickListener(view -> {
+            activeDrawerCountry = key;
+            updateDrawerCountrySelection();
+            applyDrawerCountryFilter();
+        });
+        styleDrawerCountryButton(key, countryButton, false);
+    }
+
+    private void styleDrawerCountryButton(String key, CountryButton button, boolean focused) {
+        boolean selected = key.equals(activeDrawerCountry);
+        boolean active = selected || focused;
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(selected ? 0xFF35222A : 0xFF202126);
+        background.setCornerRadius(dp(9));
+        background.setStroke(dp(1), focused ? CYAN : (selected ? 0xFF74414D : 0x003C4654));
+        button.row.setBackground(background);
+        button.row.setScaleX(focused ? 1.025f : 1f);
+        button.row.setScaleY(focused ? 1.025f : 1f);
+        button.title.setTextColor(active ? WHITE : MUTED);
+        button.count.setTextColor(active ? 0xFFFFB3BE : 0xFF9FA1AB);
+    }
+
+    private void updateDrawerCountrySelection() {
+        for (Map.Entry<String, CountryButton> entry : drawerCountryButtons.entrySet()) {
+            styleDrawerCountryButton(entry.getKey(), entry.getValue(),
+                    entry.getValue().row.hasFocus());
+        }
+    }
+
+    private void applyDrawerCountryFilter() {
+        ArrayList<Channel> filtered = new ArrayList<>();
+        for (Channel channel : allDrawerChannels) {
+            if (channel == null) continue;
+            if (activeDrawerCountry.isEmpty()
+                    || activeDrawerCountry.equals(drawerCountryKey(channel.country))) {
+                filtered.add(channel);
+            }
+        }
+        Object indexToken = drawerIndexTokens.get(activeDrawerCountry);
+        if (indexToken == null) {
+            indexToken = new Object();
+            drawerIndexTokens.put(activeDrawerCountry, indexToken);
+        }
+        drawerAdapter.setChannels(filtered, drawerSelectedUrl, indexToken);
+    }
+
+    private boolean containsDrawerCountry(String key) {
+        for (Channel channel : allDrawerChannels) {
+            if (channel != null && key.equals(drawerCountryKey(channel.country))) return true;
+        }
+        return false;
+    }
+
+    private String drawerCountryKey(String country) {
+        String code = ChannelCatalogPolicy.countryCode(country);
+        if (!code.isEmpty()) return code;
+        String normalized = Channel.normalizeSearch(country);
+        return normalized.isEmpty() ? "_unknown_" : "name:" + normalized;
+    }
+
+    private String drawerCountryName(String country) {
+        String code = ChannelCatalogPolicy.countryCode(country);
+        if (!code.isEmpty()) {
+            String localized = new java.util.Locale("", code).getDisplayCountry(java.util.Locale.FRENCH);
+            if (localized != null && !localized.trim().isEmpty()) return localized;
+        }
+        String value = country == null ? "" : country.trim();
+        return value.isEmpty() ? "Pays non précisé" : value;
+    }
+
+    private String flagForCountryKey(String key) {
+        if (key == null || key.length() != 2) return "🌐";
+        String upper = key.toUpperCase(java.util.Locale.ROOT);
+        int first = 0x1F1E6 + upper.charAt(0) - 'A';
+        int second = 0x1F1E6 + upper.charAt(1) - 'A';
+        if (first < 0x1F1E6 || first > 0x1F1FF || second < 0x1F1E6 || second > 0x1F1FF) {
+            return "🌐";
+        }
+        return new String(Character.toChars(first)) + new String(Character.toChars(second));
+    }
+
+    private void focusDrawerCountry() {
+        CountryButton selected = drawerCountryButtons.get(activeDrawerCountry);
+        if (selected == null) selected = drawerCountryButtons.get("");
+        if (selected != null) selected.row.requestFocus();
+        else drawerCountryColumn.requestFocus();
+    }
+
+    private void focusDrawerChannel() {
+        if (!channelDrawerOpen) return;
+        LinearLayoutManager manager = (LinearLayoutManager) drawerRecycler.getLayoutManager();
+        int position = drawerAdapter.getItemCount() == 0 ? -1 : drawerAdapter.selectedPosition();
+        if (position < 0) {
+            focusDrawerCountry();
+            return;
+        }
+        if (manager != null) manager.scrollToPositionWithOffset(position, dp(8));
+        drawerRecycler.post(() -> {
+            if (!channelDrawerOpen) return;
+            RecyclerView.ViewHolder holder = drawerRecycler.findViewHolderForAdapterPosition(position);
+            if (holder != null) holder.itemView.requestFocus();
+            else focusDrawerCountry();
+        });
+    }
+
+    private static final class CountryCount {
+        final String key;
+        final String name;
+        int count;
+        CountryCount(String key, String name) {
+            this.key = key;
+            this.name = name;
+        }
+    }
+
+    private static final class CountryButton {
+        final LinearLayout row;
+        final TextView title;
+        final TextView count;
+        CountryButton(LinearLayout row, TextView title, TextView count) {
+            this.row = row;
+            this.title = title;
+            this.count = count;
+        }
     }
 
     private TextView epgLine(String text, int color) {

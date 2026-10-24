@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.media3.common.Player;
@@ -885,5 +886,9 @@ public final class NativeLivePlayerView extends FrameLayout {
 
     private int dp(float value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 }

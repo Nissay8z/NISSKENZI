@@ -35,11 +35,12 @@ public final class ChannelFilter {
             if ((sourcePosition & 127) == 0 && Thread.currentThread().isInterrupted()) return result;
             if (channel == null) continue;
             String source = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
-            if (!safe(sourceFilter).equals(source)) continue;
+            if (!"TOUS".equalsIgnoreCase(safe(sourceFilter))
+                    && !safe(sourceFilter).equals(source)) continue;
             if (!allCountries && !countryFilter.equals(safeCountry(channel.country))) continue;
 
-            boolean favorite = favoriteUrls != null && favoriteUrls.contains(channel.url);
-            boolean recent = recentUrls != null && recentUrls.contains(channel.url);
+            boolean favorite = channel.matchesSavedIds(favoriteUrls);
+            boolean recent = channel.matchesSavedIds(recentUrls);
             if (useFavorites && !favorite) continue;
             if (useRecent && !recent) continue;
 

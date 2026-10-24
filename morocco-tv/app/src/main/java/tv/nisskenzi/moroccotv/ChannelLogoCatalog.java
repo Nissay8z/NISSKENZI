@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -25,7 +26,7 @@ import java.util.Set;
 public final class ChannelLogoCatalog {
     private static final String CHANNELS_URL = "https://iptv-org.github.io/api/channels.json";
     private static final String LOGOS_URL = "https://iptv-org.github.io/api/logos.json";
-    private static final String CACHE_NAME = "channel-logo-index-v1.json";
+    private static final String CACHE_NAME = "channel-logo-index-v2.json";
     private static final long CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1000L;
     private static final int MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 
@@ -52,12 +53,43 @@ public final class ChannelLogoCatalog {
     /** Looks up a normalized name within its country, then uses only globally unique names. */
     public static String find(Map<String, String> index, String name, String country) {
         if (index == null || index.isEmpty()) return "";
-        String title = ChannelDeduplicator.canonicalTitle(name);
-        if (title.isEmpty()) return "";
         String code = ChannelCatalogPolicy.countryCode(country);
-        String match = code.isEmpty() ? "" : index.get(code + "|" + title);
-        if (match == null || match.isEmpty()) match = index.get("*|" + title);
-        return match == null ? "" : match;
+        List<String> titles = nameVariants(name);
+        if (!code.isEmpty()) {
+            for (String title : titles) {
+                String match = index.get(code + "|" + title);
+                if (match != null && !match.isEmpty()) return match;
+            }
+        }
+        for (String title : titles) {
+            String match = index.get("*|" + title);
+            if (match != null && !match.isEmpty()) return match;
+        }
+        return "";
+    }
+
+    /** Tries exact titles and common VAVOO suffixes without guessing unrelated channels. */
+    private static List<String> nameVariants(String name) {
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        String canonical = ChannelDeduplicator.canonicalTitle(name);
+        if (!canonical.isEmpty()) variants.add(canonical);
+
+        String normalized = Channel.normalizeSearch(name);
+        if (!normalized.isEmpty()) variants.add(ChannelDeduplicator.canonicalTitle(normalized));
+
+        String withoutRegion = normalized.replaceAll(
+                "\\s+(?:maroc|morocco|maghreb|arabic|arab|international|intl|france|french|live|inter|premium|fr|ma)$", "")
+                .trim();
+        if (!withoutRegion.isEmpty()) variants.add(ChannelDeduplicator.canonicalTitle(withoutRegion));
+
+        String withoutCountryMarker = normalized.replaceAll(
+                "\\b(?:morocco|maroc|maghreb|arabic|international|intl|france|french|inter)\\b", " ")
+                .replaceAll("\\s+", " ").trim();
+        if (!withoutCountryMarker.isEmpty()) {
+            variants.add(ChannelDeduplicator.canonicalTitle(withoutCountryMarker));
+        }
+        variants.remove("");
+        return new ArrayList<>(variants);
     }
 
     private static Map<String, String> fetchIndex() throws Exception {
@@ -138,11 +170,14 @@ public final class ChannelLogoCatalog {
     }
 
     private static int formatScore(String format, String url) {
-        if ("PNG".equals(format) || url.toLowerCase(Locale.ROOT).endsWith(".png")) return 80;
-        if ("WEBP".equals(format) || url.toLowerCase(Locale.ROOT).endsWith(".webp")) return 70;
-        if ("JPEG".equals(format) || url.toLowerCase(Locale.ROOT).endsWith(".jpg")
-                || url.toLowerCase(Locale.ROOT).endsWith(".jpeg")) return 60;
-        if ("GIF".equals(format) || url.toLowerCase(Locale.ROOT).endsWith(".gif")) return 50;
+        String address = safe(url).toLowerCase(Locale.ROOT);
+        int queryAt = address.indexOf('?');
+        if (queryAt >= 0) address = address.substring(0, queryAt);
+        if ("PNG".equals(format) || address.endsWith(".png")) return 80;
+        if ("WEBP".equals(format) || address.endsWith(".webp")) return 70;
+        if ("JPEG".equals(format) || address.endsWith(".jpg") || address.endsWith(".jpeg")) return 60;
+        if ("GIF".equals(format) || address.endsWith(".gif")) return 50;
+        if ("SVG".equals(format) || address.endsWith(".svg")) return 45;
         return -1;
     }
 

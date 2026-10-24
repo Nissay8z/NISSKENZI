@@ -2,8 +2,13 @@ package tv.nisskenzi.moroccotv;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Picture;
 import android.util.LruCache;
 
+import com.caverock.androidsvg.SVG;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -13,6 +18,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /** Async logo loader with a bounded queue, small memory cache and cancellable recycled-row requests. */
@@ -106,6 +112,34 @@ public final class ChannelLogoLoader {
         cache.evictAll();
     }
 
+    private boolean looksLikeSvg(byte[] bytes, String contentType, String url) {
+        String type = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        if (type.contains("image/svg") || type.contains("application/svg")) return true;
+
+        String address = url == null ? "" : url.toLowerCase(Locale.ROOT);
+        int queryAt = address.indexOf('?');
+        if (queryAt >= 0) address = address.substring(0, queryAt);
+        if (address.endsWith(".svg")) return true;
+
+        int headerLength = Math.min(bytes.length, 512);
+        String header = new String(bytes, 0, headerLength, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("\uFEFF", "").trim().toLowerCase(Locale.ROOT);
+        return header.startsWith("<svg") || (header.startsWith("<?xml") && header.contains("<svg"));
+    }
+
+    private Bitmap decodeSvg(byte[] bytes) {
+        try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+            SVG document = SVG.getFromInputStream(input);
+            Picture picture = document.renderToPicture(MAX_EDGE, MAX_EDGE);
+            Bitmap bitmap = Bitmap.createBitmap(MAX_EDGE, MAX_EDGE, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            canvas.drawPicture(picture);
+            return bitmap;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private Bitmap download(String url) {
         HttpURLConnection connection = null;
         try {
@@ -114,6 +148,9 @@ public final class ChannelLogoLoader {
             connection.setReadTimeout(3500);
             connection.setInstanceFollowRedirects(true);
             connection.setRequestProperty("User-Agent", "NISSKENZI+/2.1 (Android TV)");
+            int responseCode = connection.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) return null;
+            String contentType = connection.getContentType();
 
             try (InputStream input = connection.getInputStream();
                  ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -129,6 +166,7 @@ public final class ChannelLogoLoader {
 
                 byte[] bytes = output.toByteArray();
                 if (bytes.length == 0) return null;
+                if (looksLikeSvg(bytes, contentType, url)) return decodeSvg(bytes);
 
                 BitmapFactory.Options bounds = new BitmapFactory.Options();
                 bounds.inJustDecodeBounds = true;

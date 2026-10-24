@@ -43,6 +43,11 @@ public final class NativeLivePlayerView extends FrameLayout {
     private final TextView sourceView;
     private final TextView stateView;
     private final TextView playPauseButton;
+    private final TextView channelListButton;
+    private final TextView channelDownButton;
+    private final TextView channelUpButton;
+    private final TextView currentProgramView;
+    private final TextView nextProgramView;
     private final TextView drawerNow;
     private final TextView drawerNext;
     private final TextView drawerEpgStatus;
@@ -50,8 +55,9 @@ public final class NativeLivePlayerView extends FrameLayout {
 
     private Runnable hideControlsTask;
     private Player player;
-    private Runnable backAction;
     private Runnable drawerOpenAction;
+    private Runnable previousChannelAction;
+    private Runnable nextChannelAction;
     private PlayerChannelDrawerAdapter.OnChannelSelected channelSelectionAction;
     private boolean controlsVisible = true;
     private boolean controlsVisibleBeforeDrawer = true;
@@ -95,13 +101,10 @@ public final class NativeLivePlayerView extends FrameLayout {
         controlsLayer.addView(topBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
-        TextView backButton = button("‹  MASQUER", false);
-        backButton.setContentDescription("Masquer les commandes du lecteur");
-        topBar.addView(backButton, new LinearLayout.LayoutParams(-2, dp(42)));
-        backButton.setOnClickListener(v -> {
-            if (backAction != null) backAction.run();
-            else hideControls();
-        });
+        TextView channelButton = button("☰  CHAÎNES", false);
+        channelButton.setContentDescription("Ouvrir le guide et la liste des chaînes");
+        topBar.addView(channelButton, new LinearLayout.LayoutParams(-2, dp(42)));
+        channelButton.setOnClickListener(v -> openChannelDrawer());
 
         LinearLayout titleColumn = new LinearLayout(context);
         titleColumn.setOrientation(LinearLayout.VERTICAL);
@@ -137,24 +140,75 @@ public final class NativeLivePlayerView extends FrameLayout {
         topBar.addView(livePill, new LinearLayout.LayoutParams(-2, dp(38)));
 
         LinearLayout bottomBar = new LinearLayout(context);
-        bottomBar.setOrientation(LinearLayout.HORIZONTAL);
-        bottomBar.setGravity(Gravity.CENTER_VERTICAL);
-        bottomBar.setPadding(dp(22), dp(28), dp(22), dp(17));
+        bottomBar.setOrientation(LinearLayout.VERTICAL);
+        bottomBar.setPadding(dp(30), dp(36), dp(30), dp(18));
         bottomBar.setBackground(new GradientDrawable(
                 GradientDrawable.Orientation.BOTTOM_TOP,
-                new int[]{0xE610141B, 0x0010141B}));
+                new int[]{0xF010141B, 0x0010141B}));
         controlsLayer.addView(bottomBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+
+        currentProgramView = new TextView(context);
+        currentProgramView.setText("GUIDE TV  ·  Ouvrez « Chaînes » pour afficher le programme");
+        currentProgramView.setTextColor(WHITE);
+        currentProgramView.setTextSize(16);
+        currentProgramView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        currentProgramView.setSingleLine(true);
+        currentProgramView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bottomBar.addView(currentProgramView, new LinearLayout.LayoutParams(-1, -2));
+
+        nextProgramView = new TextView(context);
+        nextProgramView.setText("En cours  ·  Guide disponible dans la liste TV");
+        nextProgramView.setTextColor(MUTED);
+        nextProgramView.setTextSize(12);
+        nextProgramView.setSingleLine(true);
+        nextProgramView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nextProgramParams = new LinearLayout.LayoutParams(-1, -2);
+        nextProgramParams.topMargin = dp(5);
+        nextProgramParams.bottomMargin = dp(12);
+        bottomBar.addView(nextProgramView, nextProgramParams);
+
+        LinearLayout controlRow = new LinearLayout(context);
+        controlRow.setOrientation(LinearLayout.HORIZONTAL);
+        controlRow.setGravity(Gravity.CENTER_VERTICAL);
+        bottomBar.addView(controlRow, new LinearLayout.LayoutParams(-1, -2));
 
         stateView = new TextView(context);
         stateView.setText("Connexion au flux…");
         stateView.setTextColor(MUTED);
         stateView.setTextSize(13);
-        bottomBar.addView(stateView, new LinearLayout.LayoutParams(0, -2, 1f));
+        controlRow.addView(stateView, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        channelListButton = button("☰  GUIDE & CHAÎNES", false);
+        channelListButton.setContentDescription("Ouvrir le guide et la liste des chaînes");
+        LinearLayout.LayoutParams listButtonParams = new LinearLayout.LayoutParams(-2, dp(48));
+        listButtonParams.rightMargin = dp(10);
+        controlRow.addView(channelListButton, listButtonParams);
+        channelListButton.setOnClickListener(v -> openChannelDrawer());
+
+        channelDownButton = button("CH −", false);
+        channelDownButton.setContentDescription("Chaîne précédente");
+        LinearLayout.LayoutParams channelDownParams = new LinearLayout.LayoutParams(-2, dp(48));
+        channelDownParams.rightMargin = dp(7);
+        controlRow.addView(channelDownButton, channelDownParams);
+        channelDownButton.setOnClickListener(v -> {
+            if (previousChannelAction != null) previousChannelAction.run();
+            showControls();
+        });
+
+        channelUpButton = button("CH +", false);
+        channelUpButton.setContentDescription("Chaîne suivante");
+        LinearLayout.LayoutParams channelUpParams = new LinearLayout.LayoutParams(-2, dp(48));
+        channelUpParams.rightMargin = dp(10);
+        controlRow.addView(channelUpButton, channelUpParams);
+        channelUpButton.setOnClickListener(v -> {
+            if (nextChannelAction != null) nextChannelAction.run();
+            showControls();
+        });
 
         playPauseButton = button("Ⅱ  PAUSE", true);
         playPauseButton.setContentDescription("Mettre en pause ou reprendre la lecture");
-        bottomBar.addView(playPauseButton, new LinearLayout.LayoutParams(-2, dp(48)));
+        controlRow.addView(playPauseButton, new LinearLayout.LayoutParams(-2, dp(48)));
         playPauseButton.setOnClickListener(v -> togglePlayback());
 
         drawerLayer = new FrameLayout(context);
@@ -287,22 +341,37 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerAdapter.setChannels(channels, selectedUrl, catalogToken);
     }
 
-    public void setBackAction(Runnable action) {
-        backAction = action;
+    public void setChannelZapActions(Runnable previous, Runnable next) {
+        previousChannelAction = previous;
+        nextChannelAction = next;
     }
 
     public void setEpgInfo(EpgProvider.Result result) {
+        if (result != null && result.status.contains("Chargement")) {
+            drawerNow.setText("En cours  ·  Recherche du programme…");
+            drawerNext.setText("Ensuite  ·  Le guide est en cours de chargement");
+            drawerEpgStatus.setText(result.status);
+            currentProgramView.setText("GUIDE TV  ·  recherche du programme…");
+            nextProgramView.setText("Le direct continue pendant le chargement.");
+            return;
+        }
         if (result == null) {
             drawerNow.setText("En cours  ·  —");
             drawerNext.setText("Ensuite  ·  —");
             drawerEpgStatus.setText("Guide indisponible");
+            currentProgramView.setText("GUIDE TV  ·  indisponible");
+            nextProgramView.setText("Essayez une autre source pour ce programme.");
             return;
         }
+        String now = result.now.isEmpty() ? "Aucun programme en cours" : result.now;
+        String next = result.next.isEmpty() ? "Aucun programme ensuite" : result.next;
         drawerNow.setText(result.now.isEmpty() ? "En cours  ·  Aucun programme trouvé"
                 : "EN COURS  ·  " + result.now);
         drawerNext.setText(result.next.isEmpty() ? "ENSUITE  ·  —"
                 : "ENSUITE  ·  " + result.next);
         drawerEpgStatus.setText(result.status.isEmpty() ? "Guide XMLTV" : result.status);
+        currentProgramView.setText("EN COURS  ·  " + now);
+        nextProgramView.setText("ENSUITE  ·  " + next);
     }
 
     public void setPlaybackState(int playbackState) {
@@ -370,7 +439,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerLayer.setAlpha(1f);
         if (controlsVisibleBeforeDrawer) {
             showControls();
-            playPauseButton.requestFocus();
+            channelListButton.requestFocus();
         } else {
             controlsVisible = false;
             controlsLayer.animate().cancel();
@@ -402,14 +471,14 @@ public final class NativeLivePlayerView extends FrameLayout {
         controlsLayer.setVisibility(VISIBLE);
         controlsLayer.animate().cancel();
         controlsLayer.setAlpha(1f);
-        if (isFocused() && !controlsLayer.hasFocus()) playPauseButton.requestFocus();
+        if (isFocused() && !controlsLayer.hasFocus()) channelListButton.requestFocus();
         scheduleAutoHide();
     }
 
     /** Give the TV remote a predictable starting focus when fullscreen playback opens. */
     public void focusControls() {
         showControls();
-        playPauseButton.requestFocus();
+        channelListButton.requestFocus();
     }
 
     public void hideControls() {
@@ -451,6 +520,18 @@ public final class NativeLivePlayerView extends FrameLayout {
             if (key == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
             if (key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && !channelDrawerOpen) {
                 togglePlayback();
+                showControls();
+                return true;
+            }
+            if (key == KeyEvent.KEYCODE_CHANNEL_UP && !channelDrawerOpen
+                    && nextChannelAction != null) {
+                nextChannelAction.run();
+                showControls();
+                return true;
+            }
+            if (key == KeyEvent.KEYCODE_CHANNEL_DOWN && !channelDrawerOpen
+                    && previousChannelAction != null) {
+                previousChannelAction.run();
                 showControls();
                 return true;
             }

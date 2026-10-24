@@ -10,6 +10,12 @@ L’écran d’accueil reprend une présentation Android TV grand format avec de
 - La recherche ignore les accents, tolère les petites fautes de frappe et place les correspondances les plus directes en premier.
 - Les chaînes équivalentes de plusieurs sources sont regroupées sur une seule carte ; NISSKENZI retient la source la plus fiable d’après les lectures précédentes et bascule automatiquement en cas d’échec.
 
+## Lecteur TV
+
+- Un seul moteur vidéo natif Android : Media3 / ExoPlayer. VLC et son paquet natif ne sont plus embarqués.
+- Le lecteur affiche l’état du direct, les informations du guide et une liste de chaînes accessible à la télécommande. Les touches Chaîne +/− changent aussi de chaîne.
+- Le catalogue regroupé est enregistré dans un instantané binaire local : les ouvertures suivantes montrent rapidement les chaînes, puis vérifient les catalogues en arrière-plan. Les deux sources sont chargées en parallèle.
+
 ## Ajouter VAVOO Live
 La rubrique **VAVOO LIVE** de l'application lit le catalogue d'un proxy que tu héberges et contrôles. Elle ne contient pas de liens VAVOO figés : elle demande `/channels.m3u8` au serveur, puis lit les URLs de flux renvoyées.
 

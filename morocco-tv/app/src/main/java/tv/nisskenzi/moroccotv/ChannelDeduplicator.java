@@ -3,6 +3,7 @@ package tv.nisskenzi.moroccotv;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,12 +22,17 @@ public final class ChannelDeduplicator {
         append(groups, second);
 
         ArrayList<Channel> result = new ArrayList<>(groups.size());
+        Map<Channel, Integer> scores = new IdentityHashMap<>();
+        Map<Channel, String> countryKeys = new IdentityHashMap<>();
         for (Map.Entry<String, ArrayList<Channel>> entry : groups.entrySet()) {
             ArrayList<Channel> options = entry.getValue();
+            for (Channel option : options) {
+                if (!scores.containsKey(option)) {
+                    scores.put(option, ranker == null ? 0 : ranker.score(option));
+                }
+            }
             Collections.sort(options, (left, right) -> {
-                int leftScore = ranker == null ? 0 : ranker.score(left);
-                int rightScore = ranker == null ? 0 : ranker.score(right);
-                int byReliability = Integer.compare(rightScore, leftScore);
+                int byReliability = Integer.compare(scores.get(right), scores.get(left));
                 if (byReliability != 0) return byReliability;
                 int byLogo = Boolean.compare(!left.logo.isEmpty(), !right.logo.isEmpty());
                 if (byLogo != 0) return byLogo;
@@ -34,12 +40,13 @@ public final class ChannelDeduplicator {
                 return left.name.compareToIgnoreCase(right.name);
             });
             Channel preferred = options.get(0);
-            result.add(Channel.grouped(preferred, options, "channel:" + entry.getKey()));
+            Channel grouped = Channel.grouped(preferred, options, "channel:" + entry.getKey());
+            result.add(grouped);
+            countryKeys.put(grouped, Channel.normalizeSearch(grouped.country));
         }
 
         Collections.sort(result, (left, right) -> {
-            int byCountry = Channel.normalizeSearch(left.country)
-                    .compareTo(Channel.normalizeSearch(right.country));
+            int byCountry = countryKeys.get(left).compareTo(countryKeys.get(right));
             return byCountry != 0 ? byCountry : left.searchTitle().compareTo(right.searchTitle());
         });
         return result;

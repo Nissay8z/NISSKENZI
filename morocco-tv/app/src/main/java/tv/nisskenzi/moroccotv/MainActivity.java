@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
 
     private GradientDrawable outlined(int color, int radiusDp, int strokeColor) {
         GradientDrawable d = rounded(color, radiusDp);
-        d.setStroke(dp(1), strokeColor);
+        d.setStroke(dp(isTelevision() && strokeColor == CYAN ? 2 : 1), strokeColor);
         return d;
     }
 
@@ -229,16 +229,12 @@ public class MainActivity extends Activity {
             if (focused) {
                 b.setBackground(outlined(0xFF402229, 20, CYAN));
                 b.setTextColor(Color.WHITE);
-                b.setScaleX(1.04f);
-                b.setScaleY(1.04f);
             } else {
                 boolean active = b == liveTab ? ("Accueil".equals(activePage) && !favoritesOnly && !recentOnly)
                         : b == recentTab ? ("Accueil".equals(activePage) && favoritesOnly)
                         : b == settingsTab ? "Paramètres".equals(activePage) : selected;
                 b.setBackground(rounded(active ? 0xFF3B2027 : 0x001A1B20, 20));
                 b.setTextColor(active ? Color.WHITE : 0xFFE6E6EB);
-                b.setScaleX(1f);
-                b.setScaleY(1f);
             }
         });
         return b;
@@ -1031,8 +1027,6 @@ public class MainActivity extends Activity {
             card.setOnFocusChangeListener((view, focused) -> {
                 card.setBackground(outlined(focused ? 0xFF382431 : 0xFF1D2028, 17,
                         focused ? CYAN : 0x00202020));
-                card.setScaleX(focused ? 1.04f : 1f);
-                card.setScaleY(focused ? 1.04f : 1f);
             });
             card.setOnClickListener(v -> play(channel));
             card.setOnLongClickListener(v -> {
@@ -1205,7 +1199,7 @@ public class MainActivity extends Activity {
         TextView categoryTitle = label("BIBLIOTHÈQUE", isTelevision() ? 10 : 8, CYAN, true);
         categoryTitle.setLetterSpacing(0.12f);
         left.addView(categoryTitle, lp(-1, -2));
-        TextView categorySubtitle = label("Chaînes, pays et favoris",
+        TextView categorySubtitle = label("Chaînes · Pays · Favoris",
                 isTelevision() ? 11 : 8, MUTED, false);
         LinearLayout.LayoutParams categorySubtitleP = lp(-1, -2);
         categorySubtitleP.topMargin = dp(4);
@@ -1235,7 +1229,7 @@ public class MainActivity extends Activity {
         ScrollView categoryScroll = new ScrollView(this);
         categoryScroll.setVerticalScrollBarEnabled(false);
         countryChoices = vertical();
-        countryChoices.setPadding(0, dp(9), 0, dp(9));
+        countryChoices.setPadding(dp(isTelevision() ? 4 : 3), dp(9), dp(isTelevision() ? 4 : 3), dp(9));
         categoryScroll.addView(countryChoices);
         LinearLayout.LayoutParams categoryScrollP = new LinearLayout.LayoutParams(-1, 0, 1f);
         categoryScrollP.topMargin = dp(4);
@@ -1475,7 +1469,7 @@ public class MainActivity extends Activity {
         countryChoices.removeAllViews();
         if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
-        addCategoryRow("Tous les pays", channels.size(),
+        addCategoryRow("Chaînes", channels.size(),
                 !favoritesOnly && !recentOnly && !groupedOnly && "Tous les pays".equals(activeCountry),
                 v -> {
                     activeCountry = "Tous les pays";
@@ -1485,16 +1479,7 @@ public class MainActivity extends Activity {
                     renderCountryChoices();
                     updateChannelResults();
                 });
-        addCategoryRow("Récemment vus", countRecentChannels(), recentOnly,
-                v -> {
-                    activeCountry = "Tous les pays";
-                    favoritesOnly = false;
-                    recentOnly = true;
-                    groupedOnly = false;
-                    renderCountryChoices();
-                    updateChannelResults();
-                });
-        addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
+addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                 v -> {
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
@@ -1674,8 +1659,6 @@ public class MainActivity extends Activity {
             row.setBackground(outlined(focused || selected
                     ? (focused ? 0xFF3B2027 : 0xFF332126) : 0xFF222329,
                     11, focused || selected ? CYAN : 0x00202020));
-            row.setScaleX(focused ? 1.035f : 1f);
-            row.setScaleY(focused ? 1.035f : 1f);
             name.setTextColor(focused || selected ? Color.WHITE : 0xFFE2E2E6);
         });
         row.setOnClickListener(click);
@@ -2123,8 +2106,6 @@ public class MainActivity extends Activity {
             row.setOnFocusChangeListener((view, focused) -> {
                 row.setBackground(outlined(focused ? 0xFF382431 : 0xFF1B1F27, 15,
                         focused ? CYAN : 0x18FFFFFF));
-                row.setScaleX(focused ? 1.018f : 1f);
-                row.setScaleY(focused ? 1.018f : 1f);
             });
             row.setOnClickListener(v -> play(channel));
             row.setOnLongClickListener(v -> {
@@ -2169,8 +2150,6 @@ public class MainActivity extends Activity {
             chip.setBackground(outlined(focused || selected
                     ? (focused ? 0xFF3B2027 : 0xFF332126) : 0xFF24252B,
                     18, focused || selected ? CYAN : 0x00202020));
-            chip.setScaleX(focused ? 1.04f : 1f);
-            chip.setScaleY(focused ? 1.04f : 1f);
         });
         chip.setOnClickListener(v -> {
             if (key.equals(activeGuideCountry)) return;
@@ -3302,8 +3281,6 @@ public class MainActivity extends Activity {
             row.setOnFocusChangeListener((view, focused) -> {
                 row.setBackground(outlined(focused ? 0xFF39232A : 0xFF26272D,
                         12, focused ? CYAN : 0x00202020));
-                row.setScaleX(focused ? 1.02f : 1f);
-                row.setScaleY(focused ? 1.02f : 1f);
             });
             row.setOnClickListener(v -> {
                 sourceDialog.dismiss();

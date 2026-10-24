@@ -47,7 +47,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 @Override
                 public boolean areItemsTheSame(@NonNull Channel oldItem,
                                                @NonNull Channel newItem) {
-                    return TextUtils.equals(safe(oldItem.url), safe(newItem.url));
+                    return TextUtils.equals(oldItem.identity(), newItem.identity());
                 }
 
                 @Override
@@ -58,7 +58,9 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                             && TextUtils.equals(safe(oldItem.group), safe(newItem.group))
                             && TextUtils.equals(safe(oldItem.country), safe(newItem.country))
                             && oldItem.isVavoo == newItem.isVavoo
-                            && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl));
+                            && TextUtils.equals(safe(oldItem.vavooSourceUrl), safe(newItem.vavooSourceUrl))
+                            && TextUtils.equals(safe(oldItem.url), safe(newItem.url))
+                            && oldItem.sourceCount() == newItem.sourceCount();
                 }
             };
 
@@ -108,7 +110,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                                         @NonNull List<Channel> currentList) {
         positionByUrl.clear();
         for (int i = 0; i < currentList.size(); i++) {
-            String url = safe(currentList.get(i).url);
+            String url = currentList.get(i).identity();
             if (!url.isEmpty() && !positionByUrl.containsKey(url)) positionByUrl.put(url, i);
         }
     }
@@ -204,7 +206,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     @Override
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         Channel channel = getItem(position);
-        holder.bind(channel, position, TextUtils.equals(selectedUrl, safe(channel.url)),
+        holder.bind(channel, position, TextUtils.equals(selectedUrl, channel.identity()),
                 listener, favoriteChecker, logoLoader, this);
     }
 
@@ -249,7 +251,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 logoRequest.cancel();
                 logoRequest = null;
             }
-            boundUrl = safe(channel.url);
+            boundUrl = channel.identity();
             number.setText(String.valueOf(index + 1));
             name.setText(emptyFallback(channel.name, "Chaîne"));
 

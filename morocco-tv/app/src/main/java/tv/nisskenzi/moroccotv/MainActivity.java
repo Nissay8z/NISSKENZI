@@ -329,17 +329,12 @@ public class MainActivity extends Activity {
         brand.setOnClickListener(v -> setPage("Accueil"));
 
         liveTab = menuButton("Accueil");
-        recentTab = menuButton("Favoris");
+        recentTab = null;
 
         LinearLayout.LayoutParams nav = lp(-2, isTelevision() ? 50 : 40);
         nav.leftMargin = dp(isTelevision() ? 8 : 2);
         header.addView(liveTab, nav);
-        LinearLayout.LayoutParams nav2 = lp(-2, isTelevision() ? 50 : 40);
-        nav2.leftMargin = dp(isTelevision() ? 4 : 1);
-        header.addView(recentTab, nav2);
-
         liveTab.setOnClickListener(v -> setPage("Accueil"));
-        recentTab.setOnClickListener(v -> showChannelList(true, false));
 
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);

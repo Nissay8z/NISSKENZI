@@ -1,11 +1,14 @@
 # NISSKENZI TV
 
-Application Android TV pour les chaînes marocaines avec une source VAVOO Live configurable.
+Application Android TV native pour les chaînes marocaines et internationales, avec catalogues VAVOO et IPTV-org réunis, doublons regroupés et choix automatique des flux.
 
 ## Chaînes marocaines
+
+L’écran d’accueil reprend une présentation Android TV grand format avec des rangées horizontales pour les chaînes récentes, les favoris et les recommandations. Les menus sont accessibles au pavé directionnel.
 - La liste communautaire IPTV-org est rechargée à l'ouverture / actualisation.
 - Des liens publics de diffuseurs sont ajoutés en complément ; leur disponibilité peut changer.
 - La recherche ignore les accents, tolère les petites fautes de frappe et place les correspondances les plus directes en premier.
+- Les chaînes équivalentes de plusieurs sources sont regroupées sur une seule carte ; NISSKENZI retient la source la plus fiable d’après les lectures précédentes et bascule automatiquement en cas d’échec.
 
 ## Ajouter VAVOO Live
 La rubrique **VAVOO LIVE** de l'application lit le catalogue d'un proxy que tu héberges et contrôles. Elle ne contient pas de liens VAVOO figés : elle demande `/channels.m3u8` au serveur, puis lit les URLs de flux renvoyées.

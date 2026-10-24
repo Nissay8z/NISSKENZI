@@ -50,7 +50,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
                     HashMap<String, Integer> built = new HashMap<>(
                             Math.max(16, channels.size() * 4 / 3));
                     for (int i = 0; i < channels.size(); i++) {
-                        String url = safe(channels.get(i).url);
+                        String url = channels.get(i).identity();
                         if (!url.isEmpty() && !built.containsKey(url)) built.put(url, i);
                     }
                     cached = Collections.unmodifiableMap(built);
@@ -89,7 +89,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
     }
 
     @Override public long getItemId(int position) {
-        return safe(channels.get(position).url).hashCode();
+        return channels.get(position).identity().hashCode();
     }
 
     @Override public int getItemCount() {
@@ -131,7 +131,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
 
     @Override public void onBindViewHolder(@NonNull Holder holder, int position) {
         Channel channel = channels.get(position);
-        boolean selected = safe(channel.url).equals(selectedUrl);
+        boolean selected = channel.identity().equals(selectedUrl);
         holder.title.setText(channel.name);
         String group = safe(channel.group).replace("VAVOO · ", "").replace("IPTV-ORG · ", "");
         holder.meta.setText(safe(channel.country) + (group.isEmpty() ? "" : "  ·  " + group));
@@ -139,7 +139,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
                 selected ? 0xFF4CC9F0 : 0x003C4654, holder.row.getContext()));
         holder.title.setTextColor(selected ? 0xFFFFFF00 : Color.WHITE);
         holder.row.setOnFocusChangeListener((v, focused) -> {
-            boolean active = focused || safe(channel.url).equals(selectedUrl);
+            boolean active = focused || channel.identity().equals(selectedUrl);
             holder.row.setBackground(background(active ? 0xFF164A60 : 0xFF1A222D,
                     focused ? 0xFF4CC9F0 : (active ? 0xFF4CC9F0 : 0x003C4654),
                     holder.row.getContext()));

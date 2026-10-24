@@ -60,12 +60,28 @@ public final class EpgProvider {
         public final String next;
         public final String status;
         public final String guideCountry;
+        public final long nowStartMs;
+        public final long nowStopMs;
 
         Result(String now, String next, String status, String guideCountry) {
+            this(now, next, status, guideCountry, 0L, 0L);
+        }
+
+        Result(String now, String next, String status, String guideCountry,
+               long nowStartMs, long nowStopMs) {
             this.now = safe(now);
             this.next = safe(next);
             this.status = safe(status);
             this.guideCountry = safe(guideCountry);
+            this.nowStartMs = Math.max(0L, nowStartMs);
+            this.nowStopMs = Math.max(0L, nowStopMs);
+        }
+
+        public int progressPercent(long nowMs) {
+            if (nowStartMs <= 0L || nowStopMs <= nowStartMs) return 0;
+            long elapsed = Math.max(0L, Math.min(nowStopMs - nowStartMs, nowMs - nowStartMs));
+            return (int) Math.max(0L, Math.min(100L,
+                    Math.round(elapsed * 100.0 / (nowStopMs - nowStartMs))));
         }
 
         public static Result loading() {
@@ -136,7 +152,9 @@ public final class EpgProvider {
                     continue;
                 }
                 return new Result(nowText, nextText,
-                        "Guide XMLTV · " + label, label);
+                        "Guide XMLTV · " + label, label,
+                        current == null ? 0L : current.startMs,
+                        current == null ? 0L : current.stopMs);
             } catch (Exception e) {
                 lastFailure = e.getMessage() == null ? "Guide indisponible" : e.getMessage();
             }

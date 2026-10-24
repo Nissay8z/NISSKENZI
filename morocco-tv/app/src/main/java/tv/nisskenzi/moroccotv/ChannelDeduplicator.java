@@ -115,10 +115,22 @@ public final class ChannelDeduplicator {
 
         Channel preferred = distinct.get(0);
         String displayName = displayTitle(preferred.name);
-        Channel display = displayName.equals(preferred.name) ? preferred
-                : new Channel(displayName, preferred.url, preferred.logo, preferred.group,
+        String displayCountry = safe(preferred.country);
+        if (isGenericCountry(displayCountry)) {
+            for (Channel candidate : candidates) {
+                if (!isGenericCountry(candidate.country)) {
+                    displayCountry = safe(candidate.country);
+                    break;
+                }
+            }
+        }
+        boolean copyDisplay = !displayName.equals(preferred.name)
+                || !displayCountry.equals(preferred.country);
+        Channel display = copyDisplay
+                ? new Channel(displayName, preferred.url, preferred.logo, preferred.group,
                         preferred.isVavoo, preferred.vavooSourceUrl,
-                        preferred.country, preferred.epgId);
+                        displayCountry, preferred.epgId)
+                : preferred;
         String identityCountry = safe(candidates.get(0).country);
         String identity = "channel:" + Channel.normalizeSearch(identityCountry) + "|" + title;
         Channel grouped = Channel.grouped(display, distinct, identity);

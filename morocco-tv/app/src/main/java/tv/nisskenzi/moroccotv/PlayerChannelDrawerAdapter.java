@@ -68,13 +68,24 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
 
     /** O(1) lookup: opening the left drawer must not scan thousands of rows. */
     public int selectedPosition() {
-        Integer position = positionByUrl.get(selectedUrl);
-        return position == null ? 0 : position;
+        int position = positionOf(selectedUrl);
+        return position < 0 ? 0 : position;
     }
 
     public void setSelectedUrl(String url) {
-        selectedUrl = safe(url);
-        notifyDataSetChanged();
+        String next = safe(url);
+        if (TextUtils.equals(selectedUrl, next)) return;
+        int oldPosition = positionOf(selectedUrl);
+        selectedUrl = next;
+        int newPosition = positionOf(selectedUrl);
+        if (oldPosition >= 0) notifyItemChanged(oldPosition);
+        if (newPosition >= 0 && newPosition != oldPosition) notifyItemChanged(newPosition);
+    }
+
+    private int positionOf(String url) {
+        if (url == null || url.isEmpty()) return -1;
+        Integer position = positionByUrl.get(url);
+        return position == null ? -1 : position;
     }
 
     @Override public long getItemId(int position) {

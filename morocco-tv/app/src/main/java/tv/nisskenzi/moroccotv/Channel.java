@@ -19,6 +19,7 @@ public final class Channel {
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern PUNCTUATION_AND_SPACE = Pattern.compile("[\\p{Punct}\\s]+");
     private final String searchIndex;
+    private final String searchTitle;
 
     public Channel(String name, String url, String logo, String group,
                    boolean isVavoo, String sourceUrl, String country) {
@@ -42,6 +43,7 @@ public final class Channel {
         this.vavooSourceUrl = safe(sourceUrl);
         String cleanCountry = safe(country);
         this.country = cleanCountry.isEmpty() ? "Pays non précisé" : cleanCountry;
+        this.searchTitle = normalizeSearch(this.name);
         this.searchIndex = cachedSearchIndex == null
                 ? normalizeSearch(this.name + " " + this.group + " " + this.country)
                 : cachedSearchIndex;
@@ -49,6 +51,11 @@ public final class Channel {
 
     public String searchIndex() {
         return searchIndex;
+    }
+
+    /** Precomputed normalized title used to rank direct channel-name matches. */
+    public String searchTitle() {
+        return searchTitle;
     }
 
     public static String normalizeSearch(String value) {

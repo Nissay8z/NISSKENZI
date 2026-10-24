@@ -73,9 +73,26 @@ public final class Channel {
             displayGroup = (displayGroup.isEmpty() ? "Direct" : displayGroup)
                     + " · " + options.size() + " sources";
         }
-        return new Channel(preferred.name, preferred.url, preferred.logo, displayGroup,
+        String displayLogo = safe(preferred.logo);
+        if (displayLogo.isEmpty() && options != null) {
+            for (Channel option : options) {
+                if (option != null && !safe(option.logo).isEmpty()) {
+                    displayLogo = option.logo;
+                    break;
+                }
+            }
+        }
+        return new Channel(preferred.name, preferred.url, displayLogo, displayGroup,
                 preferred.isVavoo, preferred.vavooSourceUrl, preferred.country, preferred.epgId,
                 null, identity, options);
+    }
+
+    /** Copies this channel with a fallback logo while keeping its logical identity and sources. */
+    public Channel withLogo(String nextLogo) {
+        String resolved = safe(nextLogo);
+        if (resolved.equals(logo)) return this;
+        return new Channel(name, url, resolved, group, isVavoo, vavooSourceUrl, country, epgId,
+                null, channelIdentity, sourceOptions);
     }
 
     public String identity() {

@@ -76,8 +76,12 @@ public final class ChannelDeduplicator {
         }
     }
 
-    private static String canonicalTitle(String name) {
-        return Channel.normalizeSearch(name)
+    /** Removes quality and VAVOO variant suffixes before grouping duplicate streams. */
+    public static String canonicalTitle(String name) {
+        String value = name == null ? "" : name.trim()
+                .replaceAll("(?i)\\s*\\.\\s*[sbc]$", "");
+        return Channel.normalizeSearch(value)
+                .replaceAll("\\b(\\d+)\\s+(eme|er|e)\\b", "$1$2")
                 .replaceAll("\\b(8k|4k|uhd|fhd|hd|sd|1080p|720p|576p|480p|1080|720|576|480|backup|test)\\b", " ")
                 .replaceAll("\\s+", " ")
                 .trim();

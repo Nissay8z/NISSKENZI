@@ -244,6 +244,38 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    /** A plain, compact navigation item; keeps the header calmer than the generic action buttons. */
+    private TextView menuButton(String text) {
+        TextView button = label(text, isTelevision() ? 13 : 10,
+                0xFFE6E6EB, true);
+        button.setGravity(Gravity.CENTER);
+        int horizontalPadding = isTelevision() ? 13 : 7;
+        button.setPadding(dp(horizontalPadding), 0, dp(horizontalPadding), 0);
+        button.setBackground(rounded(0x001A1B20, 9));
+        button.setFocusable(true);
+        button.setClickable(true);
+        button.setMinHeight(dp(isTelevision() ? 42 : 34));
+        button.setOnFocusChangeListener((view, focused) -> {
+            boolean selected = button == liveTab
+                    ? ("Accueil".equals(activePage) && !favoritesOnly && !recentOnly)
+                    : button == recentTab
+                    ? ("Accueil".equals(activePage) && favoritesOnly)
+                    : button == settingsTab && "Paramètres".equals(activePage);
+            applyMenuButtonStyle(button, selected, focused);
+        });
+        return button;
+    }
+
+    private void applyMenuButtonStyle(TextView button, boolean selected, boolean focused) {
+        if (button == null) return;
+        int background = focused ? 0xFF292A30
+                : selected ? 0xFF30252A : 0x001A1B20;
+        int stroke = focused ? CYAN : selected ? 0xFF64404A : 0x001A1B20;
+        button.setBackground(focused || selected
+                ? outlined(background, 9, stroke) : rounded(background, 9));
+        button.setTextColor(selected || focused ? Color.WHITE : 0xFFE6E6EB);
+    }
+
     private LinearLayout vertical() {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
@@ -296,14 +328,14 @@ public class MainActivity extends Activity {
         header.addView(brand, lp(isTelevision() ? 178 : 132, isTelevision() ? 54 : 42));
         brand.setOnClickListener(v -> setPage("Accueil"));
 
-        liveTab = buttonText("Accueil", "Accueil".equals(activePage) && !favoritesOnly);
-        recentTab = buttonText("Favoris", "Accueil".equals(activePage) && favoritesOnly);
+        liveTab = menuButton("Accueil");
+        recentTab = menuButton("Favoris");
 
         LinearLayout.LayoutParams nav = lp(-2, isTelevision() ? 50 : 40);
-        nav.leftMargin = dp(3);
+        nav.leftMargin = dp(isTelevision() ? 8 : 2);
         header.addView(liveTab, nav);
         LinearLayout.LayoutParams nav2 = lp(-2, isTelevision() ? 50 : 40);
-        nav2.leftMargin = dp(2);
+        nav2.leftMargin = dp(isTelevision() ? 4 : 1);
         header.addView(recentTab, nav2);
 
         liveTab.setOnClickListener(v -> setPage("Accueil"));
@@ -320,9 +352,9 @@ public class MainActivity extends Activity {
         searchInput.setText(searchText);
         searchInput.setFocusable(true);
         searchInput.setFocusableInTouchMode(false);
-        LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 48 : 38), 1f);
-        searchP.leftMargin = dp(isTelevision() ? 14 : 8);
-        searchP.rightMargin = dp(isTelevision() ? 10 : 6);
+        LinearLayout.LayoutParams searchP = new LinearLayout.LayoutParams(0, dp(isTelevision() ? 44 : 34), 1f);
+        searchP.leftMargin = dp(isTelevision() ? 10 : 5);
+        searchP.rightMargin = dp(isTelevision() ? 8 : 4);
         header.addView(searchInput, searchP);
         searchInput.setOnFocusChangeListener((view, focused) ->
                 searchInput.setBackground(outlined(focused ? 0xFF30252A : 0xFF24252B,
@@ -341,9 +373,9 @@ public class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable e) {}
         });
 
-        settingsTab = buttonText("⚙", "Paramètres".equals(activePage));
+        settingsTab = menuButton(isTelevision() ? "Paramètres" : "⚙");
         settingsTab.setContentDescription("Paramètres");
-        header.addView(settingsTab, lp(isTelevision() ? 52 : 42, isTelevision() ? 48 : 38));
+        header.addView(settingsTab, lp(isTelevision() ? -2 : 42, isTelevision() ? 42 : 34));
         settingsTab.setOnClickListener(v -> setPage("Paramètres"));
 
         contentHost = new FrameLayout(this);
@@ -476,8 +508,7 @@ public class MainActivity extends Activity {
 
     private void setTabState(TextView tab, boolean selected) {
         if (tab == null) return;
-        tab.setBackground(rounded(selected ? 0xFF3B2027 : 0x001A1B20, 20));
-        tab.setTextColor(selected ? Color.WHITE : 0xFFE6E6EB);
+        applyMenuButtonStyle(tab, selected, tab.hasFocus());
     }
 
     private void renderPage() {

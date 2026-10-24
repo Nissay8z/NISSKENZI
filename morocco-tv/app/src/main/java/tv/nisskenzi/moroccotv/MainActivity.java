@@ -1345,6 +1345,7 @@ public class MainActivity extends Activity {
                 for (Channel channel : filtered) if (channel.sourceCount() > 1) grouped.add(channel);
                 filtered = grouped;
             }
+            final ArrayList<Channel> resultList = filtered;
 
             runOnUiThread(() -> {
                 if (activityDestroyed || requestId != filterGeneration.get()
@@ -1352,8 +1353,8 @@ public class MainActivity extends Activity {
                         || !requestedSource.equals(sourceFilter)
                         || (!"Live TV".equals(activePage) && !"Accueil".equals(activePage))) return;
 
-                if (countView != null) countView.setText(filtered.size() + " chaînes");
-                if (filtered.isEmpty()) {
+                if (countView != null) countView.setText(resultList.size() + " chaînes");
+                if (resultList.isEmpty()) {
                     targetAdapter.submitList(Collections.emptyList());
                     targetRecycler.setVisibility(View.GONE);
                     channelEmptyView.setVisibility(View.VISIBLE);
@@ -1390,7 +1391,7 @@ public class MainActivity extends Activity {
                 channelEmptyView.setVisibility(View.GONE);
                 targetRecycler.setVisibility(View.VISIBLE);
                 targetAdapter.setSelectedUrl(currentChannel == null ? null : currentChannel.identity());
-                targetAdapter.submitList(filtered, () -> {
+                targetAdapter.submitList(resultList, () -> {
                     if (requestId != filterGeneration.get()
                             || targetRecycler != channelResults || targetAdapter != channelAdapter) return;
                     if (filtersChanged && targetAdapter.getItemCount() > 0) {

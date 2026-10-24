@@ -2672,12 +2672,7 @@ public class MainActivity extends Activity {
                                 + " chaînes · catalogue M3U préchargé";
                         updateStatus();
                         updateHeaderTabs();
-                        if (fullscreenPlayback) {
-                            renderCountryChoices();
-                            updateChannelResults();
-                        } else {
-                            renderPage();
-                        }
+                        refreshCatalogUi();
                     });
                     return;
                 }
@@ -2785,12 +2780,7 @@ public class MainActivity extends Activity {
                     }
                     updateStatus();
                     updateHeaderTabs();
-                    if (fullscreenPlayback) {
-                        renderCountryChoices();
-                        updateChannelResults();
-                    } else {
-                        renderPage();
-                    }
+                    refreshCatalogUi();
                     if (result.isEmpty() && channels.isEmpty()) {
                         Toast.makeText(MainActivity.this,
                                 requestedSource + " : chargement impossible. Vérifiez votre connexion.",

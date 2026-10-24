@@ -88,6 +88,10 @@ public class MainActivity extends Activity {
     private TextView settingsTab;
     private ScrollView homeScroll;
     private View channelLibrarySection;
+    private LinearLayout channelBrowserPanel;
+    private FrameLayout libraryContentHost;
+    private ScrollView guideScrollContainer;
+    private String activeLibraryView = "Chaînes";
     private LinearLayout guideSectionContainer;
     private TextView homeHeroStatus;
     private TextView homeHeroDetail;
@@ -422,6 +426,7 @@ public class MainActivity extends Activity {
             activePlaybackSource = null;
             playbackCandidates.clear();
         } else if ("Accueil".equals(activePage)) {
+            activeLibraryView = "Chaînes";
             favoritesOnly = false;
             recentOnly = false;
             groupedOnly = false;
@@ -439,6 +444,7 @@ public class MainActivity extends Activity {
         boolean needsRender = !"Accueil".equals(activePage)
                 || channelResults == null || channelAdapter == null;
         activePage = "Accueil";
+        activeLibraryView = "Chaînes";
         favoritesOnly = favorites;
         recentOnly = recent;
         groupedOnly = false;
@@ -474,6 +480,7 @@ public class MainActivity extends Activity {
     }
 
     private void scrollToChannelSection(boolean focusFirstChannel) {
+        displayLibraryChannelPanel();
         final ScrollView targetScroll = homeScroll;
         final View targetSection = channelLibrarySection;
         if (targetScroll == null || targetSection == null) return;
@@ -492,14 +499,49 @@ public class MainActivity extends Activity {
     }
 
     private void scrollToGuideSection() {
-        final ScrollView targetScroll = homeScroll;
-        final View targetSection = guideSectionContainer;
-        if (targetScroll == null || targetSection == null) return;
-        targetScroll.post(() -> {
-            if (homeScroll == targetScroll && guideSectionContainer == targetSection) {
-                targetScroll.smoothScrollTo(0, Math.max(0, targetSection.getTop()));
-            }
-        });
+        showLibraryGuideView();
+    }
+
+    private void displayLibraryChannelPanel() {
+        boolean switchedFromGuide = !"Chaînes".equals(activeLibraryView);
+        activeLibraryView = "Chaînes";
+        if (channelBrowserPanel != null) channelBrowserPanel.setVisibility(View.VISIBLE);
+        if (guideScrollContainer != null) guideScrollContainer.setVisibility(View.GONE);
+        if (switchedFromGuide && countryChoices != null) renderCountryChoices();
+    }
+
+    private void showAllChannelsInLibrary() {
+        displayLibraryChannelPanel();
+        favoritesOnly = false;
+        recentOnly = false;
+        groupedOnly = false;
+        activeCountry = "Tous les pays";
+        categorySearch = "";
+        if (categorySearchInput != null && categorySearchInput.length() > 0) {
+            categorySearchInput.setText("");
+        }
+        renderCountryChoices();
+        updateChannelResults();
+    }
+
+    private void showLibraryGuideView() {
+        activeLibraryView = "Guide TV";
+        favoritesOnly = false;
+        recentOnly = false;
+        groupedOnly = false;
+        activeCountry = "Tous les pays";
+        if (channelBrowserPanel != null) channelBrowserPanel.setVisibility(View.GONE);
+        if (guideScrollContainer != null) guideScrollContainer.setVisibility(View.VISIBLE);
+        renderCountryChoices();
+        renderGuideSectionContent();
+        if (countryChoices != null) {
+            countryChoices.post(() -> {
+                if (countryChoices == null) return;
+                View row = countryChoices.findViewWithTag("library-category: Guide TV");
+                if (row == null) row = countryChoices.findViewWithTag("library-category:Guide TV");
+                if (row != null) row.requestFocus();
+            });
+        }
     }
 
     private void setTabState(TextView tab, boolean selected) {
@@ -552,6 +594,9 @@ public class MainActivity extends Activity {
         playerStage = null;
         homeScroll = null;
         channelLibrarySection = null;
+        channelBrowserPanel = null;
+        libraryContentHost = null;
+        guideScrollContainer = null;
         guideSectionContainer = null;
         guideProgramViews.clear();
         guideProgressViews.clear();
@@ -574,218 +619,30 @@ public class MainActivity extends Activity {
     }
 
     private void renderHomePage() {
-        if (homeLogoLoader != null) homeLogoLoader.close();
-        homeLogoLoader = new ChannelLogoLoader();
-        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
-
         ScrollView scroll = new ScrollView(this);
         homeScroll = scroll;
         scroll.setFillViewport(true);
         scroll.setSmoothScrollingEnabled(true);
         scroll.setVerticalScrollBarEnabled(false);
+
         LinearLayout page = vertical();
-        int sidePad = isTelevision() ? 42 : 16;
-        page.setPadding(dp(sidePad), dp(isTelevision() ? 18 : 12), dp(sidePad),
-                dp(isTelevision() ? 22 : 16));
+        int sidePad = isTelevision() ? 14 : 8;
+        page.setPadding(dp(sidePad), dp(isTelevision() ? 10 : 6), dp(sidePad),
+                dp(isTelevision() ? 10 : 6));
         scroll.addView(page);
         contentHost.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
-        boolean waiting = channels.isEmpty() && loadingCatalog;
-        ArrayList<Channel> recent = recentStore == null
-                ? new ArrayList<>() : channelsForSaved(recentStore.orderedUrls(), 1);
-        ArrayList<Channel> favorites = favoritesStore == null
-                ? new ArrayList<>() : channelsForSaved(
-                        new ArrayList<>(favoritesStore.snapshotUrls()), 1);
-        Channel featured = homeFeaturedChannel(recent, favorites);
-
-        LinearLayout titleRow = horizontal();
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        page.addView(titleRow, lp(-1, -2));
-        LinearLayout headingBlock = vertical();
-        titleRow.addView(headingBlock, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView eyebrow = label("NISSKENZI+  ·  DIRECT", isTelevision() ? 10 : 8, CYAN, true);
-        eyebrow.setLetterSpacing(0.14f);
-        headingBlock.addView(eyebrow);
-        TextView heading = label("Votre TV, en un seul endroit.", isTelevision() ? 31 : 22, TEXT, true);
-        LinearLayout.LayoutParams headingP = lp(-1, -2);
-        headingP.topMargin = dp(3);
-        headingBlock.addView(heading, headingP);
-        TextView intro = label(waiting
-                        ? "Les chaînes sont en préparation. Tu peux déjà parcourir l’application."
-                        : "Le direct, le guide et tes chaînes préférées sont prêts à explorer.",
-                isTelevision() ? 13 : 9, MUTED, false);
-        LinearLayout.LayoutParams introP = lp(-1, -2);
-        introP.topMargin = dp(4);
-        introP.bottomMargin = dp(isTelevision() ? 13 : 9);
-        headingBlock.addView(intro, introP);
-
-        FrameLayout heroFrame = new FrameLayout(this);
-        GradientDrawable heroBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF442235, 0xFF24232D, 0xFF151820});
-        heroBg.setCornerRadius(dp(24));
-        heroFrame.setBackground(heroBg);
-        heroFrame.setClipToOutline(true);
-        LinearLayout.LayoutParams heroFrameP = lp(-1, isTelevision() ? 224 : 190);
-        heroFrameP.bottomMargin = dp(isTelevision() ? 14 : 10);
-        page.addView(heroFrame, heroFrameP);
-
-        View glow = new View(this);
-        GradientDrawable glowBg = new GradientDrawable();
-        glowBg.setShape(GradientDrawable.OVAL);
-        glowBg.setColor(0x22FF7A9D);
-        FrameLayout.LayoutParams glowP = new FrameLayout.LayoutParams(
-                dp(isTelevision() ? 310 : 190), dp(isTelevision() ? 310 : 190),
-                Gravity.END | Gravity.CENTER_VERTICAL);
-        glowP.rightMargin = dp(isTelevision() ? 200 : 118);
-        glow.setBackground(glowBg);
-        heroFrame.addView(glow, glowP);
-
-        LinearLayout hero = horizontal();
-        hero.setGravity(Gravity.CENTER_VERTICAL);
-        hero.setPadding(dp(isTelevision() ? 28 : 17), dp(isTelevision() ? 20 : 14),
-                dp(isTelevision() ? 24 : 14), dp(isTelevision() ? 20 : 14));
-        heroFrame.addView(hero, new FrameLayout.LayoutParams(-1, -1));
-
-        LinearLayout heroInfo = vertical();
-        heroInfo.setGravity(Gravity.CENTER_VERTICAL);
-        heroInfo.setPadding(0, 0, dp(isTelevision() ? 18 : 10), 0);
-        hero.addView(heroInfo, new LinearLayout.LayoutParams(0, -1, 1.08f));
-        TextView badge = label(featured == null
-                        ? (waiting ? "CATALOGUE EN PRÉPARATION" : "BIENVENUE CHEZ NISSKENZI+")
-                        : (!recent.isEmpty() ? "À REPRENDRE" : "SÉLECTION DU MOMENT"),
-                isTelevision() ? 10 : 8, 0xFFFFA8B7, true);
-        badge.setLetterSpacing(0.1f);
-        heroInfo.addView(badge);
-        TextView heroTitle = label(featured == null
-                        ? (waiting ? "Le direct arrive…" : "Choisis ta prochaine chaîne")
-                        : featured.name,
-                isTelevision() ? 30 : 22, TEXT, true);
-        heroTitle.setMaxLines(2);
-        heroTitle.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams heroTitleP = lp(-1, -2);
-        heroTitleP.topMargin = dp(8);
-        heroInfo.addView(heroTitle, heroTitleP);
-
-        String where = featured == null
-                ? (waiting ? "France  ·  Maroc  ·  Maghreb  ·  Pays arabes"
-                    : "France  ·  Maroc  ·  Maghreb  ·  Pays arabes")
-                : flag(featured.country, countryCode(featured.country)) + "  "
-                    + safeCountry(featured.country) + "  ·  "
-                    + (featured.isVavoo ? "VAVOO" : "IPTV-ORG");
-        homeHeroStatus = label(where, isTelevision() ? 13 : 9, 0xFFE7DDE0, false);
-        homeHeroStatus.setMaxLines(1);
-        homeHeroStatus.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams statusP = lp(-1, -2);
-        statusP.topMargin = dp(6);
-        heroInfo.addView(homeHeroStatus, statusP);
-
-        String detailText = featured == null
-                ? (waiting ? "Tes chaînes et leurs logos se chargent en arrière-plan."
-                    : "Parcours les chaînes plus bas dans l’accueil.")
-                : featured.sourceCount() + " flux disponibles  ·  meilleur flux sélectionné automatiquement";
-        homeHeroDetail = label(detailText, isTelevision() ? 11 : 8, MUTED, false);
-        homeHeroDetail.setMaxLines(1);
-        homeHeroDetail.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams detailP = lp(-1, -2);
-        detailP.topMargin = dp(4);
-        heroInfo.addView(homeHeroDetail, detailP);
-
-        LinearLayout heroActions = horizontal();
-        LinearLayout.LayoutParams actionsP = lp(-1, -2);
-        actionsP.topMargin = dp(isTelevision() ? 12 : 9);
-        heroInfo.addView(heroActions, actionsP);
-        TextView watch = buttonText(featured == null
-                        ? (waiting ? "Ouvrir les chaînes" : "Voir les chaînes")
-                        : "▶  Regarder",
-                true);
-        heroActions.addView(watch, lp(-2, isTelevision() ? 46 : 38));
-        watch.setEnabled(true);
-        watch.setOnClickListener(v -> {
-            if (featured != null) play(featured);
-            else showChannelList(false, false);
-        });
-        TextView guide = buttonText("Guide TV", false);
-        LinearLayout.LayoutParams guideP = lp(-2, isTelevision() ? 46 : 38);
-        guideP.leftMargin = dp(8);
-        heroActions.addView(guide, guideP);
-        guide.setOnClickListener(v -> scrollToGuideSection());
-
-        FrameLayout heroArtwork = new FrameLayout(this);
-        GradientDrawable stageBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF5A2D43, 0xFF28252E, 0xFF171A21});
-        stageBg.setCornerRadius(dp(20));
-        heroArtwork.setBackground(stageBg);
-        heroArtwork.setClipToOutline(true);
-        heroArtwork.setFocusable(false);
-        LinearLayout.LayoutParams stageP = new LinearLayout.LayoutParams(0, -1, 0.74f);
-        stageP.leftMargin = dp(8);
-        hero.addView(heroArtwork, stageP);
-
-        View stageGlow = new View(this);
-        GradientDrawable stageGlowBg = new GradientDrawable();
-        stageGlowBg.setShape(GradientDrawable.OVAL);
-        stageGlowBg.setColor(0x33FF7595);
-        FrameLayout.LayoutParams stageGlowP = new FrameLayout.LayoutParams(
-                dp(isTelevision() ? 230 : 150), dp(isTelevision() ? 230 : 150),
-                Gravity.CENTER);
-        stageGlow.setBackground(stageGlowBg);
-        heroArtwork.addView(stageGlow, stageGlowP);
-
-        TextView stageMark = label(featured == null
-                        ? (waiting ? "N+  LIVE" : "NISSKENZI+")
-                        : initials(featured.name),
-                isTelevision() ? 48 : 34, 0xFFFFEEF2, true);
-        stageMark.setGravity(Gravity.CENTER);
-        heroArtwork.addView(stageMark, new FrameLayout.LayoutParams(-1, -1));
-        if (featured != null && !safe(featured.logo).isEmpty()) {
-            ImageView image = new ImageView(this);
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            image.setPadding(dp(22), dp(22), dp(22), dp(22));
-            image.setTag(safe(featured.logo));
-            heroArtwork.addView(image, new FrameLayout.LayoutParams(-1, -1));
-            bindHomeLogo(image, stageMark, featured.logo);
-        }
-
-        TextView liveBadge = label(featured == null
-                        ? (waiting ? "●  PRÉPARATION" : "●  À DÉCOUVRIR")
-                        : "●  EN DIRECT",
-                isTelevision() ? 9 : 7, Color.WHITE, true);
-        liveBadge.setGravity(Gravity.CENTER);
-        liveBadge.setPadding(dp(10), dp(6), dp(10), dp(6));
-        liveBadge.setBackground(rounded(0xCC17181D, 14));
-        FrameLayout.LayoutParams liveP = new FrameLayout.LayoutParams(-2, -2,
-                Gravity.TOP | Gravity.END);
-        liveP.setMargins(0, dp(11), dp(11), 0);
-        heroArtwork.addView(liveBadge, liveP);
-        homePreviewIdentity = featured == null ? "" : featured.identity();
-        if (featured != null && isGuideEligible(featured)) {
-            EpgProvider.Result cachedGuide = guideResults.get(featured.identity());
-            if (cachedGuide != null) applyHomeGuideResult(featured, cachedGuide);
-            else requestGuidePrograms(Collections.singletonList(featured));
-        }
-
-        addHomeShortcuts(page);
-        addGuideSection(page);
+        // One workspace contains channel browsing, favourites, country filters and the guide.
         addChannelBrowserSection(page);
-        if (channels.isEmpty()) {
-            if (waiting) addHomeLoadingRail(page);
-            else addHomeEmptyState(page);
-        } else {
-            if (!recent.isEmpty()) addHomeRail(page, "Reprendre", recentChannels(12));
-            if (!favorites.isEmpty()) addHomeRail(page, "Mes favoris", favoriteChannels(12));
-            addHomeRail(page, "France", channelsForRegion("FRANCE", 14));
-            addHomeRail(page, "Maroc", channelsForIptvMorocco(14));
-            addHomeRail(page, "Maghreb", channelsForRegion("MAGHREB", 14));
-            addHomeRail(page, "Pays arabes", channelsForRegion("ARAB", 14));
-            addHomeRail(page, "Toutes les chaînes", firstChannels(14));
-        }
 
         if (!initialHomeFocusRequested) {
             initialHomeFocusRequested = true;
-            View firstFocus = watch;
-            firstFocus.post(() -> {
-                if ("Accueil".equals(activePage) && firstFocus.isAttachedToWindow()) {
-                    firstFocus.requestFocus();
+            page.post(() -> {
+                if (!"Accueil".equals(activePage) || !page.isAttachedToWindow()) return;
+                View first = countryChoices == null ? null : countryChoices.getChildAt(0);
+                if (first != null) first.requestFocus();
+                else if (channelResults != null && channelResults.getChildAt(0) != null) {
+                    channelResults.getChildAt(0).requestFocus();
                 }
             });
         }
@@ -1181,9 +1038,9 @@ public class MainActivity extends Activity {
         body.setGravity(Gravity.FILL);
         body.setPadding(dp(isTelevision() ? 20 : 10), dp(isTelevision() ? 14 : 8),
                 dp(isTelevision() ? 20 : 10), dp(isTelevision() ? 14 : 8));
-        LinearLayout.LayoutParams bodyParams = lp(-1, isTelevision() ? 630 : 530);
-        bodyParams.topMargin = dp(isTelevision() ? 18 : 12);
-        bodyParams.bottomMargin = dp(isTelevision() ? 18 : 12);
+        LinearLayout.LayoutParams bodyParams = lp(-1, isTelevision() ? 570 : 475);
+        bodyParams.topMargin = 0;
+        bodyParams.bottomMargin = 0;
         parent.addView(body, bodyParams);
         channelLibrarySection = body;
 
@@ -1239,12 +1096,31 @@ public class MainActivity extends Activity {
         right.setPadding(dp(isTelevision() ? 17 : 10), dp(isTelevision() ? 12 : 7),
                 dp(isTelevision() ? 12 : 8), dp(4));
         body.addView(right, new LinearLayout.LayoutParams(0, -1, 1f));
+        libraryContentHost = new FrameLayout(this);
+        right.addView(libraryContentHost, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        channelBrowserPanel = vertical();
+        libraryContentHost.addView(channelBrowserPanel,
+                new FrameLayout.LayoutParams(-1, -1));
+
+        guideScrollContainer = new ScrollView(this);
+        guideScrollContainer.setVerticalScrollBarEnabled(false);
+        guideScrollContainer.setFillViewport(false);
+        guideScrollContainer.setClipToPadding(false);
+        guideSectionContainer = vertical();
+        guideSectionContainer.setPadding(dp(2), dp(2), dp(8), dp(12));
+        guideScrollContainer.addView(guideSectionContainer, new ScrollView.LayoutParams(-1, -2));
+        libraryContentHost.addView(guideScrollContainer,
+                new FrameLayout.LayoutParams(-1, -1));
+        channelBrowserPanel.setVisibility("Guide TV".equals(activeLibraryView) ? View.GONE : View.VISIBLE);
+        guideScrollContainer.setVisibility("Guide TV".equals(activeLibraryView) ? View.VISIBLE : View.GONE);
+
 
         LinearLayout heading = horizontal();
         heading.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams headingP = lp(-1, -2);
         headingP.bottomMargin = dp(isTelevision() ? 10 : 7);
-        right.addView(heading, headingP);
+        channelBrowserPanel.addView(heading, headingP);
         LinearLayout headingInfo = vertical();
         heading.addView(headingInfo, new LinearLayout.LayoutParams(0, -2, 1f));
         String title = favoritesOnly ? "Mes favoris" : recentOnly ? "Récemment vus"
@@ -1276,7 +1152,7 @@ public class MainActivity extends Activity {
         preview.setBackground(previewBg);
         LinearLayout.LayoutParams previewP = lp(-1, isTelevision() ? 120 : 94);
         previewP.bottomMargin = dp(isTelevision() ? 9 : 6);
-        right.addView(preview, previewP);
+        channelBrowserPanel.addView(preview, previewP);
 
         LinearLayout previewInfo = vertical();
         previewInfo.setGravity(Gravity.CENTER_VERTICAL);
@@ -1349,7 +1225,7 @@ public class MainActivity extends Activity {
         actions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams actionsP = lp(-1, isTelevision() ? 42 : 34);
         actionsP.bottomMargin = dp(isTelevision() ? 7 : 5);
-        right.addView(actions, actionsP);
+        channelBrowserPanel.addView(actions, actionsP);
         TextView watch = buttonText("▶  Regarder", true);
         actions.addView(watch, lp(-2, -1));
         watch.setEnabled(initialPreview != null);
@@ -1386,7 +1262,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams listHeadingP = lp(-1, -2);
         listHeadingP.topMargin = dp(2);
         listHeadingP.bottomMargin = dp(6);
-        right.addView(listHeading, listHeadingP);
+        channelBrowserPanel.addView(listHeading, listHeadingP);
         TextView listLabel = label("CHAÎNES DISPONIBLES", isTelevision() ? 9 : 7, MUTED, true);
         listLabel.setLetterSpacing(0.09f);
         listHeading.addView(listLabel, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -1409,11 +1285,12 @@ public class MainActivity extends Activity {
         channelEmptyView.setGravity(Gravity.CENTER);
         channelEmptyView.setVisibility(View.GONE);
         channelListHost.addView(channelEmptyView, new FrameLayout.LayoutParams(-1, -1));
-        right.addView(channelListHost, new LinearLayout.LayoutParams(-1, 0, 1f));
+        channelBrowserPanel.addView(channelListHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         if (initialPreview != null) updateChannelPreview(initialPreview);
         renderCountryChoices();
         updateChannelResults();
+        renderGuideSectionContent();
     }
 
     private void updateChannelPreview(Channel channel) {
@@ -1470,17 +1347,12 @@ public class MainActivity extends Activity {
         if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
         addCategoryRow("Chaînes", channels.size(),
-                !favoritesOnly && !recentOnly && !groupedOnly && "Tous les pays".equals(activeCountry),
+                "Chaînes".equals(activeLibraryView) && !favoritesOnly && !recentOnly
+                        && !groupedOnly && "Tous les pays".equals(activeCountry),
+                v -> showAllChannelsInLibrary());
+        addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                 v -> {
-                    activeCountry = "Tous les pays";
-                    favoritesOnly = false;
-                    recentOnly = false;
-                    groupedOnly = false;
-                    renderCountryChoices();
-                    updateChannelResults();
-                });
-addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
-                v -> {
+                    displayLibraryChannelPanel();
                     activeCountry = "Tous les pays";
                     favoritesOnly = true;
                     recentOnly = false;
@@ -1488,6 +1360,8 @@ addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                     renderCountryChoices();
                     updateChannelResults();
                 });
+        addCategoryRow("Guide TV", guideChannels("Tous").size(),
+                "Guide TV".equals(activeLibraryView), v -> showLibraryGuideView());
 
         addCategorySection("PAYS");
         if (countryStatsVersion != catalogVersion) {
@@ -1640,6 +1514,7 @@ addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
         LinearLayout row = horizontal();
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(10), dp(7), dp(8), dp(7));
+        row.setTag("library-category:" + title);
         row.setBackground(rounded(selected ? 0xFF3B2027 : 0xFF222329, 11));
         row.setFocusable(true);
         row.setClickable(true);
@@ -2153,14 +2028,14 @@ addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
         });
         chip.setOnClickListener(v -> {
             if (key.equals(activeGuideCountry)) return;
-            final int savedY = homeScroll == null ? 0 : homeScroll.getScrollY();
+            final int savedY = guideScrollContainer == null ? 0 : guideScrollContainer.getScrollY();
             final String selectedKey = key;
             activeGuideCountry = key;
             renderGuideSectionContent();
-            final ScrollView targetScroll = homeScroll;
+            final ScrollView targetScroll = guideScrollContainer;
             if (targetScroll != null) {
                 targetScroll.post(() -> {
-                    if (homeScroll != targetScroll) return;
+                    if (guideScrollContainer != targetScroll) return;
                     targetScroll.scrollTo(0, savedY);
                     View selectedChip = guideSectionContainer == null ? null
                             : guideSectionContainer.findViewWithTag("guide-filter:" + selectedKey);

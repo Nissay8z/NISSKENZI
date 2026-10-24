@@ -18,8 +18,9 @@ public final class ChannelDeduplicator {
     public static ArrayList<Channel> merge(List<Channel> first, List<Channel> second,
                                            SourceRanker ranker) {
         Map<String, ArrayList<Channel>> groups = new LinkedHashMap<>();
-        append(groups, first);
-        append(groups, second);
+        Map<String, String> identityKeys = new LinkedHashMap<>();
+        append(groups, identityKeys, first);
+        append(groups, identityKeys, second);
 
         ArrayList<Channel> result = new ArrayList<>(groups.size());
         Map<Channel, Integer> scores = new IdentityHashMap<>();
@@ -45,7 +46,8 @@ public final class ChannelDeduplicator {
                     : new Channel(displayName, preferred.url, preferred.logo, preferred.group,
                             preferred.isVavoo, preferred.vavooSourceUrl,
                             preferred.country, preferred.epgId);
-            Channel grouped = Channel.grouped(display, options, "channel:" + entry.getKey());
+            Channel grouped = Channel.grouped(display, options,
+                    "channel:" + identityKeys.get(entry.getKey()));
             result.add(grouped);
             countryKeys.put(grouped, countryKey(grouped.country));
         }
@@ -57,7 +59,8 @@ public final class ChannelDeduplicator {
         return result;
     }
 
-    private static void append(Map<String, ArrayList<Channel>> groups, List<Channel> channels) {
+    private static void append(Map<String, ArrayList<Channel>> groups,
+                               Map<String, String> identityKeys, List<Channel> channels) {
         if (channels == null) return;
         for (Channel channel : channels) {
             if (channel == null || channel.url.isEmpty()) continue;
@@ -69,6 +72,7 @@ public final class ChannelDeduplicator {
             if (options == null) {
                 options = new ArrayList<>();
                 groups.put(key, options);
+                identityKeys.put(key, Channel.normalizeSearch(channel.country) + "|" + title);
             }
             boolean duplicateUrl = false;
             for (Channel existing : options) {

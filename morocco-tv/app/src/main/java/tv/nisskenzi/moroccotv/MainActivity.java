@@ -95,6 +95,8 @@ public class MainActivity extends Activity {
     private TextView previewDetail;
     private TextView sourceOptionsButton;
     private ChannelLogoLoader homeLogoLoader;
+    private boolean logoFallbackRequested = false;
+    private Map<String, String> logoFallbackIndex = Collections.emptyMap();
 
     private NativeLivePlayerView playerView;
     private ExoPlayer player;
@@ -135,7 +137,6 @@ public class MainActivity extends Activity {
     private int countryStatsVersion = -1;
     private final Map<String, Integer> countryCountCache = new HashMap<>();
     private final Map<String, String> countryCodeCache = new HashMap<>();
-    private final Map<String, Integer> genreCountCache = new HashMap<>();
     private final Set<String> channelUrlCache = new HashSet<>();
     private final Map<String, Channel> channelBySavedId = new HashMap<>();
     private int channelUrlSetVersion = -1;
@@ -147,7 +148,6 @@ public class MainActivity extends Activity {
     private long recentCountStoreRevision = -1L;
 
     private String activeCountry = "Tous les pays";
-    private String activeGenre = "Tous les genres";
     private String sourceFilter = "TOUS";
     private String searchText = "";
     private String categorySearch = "";
@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
         header.addView(brand, lp(isTelevision() ? 178 : 132, isTelevision() ? 54 : 42));
         brand.setOnClickListener(v -> setPage("Accueil"));
 
-        liveTab = buttonText("Pour vous", "Accueil".equals(activePage));
+        liveTab = buttonText("Accueil", "Accueil".equals(activePage));
         vavooTab = buttonText("Chaînes", "Live TV".equals(activePage));
         iptvTab = buttonText("Guide TV", "Guide TV".equals(activePage));
         recentTab = buttonText("Favoris", "Live TV".equals(activePage) && favoritesOnly);
@@ -386,7 +386,6 @@ public class MainActivity extends Activity {
         recentOnly = recent;
         groupedOnly = false;
         activeCountry = "Tous les pays";
-        activeGenre = "Tous les genres";
         categorySearch = "";
         updateHeaderTabs();
         renderPage();
@@ -457,6 +456,7 @@ public class MainActivity extends Activity {
     private void renderHomePage() {
         if (homeLogoLoader != null) homeLogoLoader.close();
         homeLogoLoader = new ChannelLogoLoader();
+        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -472,7 +472,7 @@ public class MainActivity extends Activity {
         page.addView(titleRow, lp(-1, -2));
         LinearLayout headingBlock = vertical();
         titleRow.addView(headingBlock, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView eyebrow = label("POUR VOUS", isTelevision() ? 11 : 9, CYAN, true);
+        TextView eyebrow = label("ACCUEIL", isTelevision() ? 11 : 9, CYAN, true);
         eyebrow.setLetterSpacing(0.13f);
         headingBlock.addView(eyebrow);
         TextView heading = label("Qu’est-ce qu’on regarde ?", isTelevision() ? 30 : 23, TEXT, true);
@@ -544,7 +544,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams actionsP = lp(-1, -2);
         actionsP.topMargin = dp(14);
         heroInfo.addView(heroActions, actionsP);
-        TextView watch = buttonText(featured == null ? "Explorer" : "▶  Regarder",
+        TextView watch = buttonText(featured == null ? "Voir les chaînes" : "▶  Regarder",
                 true);
         heroActions.addView(watch, lp(-2, isTelevision() ? 48 : 40));
         watch.setEnabled(featured != null || !channels.isEmpty());
@@ -592,14 +592,10 @@ public class MainActivity extends Activity {
         addHomeRail(page, "Reprendre", recentChannels(12));
         addHomeRail(page, "Mes favoris", favoriteChannels(12));
         addHomeRail(page, "Sources réunies", groupedChannels(14));
-        addHomeRail(page, "Pour vous", recommendedChannels(14));
         addHomeRail(page, "France", channelsForRegion("FRANCE", 14));
         addHomeRail(page, "Maroc", channelsForIptvMorocco(14));
         addHomeRail(page, "Maghreb", channelsForRegion("MAGHREB", 14));
         addHomeRail(page, "Pays arabes", channelsForRegion("ARAB", 14));
-        addHomeRail(page, "Sport", channelsForGenre("Sport", 12));
-        addHomeRail(page, "Films & séries", channelsForGenre("Films & séries", 12));
-        addHomeRail(page, "Jeunesse", channelsForGenre("Jeunesse", 12));
         addHomeRail(page, "Toutes les chaînes", firstChannels(14));
         homePreviewIdentity = featured == null ? "" : featured.identity();
         if (featured != null && isGuideEligible(featured)) {
@@ -796,16 +792,6 @@ public class MainActivity extends Activity {
         return result;
     }
 
-    private ArrayList<Channel> channelsForGenre(String genre, int limit) {
-        ArrayList<Channel> result = new ArrayList<>();
-        for (Channel channel : channels) {
-            if (!ChannelCatalogPolicy.matchesGenre(channel, genre)) continue;
-            result.add(channel);
-            if (result.size() >= limit) break;
-        }
-        return result;
-    }
-
     private ArrayList<Channel> channelsForSaved(List<String> savedIds, int limit) {
         ArrayList<Channel> result = new ArrayList<>();
         if (savedIds == null || savedIds.isEmpty()) return result;
@@ -915,7 +901,7 @@ public class MainActivity extends Activity {
         categorySearchInput.setTextSize(isTelevision() ? 13 : 9);
         categorySearchInput.setTextColor(Color.WHITE);
         categorySearchInput.setHintTextColor(0xFF9999A2);
-        categorySearchInput.setHint("Pays, genre…");
+        categorySearchInput.setHint("Rechercher un pays…");
         categorySearchInput.setPadding(dp(12), 0, dp(10), 0);
         categorySearchInput.setBackground(outlined(0xFF23242A, 13, 0xFF383941));
         categorySearchInput.setText(categorySearch);
@@ -947,8 +933,7 @@ public class MainActivity extends Activity {
         heading.addView(headingInfo, new LinearLayout.LayoutParams(0, -2, 1f));
         String title = favoritesOnly ? "Mes favoris" : recentOnly ? "Récemment regardés"
                 : groupedOnly ? "Sources réunies"
-                : (!"Tous les pays".equals(activeCountry) ? activeCountry
-                : (!"Tous les genres".equals(activeGenre) ? activeGenre : "Chaînes"));
+                : (!"Tous les pays".equals(activeCountry) ? activeCountry : "Chaînes");
         TextView pageTitle = label(title, isTelevision() ? 27 : 19, TEXT, true);
         headingInfo.addView(pageTitle);
         TextView subtitle = label("Un seul résultat par chaîne · meilleure source sélectionnée automatiquement",
@@ -1076,6 +1061,7 @@ public class MainActivity extends Activity {
     private void renderCountryChoices() {
         if (countryChoices == null) return;
         countryChoices.removeAllViews();
+        if (!channels.isEmpty()) requestLogoCatalogFallbacks();
 
         addCategoryRow("Tous les pays", channels.size(),
                 !favoritesOnly && !recentOnly && !groupedOnly && "Tous les pays".equals(activeCountry),
@@ -1084,14 +1070,12 @@ public class MainActivity extends Activity {
                     favoritesOnly = false;
                     recentOnly = false;
                     groupedOnly = false;
-                    activeGenre = "Tous les genres";
                     renderCountryChoices();
                     updateChannelResults();
                 });
         addCategoryRow("Sources réunies", countGroupedChannels(), groupedOnly,
                 v -> {
                     activeCountry = "Tous les pays";
-                    activeGenre = "Tous les genres";
                     favoritesOnly = false;
                     recentOnly = false;
                     groupedOnly = true;
@@ -1101,7 +1085,6 @@ public class MainActivity extends Activity {
         addCategoryRow("Récemment vus", countRecentChannels(), recentOnly,
                 v -> {
                     activeCountry = "Tous les pays";
-                    activeGenre = "Tous les genres";
                     favoritesOnly = false;
                     recentOnly = true;
                     groupedOnly = false;
@@ -1111,7 +1094,6 @@ public class MainActivity extends Activity {
         addCategoryRow("Favoris", countFavoriteChannels(), favoritesOnly,
                 v -> {
                     activeCountry = "Tous les pays";
-                    activeGenre = "Tous les genres";
                     favoritesOnly = true;
                     recentOnly = false;
                     groupedOnly = false;
@@ -1123,7 +1105,6 @@ public class MainActivity extends Activity {
         if (countryStatsVersion != catalogVersion) {
             countryCountCache.clear();
             countryCodeCache.clear();
-            genreCountCache.clear();
             HashMap<String, String> normalizedCountries = new HashMap<>();
             for (Channel ch : channels) {
                 String rawCountry = safe(ch.country);
@@ -1134,9 +1115,6 @@ public class MainActivity extends Activity {
                 }
                 Integer oldCount = countryCountCache.get(country);
                 countryCountCache.put(country, oldCount == null ? 1 : oldCount + 1);
-                String genre = ChannelCatalogPolicy.genreName(ch);
-                Integer oldGenreCount = genreCountCache.get(genre);
-                genreCountCache.put(genre, oldGenreCount == null ? 1 : oldGenreCount + 1);
             }
             for (String country : countryCountCache.keySet()) {
                 countryCodeCache.put(country, countryCode(country));
@@ -1162,28 +1140,70 @@ public class MainActivity extends Activity {
                     });
         }
 
-        addCategorySection("GENRES");
-        addCategoryRow("Tous les genres", channels.size(),
-                "Tous les genres".equals(activeGenre) && !groupedOnly,
-                v -> {
-                    activeGenre = "Tous les genres";
-                    groupedOnly = false;
+
+    }
+
+    private void requestLogoCatalogFallbacks() {
+        if (logoFallbackRequested || channels.isEmpty()) return;
+        boolean needsFallback = false;
+        for (Channel channel : channels) {
+            if (channel != null && channel.isVavoo && safe(channel.logo).isEmpty()) {
+                needsFallback = true;
+                break;
+            }
+        }
+        if (!needsFallback) return;
+        logoFallbackRequested = true;
+        io.execute(() -> {
+            Map<String, String> index = ChannelLogoCatalog.load(getApplicationContext());
+            runOnUiThread(() -> {
+                if (activityDestroyed || index.isEmpty()) return;
+                logoFallbackIndex = index;
+                boolean changed = false;
+                for (int i = 0; i < channels.size(); i++) {
+                    Channel channel = channels.get(i);
+                    Channel enriched = withLogoFallback(channel);
+                    if (enriched != channel) {
+                        channels.set(i, enriched);
+                        changed = true;
+                    }
+                }
+                if (!changed) return;
+                markCatalogChanged();
+                if ("Accueil".equals(activePage)) {
+                    renderHomePage();
+                } else if ("Guide TV".equals(activePage)) {
+                    renderGuidePage();
+                } else if ("Live TV".equals(activePage)) {
                     renderCountryChoices();
                     updateChannelResults();
-                });
-        for (String genre : ChannelCatalogPolicy.genres()) {
-            int count = genreCountCache.containsKey(genre) ? genreCountCache.get(genre) : 0;
-            if (!query.isEmpty() && !Channel.normalizeSearch(genre).contains(query)) continue;
-            addCategoryRow(genre, count, genre.equals(activeGenre),
-                    v -> {
-                        activeGenre = genre;
-                        favoritesOnly = false;
-                        recentOnly = false;
-                        groupedOnly = false;
-                        renderCountryChoices();
-                        updateChannelResults();
-                    });
+                }
+            });
+        });
+    }
+
+    private Channel withLogoFallback(Channel channel) {
+        if (channel == null || logoFallbackIndex.isEmpty()) return channel;
+        if (channel.sourceOptions.isEmpty()) {
+            if (!safe(channel.logo).isEmpty()) return channel;
+            String logo = ChannelLogoCatalog.find(logoFallbackIndex, channel.name, channel.country);
+            return logo.isEmpty() ? channel : channel.withLogo(logo);
         }
+
+        ArrayList<Channel> options = new ArrayList<>(channel.playbackOptions().size());
+        boolean changed = false;
+        for (Channel option : channel.playbackOptions()) {
+            Channel enriched = option;
+            if (safe(option.logo).isEmpty()) {
+                String logo = ChannelLogoCatalog.find(
+                        logoFallbackIndex, option.name, option.country);
+                if (!logo.isEmpty()) enriched = option.withLogo(logo);
+            }
+            changed |= enriched != option;
+            options.add(enriched);
+        }
+        if (!changed) return channel;
+        return Channel.grouped(options.get(0), options, channel.identity());
     }
 
     private void addCategorySection(String title) {
@@ -1319,12 +1339,11 @@ public class MainActivity extends Activity {
         final ChannelAdapter targetAdapter = channelAdapter;
         final String requestedSource = sourceFilter;
         final String requestedCountry = activeCountry;
-        final String requestedGenre = activeGenre;
         final String requestedSearch = searchText;
         final boolean requestedFavorites = favoritesOnly;
         final boolean requestedRecent = recentOnly;
         final boolean requestedGrouped = groupedOnly;
-        final String filterKey = requestedSource + "|" + requestedCountry + "|" + requestedGenre
+        final String filterKey = requestedSource + "|" + requestedCountry
                 + "|" + safe(requestedSearch) + "|" + requestedFavorites + "|" + requestedRecent
                 + "|" + requestedGrouped;
         final boolean filtersChanged = !TextUtils.equals(filterKey, lastRenderedFilterKey);
@@ -1338,8 +1357,8 @@ public class MainActivity extends Activity {
 
         filterJob = filterExecutor.submit(() -> {
             ArrayList<Channel> filtered = ChannelFilter.filter(channelSnapshot, requestedSource,
-                    requestedCountry, requestedGenre, requestedSearch, requestedFavorites,
-                    requestedRecent, favoriteSnapshot, recentSnapshot);
+                    requestedCountry, requestedSearch, requestedFavorites, requestedRecent,
+                    favoriteSnapshot, recentSnapshot);
             if (requestedGrouped) {
                 ArrayList<Channel> grouped = new ArrayList<>();
                 for (Channel channel : filtered) if (channel.sourceCount() > 1) grouped.add(channel);
@@ -1375,7 +1394,7 @@ public class MainActivity extends Activity {
                             ? "Le catalogue se charge en arrière-plan. Tu peux parcourir les autres rubriques pendant ce temps."
                             : (requestedGrouped
                                 ? "Aucune chaîne avec plusieurs flux pour les filtres actuels."
-                                : "Modifie le pays, le genre ou la recherche pour élargir le résultat."),
+                                : "Modifie le pays ou la recherche pour élargir le résultat."),
                             isTelevision() ? 12 : 10, 0xEEFFFFFF, false);
                     msg.setGravity(Gravity.CENTER);
                     msg.setPadding(0, dp(8), 0, dp(12));

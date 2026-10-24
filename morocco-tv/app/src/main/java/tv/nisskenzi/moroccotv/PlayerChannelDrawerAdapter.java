@@ -119,7 +119,7 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         row.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView meta = new TextView(context);
-        meta.setTextColor(0xFFB8C4D2);
+        meta.setTextColor(0xFFB6B7C0);
         meta.setTextSize(isTelevision(context) ? 10 : 9);
         meta.setSingleLine(true);
         meta.setEllipsize(TextUtils.TruncateAt.END);
@@ -136,15 +136,15 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         String provider = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
         holder.meta.setText(safe(channel.country) + "  ·  " + provider + " recommandé"
                 + (channel.sourceCount() > 1 ? "  ·  " + channel.sourceCount() + " flux" : ""));
-        holder.row.setBackground(background(selected ? 0xFF164A60 : 0xFF1A222D,
-                selected ? 0xFF4CC9F0 : 0x003C4654, holder.row.getContext()));
-        holder.title.setTextColor(selected ? 0xFFFFFF00 : Color.WHITE);
+        holder.row.setBackground(background(selected ? 0xFF3B2027 : 0xFF202126,
+                selected ? 0xFFEA5265 : 0x003C4654, holder.row.getContext()));
+        holder.title.setTextColor(selected ? 0xFFFFE8EA : Color.WHITE);
         holder.row.setOnFocusChangeListener((v, focused) -> {
             boolean active = focused || channel.identity().equals(selectedUrl);
-            holder.row.setBackground(background(active ? 0xFF164A60 : 0xFF1A222D,
-                    focused ? 0xFF4CC9F0 : (active ? 0xFF4CC9F0 : 0x003C4654),
+            holder.row.setBackground(background(active ? 0xFF3B2027 : 0xFF202126,
+                    focused ? 0xFFEA5265 : (active ? 0xFFEA5265 : 0x003C4654),
                     holder.row.getContext()));
-            holder.title.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
+            holder.title.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
             holder.row.setScaleX(focused ? 1.02f : 1f);
             holder.row.setScaleY(focused ? 1.02f : 1f);
         });

@@ -128,7 +128,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     public ChannelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
         boolean television = isTelevision(context);
-        int rowHeight = dp(context, television ? 63 : 54);
+        int rowHeight = dp(context, television ? 72 : 60);
         int bottomMargin = dp(context, 5);
 
         LinearLayout card = new LinearLayout(context);
@@ -139,7 +139,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.setClickable(true);
         card.setPadding(dp(context, television ? 11 : 8), dp(context, 6),
                 dp(context, 9), dp(context, 6));
-        card.setBackground(roundedDrawable(0xFF1D2632, 8, 0x00FFFFFF, context));
+        card.setBackground(roundedDrawable(0xFF202126, 8, 0x00FFFFFF, context));
         RecyclerView.LayoutParams cardParams =
                 new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight);
         cardParams.bottomMargin = bottomMargin;
@@ -157,7 +157,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         logoFrame.setBackground(roundedDrawable(0xEEFFFFFF, 7, 0x00FFFFFF, context));
         TextView initials = new TextView(context);
         initials.setTextSize(10);
-        initials.setTextColor(0xFF168AAD);
+        initials.setTextColor(0xFF9D3445);
         initials.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         initials.setGravity(Gravity.CENTER);
         logoFrame.addView(initials, new FrameLayout.LayoutParams(
@@ -202,7 +202,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         TextView favorite = new TextView(context);
         favorite.setText("★");
         favorite.setTextSize(television ? 15 : 12);
-        favorite.setTextColor(0xFFFFFF00);
+        favorite.setTextColor(0xFFFFE8EA);
         favorite.setGravity(Gravity.CENTER);
         favorite.setVisibility(View.GONE);
         card.addView(favorite, new LinearLayout.LayoutParams(dp(context, 22),
@@ -329,12 +329,12 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         private void applyState(boolean focused, boolean selected) {
             Context context = itemView.getContext();
             boolean active = focused || selected;
-            card.setBackground(roundedDrawable(active ? 0xFF164A60 : 0xFF1D2632,
-                    8, active ? 0xFF4CC9F0 : 0x00FFFFFF, context));
+            card.setBackground(roundedDrawable(active ? 0xFF3B2027 : 0xFF202126,
+                    8, active ? 0xFFEA5265 : 0x00FFFFFF, context));
             card.setScaleX(focused ? 1.02f : 1f);
             card.setScaleY(focused ? 1.02f : 1f);
-            name.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
-            number.setTextColor(active ? 0xFFFFFF00 : Color.WHITE);
+            name.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
+            number.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
         }
     }
 

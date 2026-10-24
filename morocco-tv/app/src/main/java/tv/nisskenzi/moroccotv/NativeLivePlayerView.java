@@ -29,9 +29,9 @@ import java.util.List;
  * changing the underlying Media3 or VAVOO stream resolution logic.
  */
 public final class NativeLivePlayerView extends FrameLayout {
-    private static final int CYAN = 0xFF4CC9F0;
+    private static final int CYAN = 0xFFEA5265;
     private static final int WHITE = Color.WHITE;
-    private static final int MUTED = 0xFFD0D9E4;
+    private static final int MUTED = 0xFFE0DDE0;
 
     private final PlayerView videoView;
     private final ProgressBar loading;
@@ -136,7 +136,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         livePill.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         livePill.setGravity(Gravity.CENTER);
         livePill.setPadding(dp(13), dp(8), dp(13), dp(8));
-        livePill.setBackground(pill(0xCC8B1E32));
+        livePill.setBackground(pill(0xCCE5445A));
         topBar.addView(livePill, new LinearLayout.LayoutParams(-2, dp(38)));
 
         LinearLayout bottomBar = new LinearLayout(context);
@@ -264,7 +264,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         closeButton.setOnClickListener(v -> closeChannelDrawer());
 
         View divider = new View(context);
-        divider.setBackgroundColor(0x665D6D82);
+        divider.setBackgroundColor(0x44FFFFFF);
         LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
         dividerParams.topMargin = dp(12);
         dividerParams.bottomMargin = dp(10);
@@ -288,7 +288,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         nextParams.topMargin = dp(4);
         drawerPanel.addView(drawerNext, nextParams);
 
-        drawerEpgStatus = epgLine("Le guide se charge à l'ouverture du tiroir.", 0xFF8292A4);
+        drawerEpgStatus = epgLine("Le guide se charge à l'ouverture du tiroir.", 0xFF9A9AA3);
         drawerEpgStatus.setTextSize(9);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
         statusParams.topMargin = dp(4);
@@ -296,7 +296,7 @@ public final class NativeLivePlayerView extends FrameLayout {
         drawerPanel.addView(drawerEpgStatus, statusParams);
 
         View listDivider = new View(context);
-        listDivider.setBackgroundColor(0x443E4D5E);
+        listDivider.setBackgroundColor(0x22FFFFFF);
         LinearLayout.LayoutParams listDividerParams = new LinearLayout.LayoutParams(-1, dp(1));
         listDividerParams.bottomMargin = dp(8);
         drawerPanel.addView(listDivider, listDividerParams);
@@ -593,9 +593,9 @@ public final class NativeLivePlayerView extends FrameLayout {
         button.setPadding(dp(16), dp(8), dp(16), dp(8));
         button.setFocusable(true);
         button.setClickable(true);
-        button.setBackground(pill(primary ? 0xFF16495E : 0xCC202A36));
+        button.setBackground(pill(primary ? 0xFF3B2027 : 0xCC202A36));
         button.setOnFocusChangeListener((view, focused) -> {
-            button.setBackground(pill(focused ? 0xFF165D76 : (primary ? 0xFF16495E : 0xCC202A36)));
+            button.setBackground(pill(focused ? 0xFF58303A : (primary ? 0xFF3B2027 : 0xCC202A36)));
             button.setScaleX(focused ? 1.04f : 1f);
             button.setScaleY(focused ? 1.04f : 1f);
             if (focused) showControls();
@@ -607,15 +607,15 @@ public final class NativeLivePlayerView extends FrameLayout {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp(18));
-        drawable.setStroke(dp(1), 0x554CC9F0);
+        drawable.setStroke(dp(1), 0x55EA5265);
         return drawable;
     }
 
     private GradientDrawable panelBackground() {
         GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(0xF6131B26);
+        drawable.setColor(0xF6191A20);
         drawable.setCornerRadius(dp(15));
-        drawable.setStroke(dp(1), 0x664CC9F0);
+        drawable.setStroke(dp(1), 0x66EA5265);
         return drawable;
     }
 

@@ -45,7 +45,9 @@ public final class CombinedCatalogCache {
 
         try (DataInputStream in = new DataInputStream(
                 new BufferedInputStream(new FileInputStream(file), 64 * 1024))) {
-            if (in.readInt() != MAGIC || in.readInt() != FORMAT_VERSION
+            if (in.readInt() != MAGIC) return result;
+            int version = in.readInt();
+            if ((version != FORMAT_VERSION && version != 2)
                     || !safe(expectedRevision).equals(in.readUTF())) {
                 return result;
             }
@@ -89,7 +91,19 @@ public final class CombinedCatalogCache {
                 });
                 result.add(Channel.grouped(options.get(0), options, identity));
             }
-            if (result.size() != count) result.clear();
+            if (result.size() != count) {
+                result.clear();
+                return result;
+            }
+
+            // Version 2 may contain separate rows for names that the current
+            // normalizer now recognizes as the same channel. Rebuild from the
+            // saved source records so the offline catalogue gets the same fix.
+            ArrayList<Channel> sourceEntries = new ArrayList<>();
+            for (Channel grouped : result) sourceEntries.addAll(grouped.playbackOptions());
+            result.clear();
+            result.addAll(ChannelDeduplicator.merge(
+                    sourceEntries, Collections.emptyList(), ranker));
         } catch (Exception ignored) {
             result.clear();
             file.delete();

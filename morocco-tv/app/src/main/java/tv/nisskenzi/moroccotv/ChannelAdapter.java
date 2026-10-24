@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.text.Normalizer;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -67,6 +68,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     private final FavoriteChecker favoriteChecker;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
+    private final Map<String, Integer> positionByUrl = new HashMap<>();
     private volatile boolean shutDown;
 
     public ChannelAdapter(@NonNull OnChannelClickListener listener,
@@ -97,10 +99,18 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
     private int findPosition(String url) {
         if (url == null || url.isEmpty()) return -1;
-        for (int i = 0; i < getCurrentList().size(); i++) {
-            if (TextUtils.equals(url, safe(getItem(i).url))) return i;
+        Integer position = positionByUrl.get(url);
+        return position == null ? -1 : position;
+    }
+
+    @Override
+    protected void onCurrentListChanged(@NonNull List<Channel> previousList,
+                                        @NonNull List<Channel> currentList) {
+        positionByUrl.clear();
+        for (int i = 0; i < currentList.size(); i++) {
+            String url = safe(currentList.get(i).url);
+            if (!url.isEmpty() && !positionByUrl.containsKey(url)) positionByUrl.put(url, i);
         }
-        return -1;
     }
 
     @NonNull

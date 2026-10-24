@@ -34,17 +34,19 @@ public final class FavoritesStore {
 
     public synchronized boolean toggle(String url) {
         if (url == null || url.trim().isEmpty()) return false;
-        boolean nowFavorite;
-        if (favoriteUrls.remove(url)) {
-            nowFavorite = false;
-            preferences.edit().remove(url).apply();
-        } else {
-            favoriteUrls.add(url);
-            nowFavorite = true;
-            preferences.edit().putBoolean(url, true).apply();
-        }
-        revision++;
+        boolean nowFavorite = !favoriteUrls.contains(url);
+        setFavorite(url, nowFavorite);
         return nowFavorite;
+    }
+
+    /** Adds or removes an ID without toggling legacy source IDs by accident. */
+    public synchronized void setFavorite(String url, boolean favorite) {
+        if (url == null || url.trim().isEmpty()) return;
+        boolean changed = favorite ? favoriteUrls.add(url) : favoriteUrls.remove(url);
+        if (!changed) return;
+        if (favorite) preferences.edit().putBoolean(url, true).apply();
+        else preferences.edit().remove(url).apply();
+        revision++;
     }
 
     public synchronized Set<String> snapshotUrls() {
@@ -57,7 +59,7 @@ public final class FavoritesStore {
         int count = 0;
         if (channels == null) return count;
         for (Channel channel : channels) {
-            if (channel != null && favoriteUrls.contains(channel.url)) count++;
+            if (channel != null && channel.matchesSavedIds(favoriteUrls)) count++;
         }
         return count;
     }

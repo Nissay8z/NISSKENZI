@@ -67,6 +67,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     private static final Map<String, String> COUNTRY_CODES = buildCountryCodes();
 
     private final OnChannelClickListener listener;
+    private final OnChannelClickListener sourceChoiceListener;
     private final FavoriteChecker favoriteChecker;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
@@ -75,9 +76,16 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
     public ChannelAdapter(@NonNull OnChannelClickListener listener,
                           @NonNull FavoriteChecker favoriteChecker) {
+        this(listener, favoriteChecker, null);
+    }
+
+    public ChannelAdapter(@NonNull OnChannelClickListener listener,
+                          @NonNull FavoriteChecker favoriteChecker,
+                          @Nullable OnChannelClickListener sourceChoiceListener) {
         super(DIFF_CALLBACK);
         this.listener = listener;
         this.favoriteChecker = favoriteChecker;
+        this.sourceChoiceListener = sourceChoiceListener;
     }
 
     /** Updates the highlighted channel without rebinding the entire catalogue. */
@@ -207,7 +215,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         Channel channel = getItem(position);
         holder.bind(channel, position, TextUtils.equals(selectedUrl, channel.identity()),
-                listener, favoriteChecker, logoLoader, this);
+                listener, sourceChoiceListener, favoriteChecker, logoLoader, this);
     }
 
     @Override
@@ -245,8 +253,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         }
 
         void bind(Channel channel, int index, boolean selected,
-                  OnChannelClickListener listener, FavoriteChecker favoriteChecker,
-                  ChannelLogoLoader loader, ChannelAdapter owner) {
+                  OnChannelClickListener listener, OnChannelClickListener sourceChoiceListener,
+                  FavoriteChecker favoriteChecker, ChannelLogoLoader loader, ChannelAdapter owner) {
             if (logoRequest != null) {
                 logoRequest.cancel();
                 logoRequest = null;
@@ -256,11 +264,11 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             name.setText(emptyFallback(channel.name, "Chaîne"));
 
             String country = emptyFallback(channel.country, "Pays non précisé");
-            String group = safe(channel.group)
-                    .replace("VAVOO · ", "")
-                    .replace("IPTV-ORG · ", "");
+            String provider = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
             String metaText = countryFlag(country) + "  " + country
-                    + (group.isEmpty() ? "" : "  ·  " + group);
+                    + "  ·  " + provider + " recommandé"
+                    + (channel.sourceCount() > 1
+                        ? "  ·  " + channel.sourceCount() + " flux" : "");
             meta.setText(metaText);
 
             boolean isFavorite = favoriteChecker != null && favoriteChecker.isFavorite(channel);
@@ -292,6 +300,15 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             card.setOnClickListener(view -> {
                 if (listener != null) listener.onChannelClick(channel);
             });
+            card.setContentDescription(channel.name + ", " + country
+                    + ", source recommandée " + provider
+                    + (channel.sourceCount() > 1
+                        ? ", " + channel.sourceCount() + " flux, maintenir pour choisir" : ""));
+            card.setOnLongClickListener(view -> {
+                if (sourceChoiceListener == null || channel.sourceCount() < 2) return false;
+                sourceChoiceListener.onChannelClick(channel);
+                return true;
+            });
             applyState(card.hasFocus(), selected);
         }
 
@@ -306,6 +323,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             initials.setVisibility(View.VISIBLE);
             card.setOnFocusChangeListener(null);
             card.setOnClickListener(null);
+            card.setOnLongClickListener(null);
         }
 
         private void applyState(boolean focused, boolean selected) {

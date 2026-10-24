@@ -133,8 +133,9 @@ public final class PlayerChannelDrawerAdapter extends RecyclerView.Adapter<Playe
         Channel channel = channels.get(position);
         boolean selected = channel.identity().equals(selectedUrl);
         holder.title.setText(channel.name);
-        String group = safe(channel.group).replace("VAVOO · ", "").replace("IPTV-ORG · ", "");
-        holder.meta.setText(safe(channel.country) + (group.isEmpty() ? "" : "  ·  " + group));
+        String provider = channel.isVavoo ? "VAVOO" : "IPTV-ORG";
+        holder.meta.setText(safe(channel.country) + "  ·  " + provider + " recommandé"
+                + (channel.sourceCount() > 1 ? "  ·  " + channel.sourceCount() + " flux" : ""));
         holder.row.setBackground(background(selected ? 0xFF164A60 : 0xFF1A222D,
                 selected ? 0xFF4CC9F0 : 0x003C4654, holder.row.getContext()));
         holder.title.setTextColor(selected ? 0xFFFFFF00 : Color.WHITE);

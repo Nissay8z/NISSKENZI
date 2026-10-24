@@ -30,6 +30,7 @@ public final class IptvOrgProvider {
     private static final int READ_TIMEOUT_MS = 20_000;
     private static final int PUBLISH_INTERVAL = 1_500;
     private static final int MIN_VALID_BUNDLED_CHANNELS = 1_000;
+    private static final int MIN_FILTERED_CACHE_CHANNELS = 1;
 
     private IptvOrgProvider() {}
 
@@ -39,16 +40,17 @@ public final class IptvOrgProvider {
         if (context == null) return new ArrayList<>();
 
         ArrayList<Channel> cached = FastCatalogCache.read(
-                context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_VALID_BUNDLED_CHANNELS);
-        if (!cached.isEmpty()) return cached;
+                context, "IPTV-ORG", BUNDLED_ASSET, maximum, MIN_FILTERED_CACHE_CHANNELS);
+        if (!cached.isEmpty()) return ChannelCatalogPolicy.filterIptvOrg(cached);
 
         try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
              BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-            ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-            if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) {
+            int[] sourceRowCount = {0};
+            ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null, sourceRowCount);
+            if (sourceRowCount[0] >= MIN_VALID_BUNDLED_CHANNELS && !bundled.isEmpty()) {
                 FastCatalogCache.write(context, "IPTV-ORG", BUNDLED_ASSET,
-                        bundled, maximum, MIN_VALID_BUNDLED_CHANNELS);
-                return bundled;
+                        bundled, maximum, MIN_FILTERED_CACHE_CHANNELS);
+                return ChannelCatalogPolicy.filterIptvOrg(bundled);
             }
             return new ArrayList<>();
         } catch (IOException ignored) {
@@ -58,22 +60,20 @@ public final class IptvOrgProvider {
 
     /**
      * Normal startup uses the packaged M3U, parsed off the UI thread, and
-     * returns the complete list in one snapshot to avoid repeated big UI diffs.
+     * returns the Morocco-only list in one snapshot to avoid repeated big UI diffs.
      * Explicit refresh bypasses the asset and uses the original public playlist.
      */
     public static ArrayList<Channel> loadChannels(Context context, int maximum,
             CountryResolver countryResolver, ProgressListener listener, boolean forceNetwork)
             throws IOException {
         if (!forceNetwork && context != null) {
-            try (InputStream input = context.getAssets().open(BUNDLED_ASSET);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
-                ArrayList<Channel> bundled = parsePlaylist(reader, maximum, countryResolver, null);
-                if (bundled.size() >= MIN_VALID_BUNDLED_CHANNELS) return bundled;
-            } catch (IOException ignored) {
-                // Older or incomplete APK: safely fall back to the original online playlist.
-            }
+            ArrayList<Channel> bundled = loadBundledChannels(context, maximum, countryResolver);
+            if (!bundled.isEmpty()) return bundled;
         }
-        return loadChannels(maximum, countryResolver, listener);
+        ProgressListener filteredListener = listener == null ? null
+                : snapshot -> listener.onChannelsUpdated(ChannelCatalogPolicy.filterIptvOrg(snapshot));
+        return ChannelCatalogPolicy.filterIptvOrg(
+                loadChannels(maximum, countryResolver, filteredListener));
     }
 
     /** Explicit live refresh; keeps the original IPTV-org source URL unchanged. */
@@ -89,7 +89,11 @@ public final class IptvOrgProvider {
 
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(connection.getInputStream(), "UTF-8"), 64 * 1024)) {
-                return parsePlaylist(reader, maximum, countryResolver, listener);
+                ProgressListener filteredListener = listener == null ? null
+                        : snapshot -> listener.onChannelsUpdated(
+                                ChannelCatalogPolicy.filterIptvOrg(snapshot));
+                return ChannelCatalogPolicy.filterIptvOrg(
+                        parsePlaylist(reader, maximum, countryResolver, filteredListener));
             }
         } finally {
             if (connection != null) connection.disconnect();
@@ -98,8 +102,15 @@ public final class IptvOrgProvider {
 
     private static ArrayList<Channel> parsePlaylist(BufferedReader reader, int maximum,
             CountryResolver countryResolver, ProgressListener listener) throws IOException {
+        return parsePlaylist(reader, maximum, countryResolver, listener, null);
+    }
+
+    private static ArrayList<Channel> parsePlaylist(BufferedReader reader, int maximum,
+            CountryResolver countryResolver, ProgressListener listener, int[] sourceRowCount)
+            throws IOException {
         ArrayList<Channel> loaded = new ArrayList<>();
         String line;
+        int sourceEntries = 0;
         String name = "Chaîne";
         String logo = "";
         String group = "Pays non précisé";
@@ -138,10 +149,13 @@ public final class IptvOrgProvider {
                 }
                 country = normalized;
             } else if (line.startsWith("http://") || line.startsWith("https://")) {
-                if (loaded.size() >= maximum) break;
+                if (sourceEntries >= maximum) break;
+                sourceEntries++;
+                if (sourceRowCount != null) sourceRowCount[0] = sourceEntries;
                 // Do not rewrite the stream URL or add a resolver: this is the original IPTV-org entry.
-                loaded.add(new Channel(name, line.trim(), logo,
-                        "IPTV-ORG · " + group, false, null, country, epgId));
+                Channel channel = new Channel(name, line.trim(), logo,
+                        "IPTV-ORG · " + group, false, null, country, epgId);
+                if (ChannelCatalogPolicy.isIptvOrgMorocco(channel)) loaded.add(channel);
 
                 if (listener != null && loaded.size() - lastPublished >= PUBLISH_INTERVAL) {
                     lastPublished = loaded.size();

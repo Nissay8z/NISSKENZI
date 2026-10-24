@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Reads the prebuilt all-country VAVOO metadata catalogue.
+ * Reads the prebuilt VAVOO metadata catalogue, keeping only the selected countries.
  *
  * The M3U is parsed as a stream, line by line, to avoid building a giant
  * JSONObject tree. The stream itself is NOT included in this file: each row
@@ -42,12 +42,12 @@ public final class VavooSnapshotProvider {
         // reparsing roughly ten thousand rows from M3U on each source switch.
         ArrayList<Channel> cached = FastCatalogCache.read(
                 context, "VAVOO", M3U_ASSET_NAME, maximum, 500);
-        if (cached.size() >= 500) return cached;
+        if (cached.size() >= 500) return ChannelCatalogPolicy.filterVavoo(cached);
 
         ArrayList<Channel> m3u = readM3u(context, maximum, countryResolver);
         if (m3u.size() >= 500) {
             FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, m3u, maximum, 500);
-            return m3u;
+            return ChannelCatalogPolicy.filterVavoo(m3u);
         }
 
         // Transitional fallback for old APKs/builds that contain only the JSON snapshot.
@@ -56,7 +56,7 @@ public final class VavooSnapshotProvider {
         if (best.size() >= 500) {
             FastCatalogCache.write(context, "VAVOO", M3U_ASSET_NAME, best, maximum, 500);
         }
-        return best;
+        return ChannelCatalogPolicy.filterVavoo(best);
     }
 
     private static ArrayList<Channel> readM3u(Context context, int maximum,
@@ -101,17 +101,7 @@ public final class VavooSnapshotProvider {
                     continue;
                 }
 
-                String token = line.substring("vavoo-catalog://".length()).trim();
-                String sourceUrl;
-                try {
-                    byte[] decoded = Base64.decode(token,
-                            Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                    sourceUrl = new String(decoded, StandardCharsets.UTF_8).trim();
-                } catch (Exception invalidToken) {
-                    sourceUrl = "";
-                }
-
-                if (!sourceUrl.isEmpty() && !name.trim().isEmpty()) {
+                if (!name.trim().isEmpty()) {
                     String rawCountry = safe(country);
                     String resolvedCountry;
                     if (!rawCountry.isEmpty() && normalizedCountryCache.containsKey(rawCountry)) {
@@ -120,11 +110,29 @@ public final class VavooSnapshotProvider {
                         resolvedCountry = resolveCountry(country, group, countryResolver);
                         if (!rawCountry.isEmpty()) normalizedCountryCache.put(rawCountry, resolvedCountry);
                     }
-                    String stable = id.trim().isEmpty() ? stableId(name, resolvedCountry) : id.trim();
                     String finalGroup = group.startsWith("VAVOO · ") ? group : "VAVOO · " + group;
-                    result.add(new Channel(name, "vavoo://" + stable, logo, finalGroup,
-                            true, sourceUrl, resolvedCountry));
-                    if (result.size() >= maximum) break;
+                    Channel countryProbe = new Channel(name, "vavoo://catalog-filter", logo,
+                            finalGroup, true, "", resolvedCountry);
+                    if (ChannelCatalogPolicy.isVavooCountryAllowed(countryProbe)) {
+                        // Skip out-of-scope countries before decoding their stream references
+                        // or allocating a Channel object.
+                        String token = line.substring("vavoo-catalog://".length()).trim();
+                        String sourceUrl;
+                        try {
+                            byte[] decoded = Base64.decode(token,
+                                    Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                            sourceUrl = new String(decoded, StandardCharsets.UTF_8).trim();
+                        } catch (Exception invalidToken) {
+                            sourceUrl = "";
+                        }
+                        if (!sourceUrl.isEmpty()) {
+                            String stable = id.trim().isEmpty()
+                                    ? stableId(name, resolvedCountry) : id.trim();
+                            result.add(new Channel(name, "vavoo://" + stable, logo, finalGroup,
+                                    true, sourceUrl, resolvedCountry));
+                            if (result.size() >= maximum) break;
+                        }
+                    }
                 }
 
                 id = name = logo = "";
@@ -165,8 +173,9 @@ public final class VavooSnapshotProvider {
                 String id = safe(item.optString("id", ""));
                 if (id.isEmpty()) id = stableId(name, rawCountry.isEmpty() ? country : rawCountry);
                 if (!group.startsWith("VAVOO · ")) group = "VAVOO · " + group;
-                result.add(new Channel(name, "vavoo://" + id, safe(item.optString("logo", "")),
-                        group, true, sourceUrl, country));
+                Channel channel = new Channel(name, "vavoo://" + id,
+                        safe(item.optString("logo", "")), group, true, sourceUrl, country);
+                if (ChannelCatalogPolicy.isVavooCountryAllowed(channel)) result.add(channel);
             }
         } catch (Exception ignored) {
             result.clear();
@@ -181,7 +190,9 @@ public final class VavooSnapshotProvider {
             if (known == null || known.trim().isEmpty()) known = resolver.resolve(group);
             if (known != null && !known.trim().isEmpty()) return known.trim();
         }
-        return country.isEmpty() ? "Pays non précisé" : country;
+        if (!country.isEmpty()) return country;
+        String fallbackGroup = safe(group);
+        return fallbackGroup.isEmpty() ? "Pays non précisé" : fallbackGroup;
     }
 
     private static String attribute(String line, String key) {

@@ -18,6 +18,20 @@ public final class ChannelFilter {
             boolean recentOnly,
             Set<String> favoriteUrls,
             Set<String> recentUrls) {
+        return filter(sourceChannels, sourceFilter, activeCountry, "Tous les genres",
+                searchText, favoritesOnly, recentOnly, favoriteUrls, recentUrls);
+    }
+
+    public static ArrayList<Channel> filter(
+            List<Channel> sourceChannels,
+            String sourceFilter,
+            String activeCountry,
+            String activeGenre,
+            String searchText,
+            boolean favoritesOnly,
+            boolean recentOnly,
+            Set<String> favoriteUrls,
+            Set<String> recentUrls) {
 
         String query = Channel.normalizeSearch(searchText);
         String countryFilter = safe(activeCountry);
@@ -38,6 +52,7 @@ public final class ChannelFilter {
             if (!"TOUS".equalsIgnoreCase(safe(sourceFilter))
                     && !safe(sourceFilter).equals(source)) continue;
             if (!allCountries && !countryFilter.equals(safeCountry(channel.country))) continue;
+            if (!ChannelCatalogPolicy.matchesGenre(channel, activeGenre)) continue;
 
             boolean favorite = channel.matchesSavedIds(favoriteUrls);
             boolean recent = channel.matchesSavedIds(recentUrls);

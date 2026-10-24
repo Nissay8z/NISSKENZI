@@ -683,7 +683,7 @@ public class MainActivity extends Activity {
         heroActions.addView(guide, guideP);
         guide.setOnClickListener(v -> scrollToGuideSection());
 
-        heroArtwork = new FrameLayout(this);
+        FrameLayout heroArtwork = new FrameLayout(this);
         GradientDrawable stageBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{0xFF5A2D43, 0xFF28252E, 0xFF171A21});
         stageBg.setCornerRadius(dp(20));

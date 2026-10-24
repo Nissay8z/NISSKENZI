@@ -199,6 +199,20 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         metaParams.topMargin = dp(context, 2);
         info.addView(meta, metaParams);
 
+        TextView dossier = new TextView(context);
+        dossier.setTextSize(television ? 9 : 7);
+        dossier.setTextColor(Color.WHITE);
+        dossier.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        dossier.setGravity(Gravity.CENTER);
+        dossier.setBackground(roundedDrawable(0xFF3B2027, 10, 0xFFEA5265, context));
+        dossier.setContentDescription("Ouvrir le dossier des flux réunis");
+        dossier.setFocusable(true);
+        dossier.setVisibility(View.GONE);
+        LinearLayout.LayoutParams dossierParams = new LinearLayout.LayoutParams(
+                dp(context, television ? 80 : 62), dp(context, television ? 34 : 28));
+        dossierParams.rightMargin = dp(context, 8);
+        card.addView(dossier, dossierParams);
+
         TextView favorite = new TextView(context);
         favorite.setText("★");
         favorite.setTextSize(television ? 15 : 12);
@@ -208,7 +222,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.addView(favorite, new LinearLayout.LayoutParams(dp(context, 22),
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        return new ChannelViewHolder(card, number, image, initials, name, meta, favorite);
+        return new ChannelViewHolder(card, number, image, initials, name, meta, favorite, dossier);
     }
 
     @Override
@@ -237,11 +251,13 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         final TextView name;
         final TextView meta;
         final TextView favorite;
+        final TextView dossier;
         private String boundUrl = "";
         private ChannelLogoLoader.Request logoRequest;
 
         ChannelViewHolder(LinearLayout card, TextView number, ImageView image,
-                          TextView initials, TextView name, TextView meta, TextView favorite) {
+                          TextView initials, TextView name, TextView meta,
+                          TextView favorite, TextView dossier) {
             super(card);
             this.card = card;
             this.number = number;
@@ -250,6 +266,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             this.name = name;
             this.meta = meta;
             this.favorite = favorite;
+            this.dossier = dossier;
         }
 
         void bind(Channel channel, int index, boolean selected,
@@ -273,6 +290,20 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
             boolean isFavorite = favoriteChecker != null && favoriteChecker.isFavorite(channel);
             favorite.setVisibility(isFavorite ? View.VISIBLE : View.GONE);
+            dossier.setVisibility(channel.sourceCount() > 1 ? View.VISIBLE : View.GONE);
+            dossier.setText("▤  " + channel.sourceCount());
+            dossier.setContentDescription("Ouvrir le mini dossier des " + channel.sourceCount()
+                    + " flux de " + channel.name);
+            dossier.setOnClickListener(view -> {
+                if (sourceChoiceListener != null && channel.sourceCount() > 1) {
+                    sourceChoiceListener.onChannelClick(channel);
+                }
+            });
+            dossier.setOnFocusChangeListener((view, focused) -> {
+                dossier.setBackground(roundedDrawable(focused ? 0xFF542A34 : 0xFF3B2027,
+                        10, focused ? 0xFFFFA1AD : 0xFFEA5265, dossier.getContext()));
+                applyState(focused || card.hasFocus(), selected);
+            });
 
             image.setTag(safe(channel.logo));
             image.setImageDrawable(null);
@@ -324,6 +355,9 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             card.setOnFocusChangeListener(null);
             card.setOnClickListener(null);
             card.setOnLongClickListener(null);
+            dossier.setOnClickListener(null);
+            dossier.setOnFocusChangeListener(null);
+            dossier.setVisibility(View.GONE);
         }
 
         private void applyState(boolean focused, boolean selected) {

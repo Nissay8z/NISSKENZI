@@ -118,43 +118,35 @@ public final class EpgProvider {
 
     public static Result lookup(Context context, Channel channel) {
         if (channel == null) return new Result("", "", "Aucune chaîne sélectionnée", "");
+        if (context == null) return new Result("", "", "EPG indisponible : contexte manquant", "");
+
         long now = System.currentTimeMillis();
+        String lastFailure = "";
+        boolean moroccan = "MA".equals(ChannelCatalogPolicy.countryCode(channel.country));
+
+        // The aggregate country service does not publish Morocco; try its public OSN XMLTV feed first.
+        if (moroccan) {
+            try {
+                GuideIndex guide = getGuideFromUrl(context.getApplicationContext(), "ma-osn",
+                        "https://iptv-org.github.io/epg/guides/ma/osn.com.epg.xml", now);
+                Result match = resultForSchedule(findSchedule(guide, channel), now, "Maroc · OSN", "MA");
+                if (match != null) return match;
+                lastFailure = "Aucun programme correspondant dans le guide marocain OSN";
+            } catch (Exception e) {
+                lastFailure = e.getMessage() == null ? "Guide marocain indisponible" : e.getMessage();
+            }
+        }
+
         ArrayList<String> candidates = guideCandidates(channel.country);
         if (candidates.isEmpty()) candidates.add("fr");
-
-        String lastFailure = "";
-        for (String code : candidates) {
+        for (String countryCode : candidates) {
             try {
-                GuideIndex guide = getGuide(context.getApplicationContext(), code, now);
-                List<Programme> schedule = findSchedule(guide, channel);
-                if (schedule == null || schedule.isEmpty()) {
-                    lastFailure = "Aucun programme correspondant dans le guide " + code.toUpperCase(Locale.ROOT);
-                    continue;
-                }
-
-                Programme current = null;
-                Programme next = null;
-                for (Programme p : schedule) {
-                    if (p.startMs <= now && p.stopMs > now) {
-                        if (current == null || p.stopMs < current.stopMs) current = p;
-                    } else if (p.startMs > now && (next == null || p.startMs < next.startMs)) {
-                        next = p;
-                    }
-                }
-
-                String nowText = current == null ? "" : formatTime(current.startMs)
-                        + "  " + current.title;
-                String nextText = next == null ? "" : formatTime(next.startMs)
-                        + "  " + next.title;
-                String label = code.toUpperCase(Locale.ROOT);
-                if (current == null && next == null) {
-                    lastFailure = "Aucun programme à venir dans le guide " + label;
-                    continue;
-                }
-                return new Result(nowText, nextText,
-                        "Guide XMLTV · " + label, label,
-                        current == null ? 0L : current.startMs,
-                        current == null ? 0L : current.stopMs);
+                GuideIndex guide = getGuide(context.getApplicationContext(), countryCode, now);
+                Result match = resultForSchedule(findSchedule(guide, channel), now,
+                        countryCode.toUpperCase(Locale.ROOT), countryCode.toUpperCase(Locale.ROOT));
+                if (match != null) return match;
+                lastFailure = "Aucun programme correspondant dans le guide "
+                        + countryCode.toUpperCase(Locale.ROOT);
             } catch (Exception e) {
                 lastFailure = e.getMessage() == null ? "Guide indisponible" : e.getMessage();
             }
@@ -163,8 +155,40 @@ public final class EpgProvider {
         return new Result("", "", lastFailure, "");
     }
 
+    private static Result resultForSchedule(List<Programme> schedule, long now,
+                                            String label, String countryCode) {
+        if (schedule == null || schedule.isEmpty()) return null;
+        Programme current = null;
+        Programme next = null;
+        for (Programme programme : schedule) {
+            if (programme.startMs <= now && programme.stopMs > now) {
+                if (current == null || programme.stopMs < current.stopMs) current = programme;
+            } else if (programme.startMs > now && (next == null || programme.startMs < next.startMs)) {
+                next = programme;
+            }
+        }
+        if (current == null && next == null) return null;
+        String nowText = current == null ? "" : formatTime(current.startMs) + "  " + current.title;
+        String nextText = next == null ? "" : formatTime(next.startMs) + "  " + next.title;
+        return new Result(nowText, nextText, "Guide XMLTV · " + label, countryCode,
+                current == null ? 0L : current.startMs,
+                current == null ? 0L : current.stopMs);
+    }
+
     private static GuideIndex getGuide(Context context, String code, long now) throws Exception {
         String key = code.toLowerCase(Locale.ROOT);
+        return getGuideFromUrls(context, key,
+                GUIDE_BASE + key + ".xml.gz", GUIDE_BASE + key + ".xml", now);
+    }
+
+    private static GuideIndex getGuideFromUrl(Context context, String cacheKey,
+                                               String url, long now) throws Exception {
+        return getGuideFromUrls(context, cacheKey, url, null, now);
+    }
+
+    private static GuideIndex getGuideFromUrls(Context context, String cacheKey,
+            String firstUrl, String fallbackUrl, long now) throws Exception {
+        String key = cacheKey.toLowerCase(Locale.ROOT);
         GuideIndex inMemory = MEMORY_CACHE.get(key);
         if (inMemory != null && now - inMemory.loadedAtMs < CACHE_TTL_MS) return inMemory;
         if (inMemory != null) MEMORY_CACHE.remove(key, inMemory);
@@ -177,31 +201,37 @@ public final class EpgProvider {
 
         try {
             File directory = new File(context.getFilesDir(), "epg");
-            if (!directory.exists() && !directory.mkdirs()) throw new Exception("Impossible de créer le cache EPG");
+            if (!directory.exists() && !directory.mkdirs()) {
+                throw new Exception("Impossible de créer le cache EPG");
+            }
             File gzipFile = new File(directory, "epg-" + key + ".xml.gz");
             File xmlFile = new File(directory, "epg-" + key + ".xml");
             File local = isFresh(gzipFile, now) ? gzipFile : (isFresh(xmlFile, now) ? xmlFile : null);
 
             if (local == null) {
-                Exception downloadError = null;
+                File firstTarget = firstUrl.toLowerCase(Locale.ROOT).contains(".gz")
+                        ? gzipFile : xmlFile;
                 try {
-                    download(GUIDE_BASE + key + ".xml.gz", gzipFile);
-                    local = gzipFile;
-                } catch (Exception e) {
-                    downloadError = e;
+                    download(firstUrl, firstTarget);
+                    local = firstTarget;
+                } catch (Exception primaryFailure) {
+                    if (fallbackUrl == null || fallbackUrl.trim().isEmpty()) throw primaryFailure;
+                    File fallbackTarget = fallbackUrl.toLowerCase(Locale.ROOT).contains(".gz")
+                            ? gzipFile : xmlFile;
                     try {
-                        download(GUIDE_BASE + key + ".xml", xmlFile);
-                        local = xmlFile;
-                    } catch (Exception fallback) {
-                        if (downloadError != null) fallback.addSuppressed(downloadError);
-                        throw fallback;
+                        download(fallbackUrl, fallbackTarget);
+                        local = fallbackTarget;
+                    } catch (Exception fallbackFailure) {
+                        fallbackFailure.addSuppressed(primaryFailure);
+                        throw fallbackFailure;
                     }
                 }
             }
 
             GuideIndex parsed = parseGuide(local, key, now);
             if (parsed.programmesById.isEmpty() && parsed.programmesByName.isEmpty()) {
-                throw new Exception("Le guide " + key.toUpperCase(Locale.ROOT) + " ne contient aucun programme exploitable");
+                throw new Exception("Le guide " + key.toUpperCase(Locale.ROOT)
+                        + " ne contient aucun programme exploitable");
             }
             GuideIndex existing = MEMORY_CACHE.putIfAbsent(key, parsed);
             FAILURE_RETRY_AFTER.remove(key);
@@ -378,9 +408,13 @@ public final class EpgProvider {
         if (!withoutQuality.isEmpty() && !out.contains(withoutQuality)) out.add(withoutQuality);
         String withoutPrefix = withoutQuality.replaceFirst("^(fr|ma|us|uk|gb|es|it|de|pt|be|ch) ", "").trim();
         if (!withoutPrefix.isEmpty() && !out.contains(withoutPrefix)) out.add(withoutPrefix);
-        String withoutSuffix = withoutPrefix.replaceAll("\\b(france|premium|international|live)\\b", " ")
+        String withoutSuffix = withoutPrefix.replaceAll(
+                "\\b(france|french|premium|international|intl|live|maroc|morocco|maghreb|arabic|arab|inter)\\b", " ")
                 .replaceAll("\\s+", " ").trim();
         if (!withoutSuffix.isEmpty() && !out.contains(withoutSuffix)) out.add(withoutSuffix);
+        String trailingRegional = withoutQuality.replaceAll(
+                "\\s+(?:maroc|morocco|maghreb|arabic|arab|international|intl|france|french|inter)$", "").trim();
+        if (!trailingRegional.isEmpty() && !out.contains(trailingRegional)) out.add(trailingRegional);
         return out;
     }
 
@@ -418,7 +452,10 @@ public final class EpgProvider {
     private static ArrayList<String> guideCandidates(String country) {
         ArrayList<String> result = new ArrayList<>();
         String code = COUNTRY_CODES.get(countryKey(country));
-        if (code != null) result.add(code.toLowerCase(Locale.ROOT));
+        // The aggregate service has no epg-ma.xml; Morocco is handled through its OSN guide.
+        if (code != null && !"MA".equalsIgnoreCase(code)) {
+            result.add(code.toLowerCase(Locale.ROOT));
+        }
         // France has broad coverage for many international channels; use it only
         // as a fallback when the channel's own country guide has no matching entry.
         if (!result.contains("fr")) result.add("fr");

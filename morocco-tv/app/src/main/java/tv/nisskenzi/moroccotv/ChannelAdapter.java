@@ -379,8 +379,6 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             boolean active = focused || selected;
             card.setBackground(roundedDrawable(active ? 0xFF382431 : 0xFF1D2028,
                     13, active ? 0xFFEA5265 : 0x18FFFFFF, context));
-            card.setScaleX(focused ? 1.025f : 1f);
-            card.setScaleY(focused ? 1.025f : 1f);
             name.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
             number.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
         }

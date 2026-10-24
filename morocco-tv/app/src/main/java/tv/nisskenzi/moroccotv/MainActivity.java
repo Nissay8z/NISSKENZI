@@ -417,6 +417,12 @@ public class MainActivity extends Activity {
         channelResults = null;
         channelListHost = null;
         channelEmptyView = null;
+        countryChoices = null;
+        categorySearchInput = null;
+        previewTitle = null;
+        previewStatus = null;
+        previewDetail = null;
+        playerStage = null;
         contentHost.removeAllViews();
         if ("Paramètres".equals(activePage)) renderSettings();
         else if ("Accueil".equals(activePage)) renderHomePage();
@@ -1228,6 +1234,7 @@ public class MainActivity extends Activity {
         loadingCatalog = true;
         catalogStatus = forceRefresh ? "Actualisation des catalogues…" : "Assemblage des catalogues…";
         updateStatus();
+        if ("Paramètres".equals(activePage)) renderSettings();
         final int generation = loadGeneration.incrementAndGet();
         io.execute(() -> {
             ArrayList<Channel> vavoo = VavooSnapshotProvider.readBundled(
@@ -1307,6 +1314,7 @@ public class MainActivity extends Activity {
                 }
                 updateStatus();
                 updateHeaderTabs();
+                if ("Paramètres".equals(activePage)) renderSettings();
                 if (fullscreenPlayback) {
                     updateChannelResults();
                 } else {

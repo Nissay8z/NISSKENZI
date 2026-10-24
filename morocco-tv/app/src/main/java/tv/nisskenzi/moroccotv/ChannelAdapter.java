@@ -106,7 +106,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     }
 
     @Override
-    protected void onCurrentListChanged(@NonNull List<Channel> previousList,
+    public void onCurrentListChanged(@NonNull List<Channel> previousList,
                                         @NonNull List<Channel> currentList) {
         positionByUrl.clear();
         for (int i = 0; i < currentList.size(); i++) {

@@ -22,7 +22,7 @@ import java.util.List;
  */
 public final class CombinedCatalogCache {
     private static final int MAGIC = 0x4E534B47; // "NSKG"
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private static final long MAX_CACHE_BYTES = 64L * 1024L * 1024L;
     private static final int MAX_CHANNELS = 30_000;
     private static final int MAX_OPTIONS_PER_CHANNEL = 64;

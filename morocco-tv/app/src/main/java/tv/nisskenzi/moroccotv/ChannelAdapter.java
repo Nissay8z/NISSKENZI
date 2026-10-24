@@ -42,6 +42,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         boolean isFavorite(Channel channel);
     }
 
+    public interface OnChannelFocusListener {
+        void onChannelFocus(Channel channel);
+    }
+
     private static final DiffUtil.ItemCallback<Channel> DIFF_CALLBACK =
             new DiffUtil.ItemCallback<Channel>() {
                 @Override
@@ -69,6 +73,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     private final OnChannelClickListener listener;
     private final OnChannelClickListener sourceChoiceListener;
     private final FavoriteChecker favoriteChecker;
+    private OnChannelFocusListener focusListener;
     private final ChannelLogoLoader logoLoader = new ChannelLogoLoader();
     private String selectedUrl = "";
     private final Map<String, Integer> positionByUrl = new HashMap<>();
@@ -86,6 +91,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         this.listener = listener;
         this.favoriteChecker = favoriteChecker;
         this.sourceChoiceListener = sourceChoiceListener;
+    }
+
+    public void setFocusListener(@Nullable OnChannelFocusListener listener) {
+        focusListener = listener;
     }
 
     /** Updates the highlighted channel without rebinding the entire catalogue. */
@@ -128,8 +137,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
     public ChannelViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         Context context = parent.getContext();
         boolean television = isTelevision(context);
-        int rowHeight = dp(context, television ? 72 : 60);
-        int bottomMargin = dp(context, 5);
+        int rowHeight = dp(context, television ? 82 : 66);
+        int bottomMargin = dp(context, television ? 7 : 5);
 
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.HORIZONTAL);
@@ -137,9 +146,9 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         card.setFocusable(true);
         card.setFocusableInTouchMode(false);
         card.setClickable(true);
-        card.setPadding(dp(context, television ? 11 : 8), dp(context, 6),
-                dp(context, 9), dp(context, 6));
-        card.setBackground(roundedDrawable(0xFF202126, 8, 0x00FFFFFF, context));
+        card.setPadding(dp(context, television ? 14 : 9), dp(context, 7),
+                dp(context, television ? 13 : 9), dp(context, 7));
+        card.setBackground(roundedDrawable(0xFF1D2028, 13, 0x18FFFFFF, context));
         RecyclerView.LayoutParams cardParams =
                 new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight);
         cardParams.bottomMargin = bottomMargin;
@@ -147,10 +156,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
         TextView number = new TextView(context);
         number.setTextSize(television ? 15 : 12);
-        number.setTextColor(Color.WHITE);
+        number.setTextColor(0xFFB8BBC5);
         number.setGravity(Gravity.CENTER);
         number.setIncludeFontPadding(false);
-        card.addView(number, new LinearLayout.LayoutParams(dp(context, television ? 30 : 26),
+        card.addView(number, new LinearLayout.LayoutParams(dp(context, television ? 34 : 27),
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         FrameLayout logoFrame = new FrameLayout(context);
@@ -170,8 +179,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
-                dp(context, television ? 44 : 38), dp(context, television ? 44 : 38));
-        logoParams.rightMargin = dp(context, 10);
+                dp(context, television ? 50 : 40), dp(context, television ? 50 : 40));
+        logoParams.rightMargin = dp(context, 13);
         card.addView(logoFrame, logoParams);
 
         LinearLayout info = new LinearLayout(context);
@@ -181,7 +190,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
         TextView name = new TextView(context);
-        name.setTextSize(television ? 14 : 11);
+        name.setTextSize(television ? 15 : 11);
         name.setTextColor(Color.WHITE);
         name.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         name.setSingleLine(true);
@@ -191,7 +200,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
 
         TextView meta = new TextView(context);
         meta.setTextSize(television ? 9 : 8);
-        meta.setTextColor(0xEEFFFFFF);
+        meta.setTextColor(0xFFB9BBC5);
         meta.setSingleLine(true);
         meta.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(
@@ -204,12 +213,12 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         dossier.setTextColor(Color.WHITE);
         dossier.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
         dossier.setGravity(Gravity.CENTER);
-        dossier.setBackground(roundedDrawable(0xFF3B2027, 10, 0xFFEA5265, context));
+        dossier.setBackground(roundedDrawable(0xFF37232D, 12, 0x66EA5265, context));
         dossier.setContentDescription("Ouvrir le dossier des flux réunis");
         dossier.setFocusable(true);
         dossier.setVisibility(View.GONE);
         LinearLayout.LayoutParams dossierParams = new LinearLayout.LayoutParams(
-                dp(context, television ? 80 : 62), dp(context, television ? 34 : 28));
+                dp(context, television ? 106 : 78), dp(context, television ? 38 : 30));
         dossierParams.rightMargin = dp(context, 8);
         card.addView(dossier, dossierParams);
 
@@ -291,7 +300,7 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
             boolean isFavorite = favoriteChecker != null && favoriteChecker.isFavorite(channel);
             favorite.setVisibility(isFavorite ? View.VISIBLE : View.GONE);
             dossier.setVisibility(channel.sourceCount() > 1 ? View.VISIBLE : View.GONE);
-            dossier.setText("▤  " + channel.sourceCount());
+            dossier.setText("▤  Dossier (" + channel.sourceCount() + ")");
             dossier.setContentDescription("Ouvrir le mini dossier des " + channel.sourceCount()
                     + " flux de " + channel.name);
             dossier.setOnClickListener(view -> {
@@ -300,8 +309,8 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 }
             });
             dossier.setOnFocusChangeListener((view, focused) -> {
-                dossier.setBackground(roundedDrawable(focused ? 0xFF542A34 : 0xFF3B2027,
-                        10, focused ? 0xFFFFA1AD : 0xFFEA5265, dossier.getContext()));
+                dossier.setBackground(roundedDrawable(focused ? 0xFF542A34 : 0xFF37232D,
+                        12, focused ? 0xFFFFA1AD : 0x66EA5265, dossier.getContext()));
                 applyState(focused || card.hasFocus(), selected);
             });
 
@@ -327,7 +336,12 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
                 image.setImageDrawable(null);
             }
 
-            card.setOnFocusChangeListener((view, hasFocus) -> applyState(hasFocus, owner.isSelected(boundUrl)));
+            card.setOnFocusChangeListener((view, hasFocus) -> {
+                applyState(hasFocus, owner.isSelected(boundUrl));
+                if (hasFocus && owner.focusListener != null) {
+                    owner.focusListener.onChannelFocus(channel);
+                }
+            });
             card.setOnClickListener(view -> {
                 if (listener != null) listener.onChannelClick(channel);
             });
@@ -363,10 +377,10 @@ public final class ChannelAdapter extends ListAdapter<Channel, ChannelAdapter.Ch
         private void applyState(boolean focused, boolean selected) {
             Context context = itemView.getContext();
             boolean active = focused || selected;
-            card.setBackground(roundedDrawable(active ? 0xFF3B2027 : 0xFF202126,
-                    8, active ? 0xFFEA5265 : 0x00FFFFFF, context));
-            card.setScaleX(focused ? 1.02f : 1f);
-            card.setScaleY(focused ? 1.02f : 1f);
+            card.setBackground(roundedDrawable(active ? 0xFF382431 : 0xFF1D2028,
+                    13, active ? 0xFFEA5265 : 0x18FFFFFF, context));
+            card.setScaleX(focused ? 1.025f : 1f);
+            card.setScaleY(focused ? 1.025f : 1f);
             name.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
             number.setTextColor(active ? 0xFFFFE8EA : Color.WHITE);
         }

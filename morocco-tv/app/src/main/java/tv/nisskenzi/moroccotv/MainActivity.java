@@ -126,6 +126,7 @@ public class MainActivity extends Activity {
     private View playerStagePlaceholder;
     private ViewGroup.LayoutParams playerStageOriginalLayoutParams;
     private View playbackReturnFocus;
+    private View pendingPlaybackReturnFocus;
     private int playerStageOriginalIndex = -1;
     private Channel currentChannel;
     private Channel activePlaybackSource;
@@ -3018,7 +3019,10 @@ public class MainActivity extends Activity {
         playerStageParent = (ViewGroup) playerStage.getParent();
         playerStageOriginalIndex = playerStageParent.indexOfChild(playerStage);
         playerStageOriginalLayoutParams = playerStage.getLayoutParams();
-        if (getCurrentFocus() != null) playbackReturnFocus = getCurrentFocus();
+        if ((playbackReturnFocus == null || !playbackReturnFocus.isAttachedToWindow())
+                && getCurrentFocus() != null) {
+            playbackReturnFocus = getCurrentFocus();
+        }
 
         View placeholder = new FrameLayout(this);
         placeholder.setBackgroundColor(Color.BLACK);
@@ -3078,6 +3082,7 @@ public class MainActivity extends Activity {
     }
 
     private void showSourceChoices(Channel channel) {
+        final View dialogReturnFocus = getCurrentFocus();
         if (channel == null) {
             Toast.makeText(this, "Sélectionne une chaîne pour voir ses flux.", Toast.LENGTH_SHORT).show();
             return;
@@ -3143,6 +3148,10 @@ public class MainActivity extends Activity {
         recommended.setFocusable(true);
         recommended.setClickable(true);
         recommended.setOnClickListener(v -> {
+            if (!fullscreenPlayback && dialogReturnFocus != null
+                    && dialogReturnFocus.isAttachedToWindow()) {
+                pendingPlaybackReturnFocus = dialogReturnFocus;
+            }
             sourceDialog.dismiss();
             play(channel);
         });
@@ -3194,6 +3203,10 @@ public class MainActivity extends Activity {
                         12, focused ? CYAN : 0x00202020));
             });
             row.setOnClickListener(v -> {
+                if (!fullscreenPlayback && dialogReturnFocus != null
+                        && dialogReturnFocus.isAttachedToWindow()) {
+                    pendingPlaybackReturnFocus = dialogReturnFocus;
+                }
                 sourceDialog.dismiss();
                 playSourceChoice(channel, options, sourceIndex);
             });
@@ -3221,15 +3234,32 @@ public class MainActivity extends Activity {
 
     private void playSourceChoice(Channel channel, List<Channel> options, int selectedIndex) {
         if (channel == null || options == null || selectedIndex < 0 || selectedIndex >= options.size()) return;
-        ArrayList<Channel> remaining = new ArrayList<>(options.subList(selectedIndex, options.size()));
-        Channel selected = Channel.grouped(remaining.get(0), remaining, channel.identity());
+
+        // Put the chosen source first, but keep every other stream as a fallback.
+        // Previously subList(selectedIndex, ...) silently discarded all earlier sources.
+        ArrayList<Channel> ordered = new ArrayList<>(options.size());
+        Channel chosen = options.get(selectedIndex);
+        ordered.add(chosen);
+        for (int i = 0; i < options.size(); i++) {
+            if (i == selectedIndex) continue;
+            ordered.add(options.get(i));
+        }
+        Channel selected = Channel.grouped(chosen, ordered, channel.identity());
         preserveManualSourceOrder = true;
         play(selected);
     }
 
     private void play(Channel ch) {
         if (ch == null) return;
-        playbackReturnFocus = getCurrentFocus();
+        if (!fullscreenPlayback) {
+            if (pendingPlaybackReturnFocus != null
+                    && pendingPlaybackReturnFocus.isAttachedToWindow()) {
+                playbackReturnFocus = pendingPlaybackReturnFocus;
+            } else {
+                playbackReturnFocus = getCurrentFocus();
+            }
+        }
+        pendingPlaybackReturnFocus = null;
         currentChannel = ch;
         if (playerView != null) playerView.setCurrentChannel(ch);
         if (sourceOptionsButton != null) {

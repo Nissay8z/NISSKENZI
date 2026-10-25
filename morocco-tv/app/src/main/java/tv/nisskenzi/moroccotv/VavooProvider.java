@@ -121,9 +121,9 @@ public final class VavooProvider {
         catalogExpiryMs = 0L;
     }
 
-    public static String resolveStream(String catalogUrl) throws IOException, JSONException {
-        if (catalogUrl == null || catalogUrl.trim().isEmpty()) {
-            throw new IOException("Référence de chaîne VAVOO vide.");
+    public static String resolveStream(String id) throws IOException, JSONException {
+        if (id == null || id.trim().isEmpty()) {
+            throw new IOException("ID de chaîne VAVOO vide.");
         }
         String signature = getAddonSignature();
         IOException lastError = null;
@@ -132,7 +132,7 @@ public final class VavooProvider {
                 JSONObject payload = new JSONObject();
                 payload.put("language", LANGUAGE);
                 payload.put("region", REGION);
-                payload.put("url", catalogUrl);
+                payload.put("url", id.trim());
                 payload.put("clientVersion", CLIENT_VERSION);
 
                 String response = postJson(base + "/mediahubmx-resolve.json", payload, signature, true);

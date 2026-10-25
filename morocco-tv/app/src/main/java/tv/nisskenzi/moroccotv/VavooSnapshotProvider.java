@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Reads the prebuilt all-country VAVOO metadata catalogue.
@@ -30,6 +32,7 @@ public final class VavooSnapshotProvider {
     }
 
     private static final String M3U_ASSET_NAME = "vavoo_catalog.m3u";
+    private static final String REMOTE_M3U_URL = "https://raw.githubusercontent.com/Nissay8z/KENZINISS/main/playlist/vavoo.m3u";
     private static final String LEGACY_JSON_ASSET_NAME = "vavoo_catalog.json";
     private static final int MAX_ASSET_BYTES = 32 * 1024 * 1024;
 
@@ -59,11 +62,43 @@ public final class VavooSnapshotProvider {
         return best;
     }
 
+    /** Loads the generated GitHub playlist used as the VAVOO source of truth. */
+    public static ArrayList<Channel> readRemoteM3u(Context context, int maximum,
+                                                    CountryResolver countryResolver) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(REMOTE_M3U_URL).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, */*");
+            connection.setRequestProperty("User-Agent", "NISSKENZI+/2.1");
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) return new ArrayList<>();
+            try (InputStream input = connection.getInputStream()) {
+                return parseM3u(input, maximum, countryResolver, true);
+            }
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
     private static ArrayList<Channel> readM3u(Context context, int maximum,
                                                CountryResolver countryResolver) {
+        try (InputStream input = context.getAssets().open(M3U_ASSET_NAME)) {
+            return parseM3u(input, maximum, countryResolver, false);
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+    }
+
+    private static ArrayList<Channel> parseM3u(InputStream input, int maximum,
+                                                CountryResolver countryResolver, boolean remoteIds) {
         ArrayList<Channel> result = new ArrayList<>();
-        try (InputStream input = context.getAssets().open(M3U_ASSET_NAME);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"), 64 * 1024)) {
             String line;
             String id = "";
             String name = "";
@@ -71,7 +106,6 @@ public final class VavooSnapshotProvider {
             String group = "VAVOO Live";
             String country = "";
             long bytes = 0L;
-            // VAVOO has thousands of rows but only a small number of countries.
             Map<String, String> normalizedCountryCache = new HashMap<>();
 
             while ((line = reader.readLine()) != null) {
@@ -94,33 +128,44 @@ public final class VavooSnapshotProvider {
                 }
 
                 if (line.isEmpty() || line.startsWith("#")) continue;
-                if (!line.startsWith("vavoo-catalog://")) {
+
+                boolean idReference = remoteIds && line.startsWith("vavoo://");
+                String sourceUrl;
+                if (idReference) {
+                    // The generated playlist deliberately stores only the VAVOO ID.
+                    sourceUrl = line.substring("vavoo://".length()).trim();
+                } else if (line.startsWith("vavoo-catalog://")) {
+                    // Keep backwards compatibility with the existing bundled snapshot format.
+                    String token = line.substring("vavoo-catalog://".length()).trim();
+                    try {
+                        byte[] decoded = Base64.decode(token,
+                                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                        sourceUrl = new String(decoded, StandardCharsets.UTF_8).trim();
+                    } catch (Exception invalidToken) {
+                        sourceUrl = "";
+                    }
+                } else {
                     id = name = logo = "";
                     group = "VAVOO Live";
                     country = "";
                     continue;
                 }
 
-                String token = line.substring("vavoo-catalog://".length()).trim();
-                String sourceUrl;
-                try {
-                    byte[] decoded = Base64.decode(token,
-                            Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                    sourceUrl = new String(decoded, StandardCharsets.UTF_8).trim();
-                } catch (Exception invalidToken) {
-                    sourceUrl = "";
-                }
-
                 if (!sourceUrl.isEmpty() && !name.trim().isEmpty()) {
-                    String rawCountry = safe(country);
+                    // For the generated GitHub M3U, group-title is the category/country
+                    // displayed in the existing "CATEGORIES & PAYS" column.
+                    String rawCountry = remoteIds ? safe(group) : safe(country);
+                    if (rawCountry.isEmpty()) rawCountry = safe(group);
                     String resolvedCountry;
                     if (!rawCountry.isEmpty() && normalizedCountryCache.containsKey(rawCountry)) {
                         resolvedCountry = normalizedCountryCache.get(rawCountry);
                     } else {
-                        resolvedCountry = resolveCountry(country, group, countryResolver);
+                        resolvedCountry = resolveCountry(rawCountry, group, countryResolver);
                         if (!rawCountry.isEmpty()) normalizedCountryCache.put(rawCountry, resolvedCountry);
                     }
-                    String stable = id.trim().isEmpty() ? stableId(name, resolvedCountry) : id.trim();
+
+                    String stable = idReference ? sourceUrl
+                            : (id.trim().isEmpty() ? stableId(name, resolvedCountry) : id.trim());
                     String finalGroup = group.startsWith("VAVOO · ") ? group : "VAVOO · " + group;
                     result.add(new Channel(name, "vavoo://" + stable, logo, finalGroup,
                             true, sourceUrl, resolvedCountry));

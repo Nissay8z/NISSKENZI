@@ -1382,13 +1382,19 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Résolution du flux VAVOO…", Toast.LENGTH_SHORT).show();
             io.execute(() -> {
                 try {
-                    String resolved = VavooProvider.resolveStream(ch.vavooSourceUrl);
+                    String playlistUrl = safe(ch.url);
+                    if (!playlistUrl.startsWith("vavoo://")) {
+                        throw new IllegalArgumentException("Référence VAVOO invalide.");
+                    }
+                    String id = playlistUrl.substring("vavoo://".length()).trim();
+                    if (id.isEmpty()) throw new IllegalArgumentException("ID VAVOO vide.");
+                    String resolved = VavooProvider.resolveStream(id);
                     runOnUiThread(() -> {
                         if (currentChannel != ch || playerStage == null) return;
                         startResolvedPlayback(ch, resolved);
                     });
                 } catch (Exception e) {
-                    String message = e.getMessage() == null ? "Résolution VAVOO impossible" : e.getMessage();
+                    String message = e.getMessage() == null ? "Résolution du flux VAVOO impossible" : e.getMessage();
                     runOnUiThread(() -> { if (currentChannel == ch) Toast.makeText(MainActivity.this, "VAVOO : " + message, Toast.LENGTH_LONG).show(); });
                 }
             });

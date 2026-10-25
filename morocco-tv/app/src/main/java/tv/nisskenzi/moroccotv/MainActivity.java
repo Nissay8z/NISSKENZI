@@ -918,13 +918,13 @@ public class MainActivity extends Activity {
 
         final AtomicInteger lastVavooPublished = new AtomicInteger(channels.size());
         io.execute(() -> {
-            // VAVOO is shipped as a compact, streaming-parsed M3U snapshot. Use it
-            // as the startup catalogue and skip the 35+ page network crawl entirely.
-            // We keep the stream resolver unchanged; only metadata comes from this file.
-            if (requestVavoo && !forceRefresh) {
-                ArrayList<Channel> bundled = VavooSnapshotProvider.readBundled(
+            // VAVOO's playlist metadata comes from the existing GitHub-generated M3U.
+            // Parse its vavoo:// IDs and group-title values; the stream is resolved
+            // only when a channel is selected.
+            if (requestVavoo) {
+                ArrayList<Channel> bundled = VavooSnapshotProvider.readRemoteM3u(
                         MainActivity.this, MAX_CATALOG_CHANNELS, MainActivity.this::knownCountry);
-                if (bundled.size() >= 500) {
+                if (!bundled.isEmpty()) {
                     CatalogCache.saveQuick(MainActivity.this, bundled, requestedSource, MAX_CACHED_CHANNELS);
                     final ArrayList<Channel> ready = bundled;
                     runOnUiThread(() -> {
@@ -942,8 +942,8 @@ public class MainActivity extends Activity {
                         channels.clear();
                         channels.addAll(ready);
                         markCatalogChanged();
-                        catalogStatus = requestedSource + " · " + ready.size()
-                                + " chaînes · catalogue M3U préchargé";
+                        catalogStatus = requestedSource + " · playlist M3U GitHub connectée · "
+                                + ready.size() + " chaînes";
                         updateStatus();
                         updateHeaderTabs();
                         if (fullscreenPlayback) {
@@ -1041,23 +1041,9 @@ public class MainActivity extends Activity {
             ArrayList<Channel> loaded = new ArrayList<>();
             String error = "";
             if (requestVavoo) {
-                try {
-                    List<VavooProvider.VavooChannel> sourceChannels = VavooProvider.loadChannels(partial -> {
-                        int size = partial == null ? 0 : partial.size();
-                        int previous = lastVavooPublished.get();
-                        if (size <= 0 || (previous > 0 && size - previous < 1500)
-                                || !lastVavooPublished.compareAndSet(previous, size)) return;
-                        publishCatalogSnapshot(convertVavooChannels(partial), requestedSource,
-                                currentGen);
-                    });
-
-                    for (VavooProvider.VavooChannel item : sourceChannels) {
-                        if (loaded.size() >= MAX_CATALOG_CHANNELS) break;
-                        loaded.add(toAppChannel(item));
-                    }
-                } catch (Exception e) {
-                    error = e.getMessage() == null ? "catalogue VAVOO indisponible" : e.getMessage();
-                }
+                // Do not crawl the VAVOO API for a catalogue: the GitHub M3U is the source
+                // of truth. If it is offline, preserve the previously loaded/cached list.
+                error = "playlist M3U GitHub indisponible ou vide";
             } else {
                 try {
                     loaded.addAll(IptvOrgProvider.loadChannels(MainActivity.this, MAX_CATALOG_CHANNELS,
@@ -1118,10 +1104,8 @@ public class MainActivity extends Activity {
                 }
             });
 
-            // Saving the complete catalogue happens off the UI thread; subsequent launches
-            // can restore all countries/channels without waiting for remote pagination.
-            // IPTV-org remains cached locally. VAVOO uses the bundled M3U as the
-            // canonical startup snapshot, so rebuilding a duplicate JSON catalogue is wasted work.
+            // Keep the existing IPTV-org cache behavior. VAVOO is refreshed from its
+            // GitHub M3U on load, with the existing cache available if GitHub is offline.
             if (!result.isEmpty() && !requestVavoo && forceRefresh) {
                 CatalogCache.saveFull(MainActivity.this, result, requestedSource, MAX_CATALOG_CHANNELS);
             }

@@ -1,6 +1,7 @@
 package tv.nisskenzi.moroccotv;
 
 import android.os.Build;
+import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -132,7 +133,7 @@ public final class VavooProvider {
                 JSONObject payload = new JSONObject();
                 payload.put("language", LANGUAGE);
                 payload.put("region", REGION);
-                payload.put("url", id.trim());
+                payload.put("url", buildPlayUrl(id));
                 payload.put("clientVersion", CLIENT_VERSION);
 
                 String response = postJson(base + "/mediahubmx-resolve.json", payload, signature, true);
@@ -146,6 +147,38 @@ public final class VavooProvider {
             }
         }
         throw lastError != null ? lastError : new IOException("Impossible de résoudre ce flux VAVOO.");
+    }
+
+    /**
+     * MediaHubMX resolver expects the canonical VAVOO play URL, not a bare ID.
+     * A playlist item stores only the final stream ID, so rebuild that URL here.
+     */
+    private static String buildPlayUrl(String rawId) throws IOException {
+        String id = rawId == null ? "" : rawId.trim();
+        if (id.isEmpty()) throw new IOException("ID de chaîne VAVOO vide.");
+        return "https://vavoo.to/vavoo-iptv/play/" + Uri.encode(id);
+    }
+
+    /** Extracts the upstream ID from a MediaHub catalog item's URL. */
+    private static String extractStreamId(String sourceUrl) {
+        try {
+            String path = Uri.parse(sourceUrl).getPath();
+            if (path == null || path.trim().isEmpty()) return "";
+            String marker = "/vavoo-iptv/play/";
+            int markerIndex = path.indexOf(marker);
+            String value = markerIndex >= 0
+                    ? path.substring(markerIndex + marker.length())
+                    : path.substring(path.lastIndexOf('/') + 1);
+            int slash = value.indexOf('/');
+            if (slash >= 0) value = value.substring(0, slash);
+            if (value.endsWith(".m3u8")) value = value.substring(0, value.length() - 5);
+            value = Uri.decode(value).trim();
+            if (value.isEmpty() || value.equalsIgnoreCase("play")
+                    || value.contains("?") || value.contains("#")) return "";
+            return value;
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private static List<VavooChannel> loadCatalogFromBase(String base, String signature,
@@ -184,7 +217,8 @@ public final class VavooProvider {
                     if(country.isEmpty())country=item.optString("countryName", "").trim();
                     if(country.isEmpty())country=item.optString("country_name", "").trim();
                     if(country.isEmpty())country=extractCountry(group);
-                    String id = stableId(name, country);
+                    String id = extractStreamId(sourceUrl);
+                    if (id.isEmpty()) continue;
                     channels.add(new VavooChannel(id, name, sourceUrl, logo,
                             group.isEmpty() ? "VAVOO Live" : group, country));
                 }
